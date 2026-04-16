@@ -7,14 +7,4 @@ export default defineConfig({
       events: 'events',
     },
   },
-  server: {
-    headers: {
-      // Required for ffmpeg.wasm (SharedArrayBuffer)
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-  },
-  optimizeDeps: {
-    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
-  },
 })

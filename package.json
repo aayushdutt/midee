@@ -9,11 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ffmpeg/ffmpeg": "^0.12.10",
-    "@ffmpeg/util": "^0.12.1",
     "@tonejs/midi": "^2.0.28",
     "@tonejs/piano": "^0.2.1",
     "events": "^3.3.0",
+    "mp4-muxer": "^5.2.2",
     "pixi-filters": "^6.0.1",
     "pixi.js": "^8.4.0",
     "tone": "^14.7.77"

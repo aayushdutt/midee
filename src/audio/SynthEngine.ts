@@ -2,6 +2,32 @@ import * as Tone from 'tone'
 import type { MidiFile, MidiNote, MidiTrack } from '../core/midi/types'
 import type { AudioEngine } from './AudioEngine'
 
+// ── Instrument roster ───────────────────────────────────────────────────
+// Piano uses the sampled Salamander set (lazy-loaded, ~5MB). The other three
+// are pure Tone synths — instant, zero network.
+
+export type InstrumentId = 'piano' | 'rhodes' | 'pad' | 'pluck'
+
+export interface InstrumentInfo {
+  id: InstrumentId
+  name: string       // display name
+  sampled: boolean   // whether loading requires a network fetch
+}
+
+export const INSTRUMENTS: readonly InstrumentInfo[] = [
+  { id: 'piano',  name: 'Piano',  sampled: true  },
+  { id: 'rhodes', name: 'Rhodes', sampled: false },
+  { id: 'pad',    name: 'Pad',    sampled: false },
+  { id: 'pluck',  name: 'Pluck',  sampled: false },
+]
+
+interface InstrumentRuntime {
+  triggerAttack(note: string, time: number, velocity: number): void
+  triggerRelease(note: string, time: number): void
+  releaseAll(): void
+  dispose(): void
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type PianoModule = { Piano: any }
 let pianoModule: PianoModule | null = null
@@ -14,83 +40,80 @@ async function getPianoModule(): Promise<PianoModule> {
 }
 
 export class SynthEngine implements AudioEngine {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private pianoInstance: any = null
-  private fallbackSynth: Tone.PolySynth | null = null
+  private instruments = new Map<InstrumentId, InstrumentRuntime>()
+  private loadingPromises = new Map<InstrumentId, Promise<InstrumentRuntime>>()
+  private currentId: InstrumentId = 'piano'
   private midi: MidiFile | null = null
   private scheduledIds: number[] = []
-
   private _volume = 0.8
-
-  // The transport-relative start time of the last full reschedule.
-  // Used to distinguish "resume from pause" (no reschedule needed)
-  // from "play after seek" (must reschedule).
   private scheduledFromTime = 0
-
-  // Kept as a field so play() can await it without checking a boolean flag.
-  // Resolves once the instrument is ready to make sound.
   private readyPromise: Promise<void> = Promise.resolve()
   private liveWarmupStarted = false
 
-  constructor() {
-    this.ensureFallbackSynth()
-  }
-
-  load(source: MidiFile | AudioBuffer): Promise<void> {
+  async load(source: MidiFile | AudioBuffer): Promise<void> {
     if (!(source instanceof AudioBuffer)) {
       this.midi = source as MidiFile
     }
-
-    if (!this.pianoInstance) {
-      this.readyPromise = this.initInstrument()
-    }
+    this.readyPromise = this.ensureInstrument(this.currentId).then(() => undefined)
     return this.readyPromise
   }
 
-  private async initInstrument(): Promise<void> {
-    try {
-      const { Piano } = await getPianoModule()
-      if (!this.pianoInstance) {
-        this.pianoInstance = new Piano({ velocities: 4 })
-        this.pianoInstance.toDestination()
-        await this.pianoInstance.load()
-      }
-    } catch (err) {
-      console.warn('Piano samples unavailable, falling back to PolySynth', err)
-      this.ensureFallbackSynth()
+  // Kick off piano sample download in the background — safe to call at app
+  // boot. AudioContext still requires a user gesture before `play()`.
+  preloadDefault(): void {
+    void this.ensureInstrument(this.currentId).catch(() => undefined)
+  }
+
+  // Switch the active instrument for both scheduled and live playback.
+  // Loading is lazy; selecting an unloaded instrument kicks off its init.
+  async setInstrument(id: InstrumentId): Promise<void> {
+    if (id === this.currentId) return
+    // Release anything currently sounding on the old instrument
+    this.instruments.get(this.currentId)?.releaseAll()
+    this.currentId = id
+    await this.ensureInstrument(id)
+  }
+
+  get instrument(): InstrumentId {
+    return this.currentId
+  }
+
+  private ensureInstrument(id: InstrumentId): Promise<InstrumentRuntime> {
+    const cached = this.instruments.get(id)
+    if (cached) return Promise.resolve(cached)
+    const existing = this.loadingPromises.get(id)
+    if (existing) return existing
+
+    const promise = this.createInstrument(id).then((inst) => {
+      this.instruments.set(id, inst)
+      this.loadingPromises.delete(id)
+      return inst
+    })
+    this.loadingPromises.set(id, promise)
+    return promise
+  }
+
+  private async createInstrument(id: InstrumentId): Promise<InstrumentRuntime> {
+    switch (id) {
+      case 'piano':  return await createPiano()
+      case 'rhodes': return createRhodes()
+      case 'pad':    return createPad()
+      case 'pluck':  return createPluck()
     }
   }
 
   async play(fromTime: number): Promise<void> {
     if (!this.midi) return
-
-    // Wait for samples to finish downloading. On first play this may take
-    // a moment; on subsequent calls readyPromise is already resolved (<1ms).
     await this.readyPromise
-
-    // Ensure the AudioContext is running. Browser autoplay policy suspends it
-    // until a user gesture. After the first call this returns in <1ms.
     await Tone.start()
 
-    // If the transport was stopped or paused while we were awaiting (e.g. user
-    // switched modes or clicked pause immediately), don't proceed with start.
-    if (Tone.getTransport().state !== 'started' && Tone.getTransport().state !== 'stopped') {
-      // If someone else already started or fully stopped it, we might be in a race.
-      // If it's explicitly paused now, it means a pause() call happened during our await.
-      if (Tone.getTransport().state === 'paused') return
-    }
-
     const transport = Tone.getTransport()
-
-    // Fast path: transport is paused and position hasn't changed — just resume.
-    // Avoids rescheduling thousands of notes on every pause → play.
     if (transport.state === 'paused'
         && Math.abs(fromTime - this.scheduledFromTime) < 0.05) {
       transport.start()
       return
     }
 
-    // Full reschedule: initial play, or playing after a seek.
     this.clearScheduled()
     transport.stop()
     transport.position = 0
@@ -100,30 +123,25 @@ export class SynthEngine implements AudioEngine {
       for (const note of track.notes) {
         if (note.time < fromTime) continue
         const t = note.time - fromTime
-
         this.scheduledIds.push(
           transport.schedule((time) => this.triggerNoteOn(note, track, time), t),
           transport.schedule((time) => this.triggerNoteOff(note, time), t + note.duration),
         )
       }
     }
-
     transport.start()
   }
 
   pause(): void {
     Tone.getTransport().pause()
-    this.pianoInstance?.stopAll()
-    this.fallbackSynth?.releaseAll()
+    this.releaseAllInstruments()
   }
 
   seek(time: number): void {
     const wasPlaying = Tone.getTransport().state === 'started'
-    // Stop and clear — forces a full reschedule on the next play() call
     Tone.getTransport().stop()
     this.clearScheduled()
-    this.pianoInstance?.stopAll()
-    this.fallbackSynth?.releaseAll()
+    this.releaseAllInstruments()
     if (wasPlaying) void this.play(time)
   }
 
@@ -136,75 +154,42 @@ export class SynthEngine implements AudioEngine {
     Tone.getTransport().bpm.value = (this.midi?.bpm ?? 120) * s
   }
 
-  // ── Live MIDI keyboard input ─────────────────────────────────────────────
-
-  // Call during the user-gesture that connects MIDI so the instrument starts
-  // loading in the background. By the time they play their first note it's ready.
-  async ensureInstrument(): Promise<void> {
-    await Tone.start()
-    this.liveWarmupStarted = true
-    if (!this.pianoInstance) {
-      this.readyPromise = this.initInstrument()
-    }
-    await this.readyPromise
-  }
+  // ── Live MIDI keyboard input ───────────────────────────────────────────
 
   primeLiveInput(): void {
     if (this.liveWarmupStarted) return
     this.liveWarmupStarted = true
-    this.ensureFallbackSynth()
     void Tone.start().catch(() => undefined)
-    if (!this.pianoInstance) {
-      this.readyPromise = this.initInstrument()
-    }
+    void this.ensureInstrument(this.currentId).catch(() => undefined)
   }
 
-  // Trigger a note immediately (no Transport scheduling) for live input.
   liveNoteOn(pitch: number, velocity: number): void {
     this.primeLiveInput()
-    const name = midiToNoteName(pitch)
-    const t    = Tone.immediate()
-    if (this.pianoInstance) {
-      this.pianoInstance.keyDown({ note: name, velocity, time: t })
-    } else {
-      this.fallbackSynth?.triggerAttack(name, t, velocity)
-    }
+    const inst = this.instruments.get(this.currentId)
+    if (!inst) return // still loading — first notes may drop, acceptable tradeoff
+    inst.triggerAttack(midiToNoteName(pitch), Tone.immediate(), velocity)
   }
 
   liveNoteOff(pitch: number): void {
-    this.primeLiveInput()
-    const name = midiToNoteName(pitch)
-    const t    = Tone.immediate()
-    if (this.pianoInstance) {
-      this.pianoInstance.keyUp({ note: name, time: t })
-    } else {
-      this.fallbackSynth?.triggerRelease(name, t)
-    }
+    const inst = this.instruments.get(this.currentId)
+    if (!inst) return
+    inst.triggerRelease(midiToNoteName(pitch), Tone.immediate())
   }
 
   liveReleaseAll(): void {
-    this.pianoInstance?.stopAll()
-    this.fallbackSynth?.releaseAll()
+    this.releaseAllInstruments()
   }
 
-  // ── Scheduled playback (internal) ────────────────────────────────────────
+  // ── Scheduled playback (internal) ──────────────────────────────────────
 
-  private triggerNoteOn(note: MidiNote, track: MidiTrack, time: number): void {
-    const name = midiToNoteName(note.pitch)
-    if (this.pianoInstance) {
-      this.pianoInstance.keyDown({ note: name, velocity: note.velocity, time })
-    } else {
-      this.fallbackSynth?.triggerAttack(name, time, note.velocity)
-    }
+  private triggerNoteOn(note: MidiNote, _track: MidiTrack, time: number): void {
+    const inst = this.instruments.get(this.currentId)
+    inst?.triggerAttack(midiToNoteName(note.pitch), time, note.velocity)
   }
 
   private triggerNoteOff(note: MidiNote, time: number): void {
-    const name = midiToNoteName(note.pitch)
-    if (this.pianoInstance) {
-      this.pianoInstance.keyUp({ note: name, time })
-    } else {
-      this.fallbackSynth?.triggerRelease(name, time)
-    }
+    const inst = this.instruments.get(this.currentId)
+    inst?.triggerRelease(midiToNoteName(note.pitch), time)
   }
 
   private clearScheduled(): void {
@@ -213,25 +198,103 @@ export class SynthEngine implements AudioEngine {
     this.scheduledIds = []
   }
 
-  private ensureFallbackSynth(): void {
-    if (this.fallbackSynth) return
-    this.fallbackSynth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: 'triangle' },
-      envelope: { attack: 0.005, decay: 0.08, sustain: 0.55, release: 0.5 },
-    }).toDestination()
+  private releaseAllInstruments(): void {
+    for (const inst of this.instruments.values()) inst.releaseAll()
   }
 
   dispose(): void {
     this.clearScheduled()
     Tone.getTransport().stop()
-    this.pianoInstance?.dispose()
-    this.fallbackSynth?.dispose()
+    for (const inst of this.instruments.values()) inst.dispose()
+    this.instruments.clear()
   }
 }
 
-// Precomputed lookup — `midiToNoteName(n)` is hit once per scheduled trigger
-// and once per live note-on/off. Table fits the full MIDI range (0-127) in one
-// small array; the closure-free path keeps live input latency predictable.
+// ── Instrument factories ────────────────────────────────────────────────
+
+async function createPiano(): Promise<InstrumentRuntime> {
+  try {
+    const { Piano } = await getPianoModule()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const inst: any = new Piano({ velocities: 4 })
+    inst.toDestination()
+    await inst.load()
+    return {
+      triggerAttack: (note, time, velocity) => inst.keyDown({ note, velocity, time }),
+      triggerRelease: (note, time) => inst.keyUp({ note, time }),
+      releaseAll: () => inst.stopAll(),
+      dispose: () => inst.dispose(),
+    }
+  } catch (err) {
+    console.warn('Piano samples unavailable, falling back to PolySynth', err)
+    // Fall through — return a triangle synth so the app still plays.
+    return createTriangleFallback()
+  }
+}
+
+function createTriangleFallback(): InstrumentRuntime {
+  const synth = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: 'triangle' },
+    envelope: { attack: 0.005, decay: 0.08, sustain: 0.55, release: 0.5 },
+  }).toDestination()
+  return wrapPolySynth(synth)
+}
+
+function createRhodes(): InstrumentRuntime {
+  // FMSynth with a bell-like modulator gives a passable electric piano.
+  const synth = new Tone.PolySynth(Tone.FMSynth, {
+    harmonicity: 3.2,
+    modulationIndex: 6,
+    oscillator: { type: 'sine' },
+    envelope:   { attack: 0.002, decay: 0.9, sustain: 0.12, release: 1.0 },
+    modulation: { type: 'sine' },
+    modulationEnvelope: { attack: 0.004, decay: 0.6, sustain: 0.05, release: 0.4 },
+  })
+  const chorus = new Tone.Chorus(0.8, 2.5, 0.35).start()
+  synth.chain(chorus, Tone.getDestination())
+  return wrapPolySynth(synth)
+}
+
+function createPad(): InstrumentRuntime {
+  // Soft sustaining pad with slow attack and detuned sawtooth voices.
+  const synth = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: 'fatsawtooth', count: 3, spread: 24 },
+    envelope:   { attack: 0.6, decay: 0.4, sustain: 0.8, release: 1.6 },
+  })
+  synth.volume.value = -10
+  const filter = new Tone.Filter({ frequency: 1600, type: 'lowpass', rolloff: -12 })
+  const reverb = new Tone.Reverb({ decay: 3.5, wet: 0.35 })
+  synth.chain(filter, reverb, Tone.getDestination())
+  return wrapPolySynth(synth)
+}
+
+function createPluck(): InstrumentRuntime {
+  // Percussive plucked-string approximation using a short-envelope synth with
+  // an HP-filtered sawtooth. PluckSynth can't back a PolySynth in Tone 15+
+  // (it's not Monophonic), and we don't need a voice pool here.
+  const synth = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: 'sawtooth' },
+    envelope:   { attack: 0.002, decay: 0.18, sustain: 0, release: 0.9 },
+  })
+  synth.volume.value = -6
+  const filter = new Tone.Filter({ frequency: 3800, type: 'highpass', rolloff: -12, Q: 0.5 })
+  const lowpass = new Tone.Filter({ frequency: 6500, type: 'lowpass', rolloff: -24 })
+  synth.chain(filter, lowpass, Tone.getDestination())
+  return wrapPolySynth(synth)
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function wrapPolySynth(synth: any): InstrumentRuntime {
+  return {
+    triggerAttack: (note, time, velocity) => synth.triggerAttack(note, time, velocity),
+    triggerRelease: (note, time) => synth.triggerRelease(note, time),
+    releaseAll: () => synth.releaseAll(),
+    dispose: () => synth.dispose(),
+  }
+}
+
+// ── MIDI note-name table ────────────────────────────────────────────────
+
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const MIDI_NOTE_NAMES: readonly string[] = (() => {
   const out: string[] = new Array(128)

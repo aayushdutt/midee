@@ -12,9 +12,9 @@
   --border:      rgba(255, 255, 255, 0.07);
   --border-hi:   rgba(255, 255, 255, 0.12);
 
-  --text:        #e8e8f2;
-  --text-muted:  #9398bf;
-  --text-dim:    #575d80;
+  --text:        #f4f4fb;
+  --text-muted:  #b0b4d4;
+  --text-dim:    #6c7298;
 
   --accent:      #6366f1;
   --accent-soft: rgba(99, 102, 241, 0.16);
@@ -31,7 +31,7 @@
   --r-pill: 999px;
 
   --keyboard-h: 120px;
-  --hud-gap: 14px;     /* gap between keyboard top and hud bottom */
+  --hud-gap: 28px;     /* gap between keyboard top and hud bottom */
 
   --font:         'Inter', system-ui, sans-serif;
   --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
@@ -97,10 +97,10 @@ html, body {
   padding: 28px;
 }
 
-#dropzone .home-card,
-#dropzone .home-primary-btn,
-#dropzone .home-secondary-btn,
-#dropzone input {
+#dropzone:not(.dz--hidden) .home-card,
+#dropzone:not(.dz--hidden) .home-primary-btn,
+#dropzone:not(.dz--hidden) .home-secondary-btn,
+#dropzone:not(.dz--hidden) input {
   pointer-events: auto;
 }
 
@@ -108,6 +108,10 @@ html, body {
   opacity: 0;
   pointer-events: none;
   transform: scale(0.97);
+  /* Children explicitly disabled — prevents the hidden home-card from
+     intercepting clicks to the HUD / canvas underneath. */
+  visibility: hidden;
+  transition: opacity 0.45s var(--ease-out), transform 0.45s var(--ease-out), visibility 0s linear 0.45s;
 }
 
 #dropzone::before {
@@ -339,24 +343,14 @@ html, body {
     width: 100%;
   }
 
-  .ts-left,
-  .ts-end {
-    justify-content: space-between;
+  #top-strip {
+    grid-template-columns: auto 1fr auto;
+    height: 54px;
   }
 
-  .ts-center {
-    order: 3;
-  }
+  .ts-home-name { display: none; }
 
-  .ts-title {
-    max-width: calc(100vw - 56px);
-  }
-
-  .midi-chip {
-    flex: 1;
-    min-width: 0;
-    justify-content: center;
-  }
+  .ts-context-title { max-width: 180px; }
 }
 
 @media (max-width: 640px) {
@@ -388,20 +382,6 @@ html, body {
     width: 100%;
   }
 
-  .mode-switch {
-    flex: 1;
-  }
-
-  .mode-btn {
-    flex: 1;
-  }
-
-  .ts-action-btn {
-    flex: 1;
-    justify-content: center;
-  }
-
-  .midi-chip span,
   .ts-record-btn span {
     display: none;
   }
@@ -431,7 +411,7 @@ html, body {
 
 
 /* ─────────────────────────────────────────
-   TOP STRIP
+   TOP STRIP — three zones: wordmark · context chip · actions
 ───────────────────────────────────────── */
 
 #top-strip {
@@ -439,15 +419,15 @@ html, body {
   top: 14px;
   left: 14px;
   right: 14px;
-  height: 64px;
-  display: flex;
+  height: 54px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
-  padding: 0 16px;
+  padding: 0 8px 0 14px;
   background: rgba(7, 9, 18, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 24px;
+  border-radius: 18px;
   backdrop-filter: blur(30px) saturate(145%);
   -webkit-backdrop-filter: blur(30px) saturate(145%);
   box-shadow:
@@ -466,162 +446,221 @@ html, body {
   pointer-events: auto;
 }
 
-/* Dims (not fully hidden) when playing + idle */
 #top-strip.strip--dim {
   opacity: 0.16;
   pointer-events: none;
 }
 
-.ts-left,
 .ts-end {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
-.mode-switch {
+/* Wordmark — click to home */
+.ts-home {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--r-pill);
-}
-
-.mode-btn {
-  min-width: 60px;
-  height: 32px;
-  border-radius: var(--r-pill);
-  border: none;
+  gap: 10px;
+  height: 38px;
+  padding: 0 12px 0 6px;
   background: transparent;
-  color: var(--text-dim);
-  font-family: var(--font);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.16s, color 0.16s, box-shadow 0.16s;
-}
-
-.mode-btn:hover {
+  border: none;
+  border-radius: 12px;
   color: var(--text);
+  font-family: var(--font);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
 
-.mode-btn--active {
-  background: var(--accent-soft);
+.ts-home:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ts-home-mark {
   color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent-glow);
+  flex-shrink: 0;
+  transition: transform 0.25s var(--ease-spring);
 }
 
-.ts-action-btn {
-  height: 34px;
+.ts-home:hover .ts-home-mark {
+  transform: rotate(-4deg) scale(1.05);
+}
+
+.ts-home-name {
+  white-space: nowrap;
+}
+
+/* ─── Status display (center zone) — display-only, not interactive ─── */
+
+.ts-status {
+  display: inline-flex;
+  justify-self: center;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 520px;
+  height: 36px;
   padding: 0 14px;
-  border-radius: var(--r-pill);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.05);
   color: var(--text);
   font-family: var(--font);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.16s, border-color 0.16s, transform 0.16s var(--ease-spring);
 }
 
-.ts-action-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.14);
-  transform: translateY(-1px);
+.ts-status-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: background 0.2s, box-shadow 0.2s;
 }
 
-.ts-bars {
+#top-strip[data-mode="live"]    .ts-status-dot { background: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
+#top-strip[data-mode="file"]    .ts-status-dot { background: var(--accent); }
+#top-strip.strip--playing       .ts-status-dot { animation: dot-pulse 1.8s ease-in-out infinite; }
+
+@keyframes dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
+  50%       { box-shadow: 0 0 0 5px transparent; }
+}
+
+.ts-status-main {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
+  min-width: 0;
+}
+
+.ts-status-kicker {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.ts-status-title {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.015em;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tiny equaliser bars inside the status when playing */
+.ts-bars {
+  display: inline-flex;
   align-items: flex-end;
-  gap: 2.5px;
+  gap: 2px;
   height: 12px;
-  margin-left: 8px;
+  margin-left: 2px;
   opacity: 0;
-  transition: opacity 0.5s;
+  transition: opacity 0.4s;
   flex-shrink: 0;
 }
 
-#top-strip.strip--playing:not(.strip--dim) .ts-bars { opacity: 0.65; }
+#top-strip.strip--playing:not(.strip--dim) .ts-bars { opacity: 0.75; }
 
 .ts-bars span {
   display: block;
-  width: 2.5px;
+  width: 2px;
   border-radius: 1.5px;
   background: var(--accent);
   animation: bar-bounce 1.2s ease-in-out infinite;
 }
 
-.ts-bars span:nth-child(1) { height: 7px;  animation-delay: 0.00s; }
-.ts-bars span:nth-child(2) { height: 12px; animation-delay: 0.22s; }
-.ts-bars span:nth-child(3) { height: 5px;  animation-delay: 0.10s; }
-.ts-bars span:nth-child(4) { height: 9px;  animation-delay: 0.38s; }
+.ts-bars span:nth-child(1) { height: 6px;  animation-delay: 0.00s; }
+.ts-bars span:nth-child(2) { height: 11px; animation-delay: 0.22s; }
+.ts-bars span:nth-child(3) { height: 4px;  animation-delay: 0.10s; }
+.ts-bars span:nth-child(4) { height: 8px;  animation-delay: 0.38s; }
 
 @keyframes bar-bounce {
   0%, 100% { transform: scaleY(0.3); opacity: 0.5; }
   50%       { transform: scaleY(1.0); opacity: 1.0; }
 }
 
-.ts-center {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  min-width: 0;
-  overflow: hidden;
-}
+/* ─── Action pills (right cluster) ───────────────────────────────────── */
 
-.ts-kicker {
-  color: var(--text-dim);
-  font-size: 10.5px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  margin-bottom: 2px;
-}
-
-.ts-title-row {
-  display: flex;
+.ts-pill {
+  display: inline-flex;
   align-items: center;
-  min-width: 0;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s, border-color 0.15s, transform 0.16s var(--ease-spring);
 }
 
-.ts-title {
-  font-size: 15px;
-  font-weight: 600;
+.ts-pill svg { color: currentColor; flex-shrink: 0; }
+
+.ts-pill:hover {
   color: var(--text);
-  letter-spacing: -0.03em;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.ts-pill:active { transform: scale(0.97); }
+
+/* "On" state: used by Live toggle when in live mode, and MIDI when connected */
+.ts-pill--on {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-glow);
+}
+
+.ts-pill--on:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* Hide File-only pills (Tracks) when no file is loaded. Handled via hidden
+   class from Controls.ts, but also defensive CSS for robustness. */
+#top-strip[data-has-file="false"] .ts-pill--file { display: none; }
+
+/* Collapse MIDI pill label when unavailable — icon-only */
+#top-strip[data-midi-status="unavailable"] .ts-pill--midi {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+#top-strip[data-midi-status="blocked"] .ts-pill--midi {
+  color: #ffc67a;
+  border-color: rgba(255, 198, 122, 0.25);
+  background: rgba(255, 198, 122, 0.07);
+}
+
+.ts-midi-label {
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 420px;
 }
 
-.ts-placeholder { color: var(--text-dim); font-weight: 400; }
-
-.ts-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  padding: 0;
+/* Vertical divider between action groups */
+.ts-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
-}
-
-.ts-btn:hover {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.09);
-  border-color: var(--border);
 }
 
 .ts-theme-btn {
@@ -658,28 +697,6 @@ html, body {
   text-transform: uppercase;
 }
 
-.midi-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 14px 0 12px;
-  border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: var(--text-muted);
-  font-family: var(--font);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: color 0.2s, background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.16s var(--ease-spring);
-}
-
-.midi-chip:hover {
-  color: var(--text);
-  transform: translateY(-1px);
-}
-
 .theme-dot {
   width: 9px;
   height: 9px;
@@ -690,22 +707,11 @@ html, body {
   transition: background 0.4s var(--ease-out), box-shadow 0.4s;
 }
 
-.midi-chip.midi-connected {
+.ts-particle-icon {
+  display: inline-flex;
+  align-items: center;
   color: var(--accent);
-  border-color: var(--accent-glow);
-  background: var(--accent-soft);
-  box-shadow: 0 0 8px var(--accent-glow);
-}
-
-.midi-chip.midi-blocked {
-  color: #ffd89c;
-  border-color: rgba(255, 197, 94, 0.24);
-  background: rgba(255, 197, 94, 0.08);
-}
-
-.midi-chip.midi-unavailable {
-  opacity: 0.28;
-  pointer-events: none;
+  filter: drop-shadow(0 0 6px var(--accent-glow));
 }
 
 /* Record button */
@@ -762,7 +768,10 @@ html, body {
   bottom: calc(var(--keyboard-h) + var(--hud-gap));
   left: 50%;
   transform: translateX(calc(-50% + var(--hud-dx, 0px))) translateY(var(--hud-dy, 0px));
-  width: min(760px, calc(100vw - 32px));
+  /* Width follows content — avoids a half-empty bar in live mode where
+     transport controls are hidden. Constrain so ultra-wide screens don't stretch it. */
+  width: auto;
+  max-width: min(760px, calc(100vw - 32px));
   pointer-events: none;
   opacity: 0;
   z-index: 15;
@@ -785,17 +794,25 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
+  height: 56px;               /* fixed height — same in live and file modes */
+  padding: 0 14px;
   background: rgba(7, 7, 15, 0.93);
   backdrop-filter: blur(48px) saturate(160%);
   -webkit-backdrop-filter: blur(48px) saturate(160%);
   border: 1px solid var(--border);
-  border-radius: var(--r-xl);
+  border-radius: 20px;
   box-shadow:
     0 24px 64px rgba(0, 0, 0, 0.75),
     0 8px 24px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
+
+.hud-group { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Hide transport controls (play/skip/scrub/speed) in live mode */
+#hud.hud--live .hud-group--transport { display: none; }
+/* Instrument button shows in live mode only — that's where people pick a sound */
+#hud:not(.hud--live) .hud-group--instrument { display: none; }
 
 .hud-drag-handle {
   display: inline-flex;
@@ -825,8 +842,8 @@ html, body {
 
 /* Play button */
 .btn-play {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: var(--accent);
   border: none;
@@ -983,6 +1000,34 @@ html, body {
 .mini-slider::-webkit-slider-thumb:hover { transform: scale(1.25); }
 
 .mini-slider--zoom { width: 64px; }
+
+/* Instrument cycle button (live mode) — sized to match the other HUD pills */
+.hud-instr-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px 0 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s, border-color 0.15s, transform 0.12s var(--ease-spring);
+}
+
+.hud-instr-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.hud-instr-btn:active { transform: scale(0.97); }
+
+.hud-instr-icon { color: var(--accent); display: inline-flex; }
 
 .speed-val {
   font-family: var(--font-mono);
@@ -1638,29 +1683,48 @@ html, body {
 
 .toast {
   position: fixed;
-  bottom: 32px;
-  left: 50%;
-  background: var(--red);
+  top: 82px;
+  right: 22px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 320px;
+  padding: 10px 14px;
+  background: rgba(10, 12, 22, 0.92);
   border: 1px solid var(--red-border);
   color: var(--red-text);
-  padding: 10px 20px;
-  border-radius: var(--r-md);
-  font-size: 13px;
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.35;
   z-index: 200;
   pointer-events: none;
-  white-space: nowrap;
-  animation: toast-in 0.3s var(--ease-spring) forwards;
+  animation: toast-in 0.26s var(--ease-spring) forwards;
 }
 
 .toast--success {
-  background: rgba(52, 211, 153, 0.10);
-  border-color: rgba(52, 211, 153, 0.28);
-  color: #6ee7b7;
+  border-color: rgba(52, 211, 153, 0.32);
+  color: #a5f3d0;
+}
+
+.toast::before {
+  content: '';
+  display: inline-block;
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.85;
+  box-shadow: 0 0 10px currentColor;
 }
 
 @keyframes toast-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
 
@@ -1701,10 +1765,9 @@ html, body {
   .toggle-track::after,
   .theme-dot,
   .ts-record-btn,
-  .midi-chip,
-  .mode-btn,
-  .ts-action-btn,
-  .ts-btn,
+  .ts-context,
+  .ts-menu,
+  .ts-menu-item,
   .modal-btn,
   .fps-btn {
     transition-duration: 0.01ms !important;

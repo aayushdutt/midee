@@ -22,6 +22,9 @@ export interface ControlsOptions {
   onRecord?: () => void
   onOpenFile?: () => void
   onModeRequest?: (mode: Exclude<AppMode, 'home'>) => void
+  onHome?: () => void
+  onInstrumentCycle?: () => void
+  onParticleCycle?: () => void
 }
 
 export class Controls {
@@ -32,18 +35,22 @@ export class Controls {
   private scrubber!: HTMLInputElement
   private timeDisplay!: HTMLElement
   private durationEl!: HTMLElement
+  private homeBtn!: HTMLButtonElement
+  private statusEl!: HTMLElement
+  private contextKickerEl!: HTMLElement
+  private contextTitleEl!: HTMLElement
+  private openBtn!: HTMLButtonElement
+  private liveBtn!: HTMLButtonElement
+  private liveLabelEl!: HTMLElement
+  private tracksBtn!: HTMLButtonElement
   private midiBtn!: HTMLButtonElement
   private midiLabelEl!: HTMLElement
-  private titleEl!: HTMLElement
-  private kickerEl!: HTMLElement
-  private openBtn!: HTMLButtonElement
-  private tracksBtn!: HTMLButtonElement
   private recordBtn!: HTMLButtonElement
-  private fileModeBtn!: HTMLButtonElement
-  private liveModeBtn!: HTMLButtonElement
   private hudDragHandle!: HTMLButtonElement
   private themeBtn!: HTMLButtonElement
   private themeLabelEl!: HTMLElement
+  private particleBtn!: HTMLButtonElement
+  private particleLabelEl!: HTMLElement
   private octaveEl!: HTMLElement
   private isScrubbing = false
   private idleTimer: ReturnType<typeof setTimeout> | null = null
@@ -83,35 +90,45 @@ export class Controls {
     const el = document.createElement('div')
     el.id = 'top-strip'
     el.innerHTML = `
-      <div class="ts-left">
-        <div class="mode-switch" aria-label="Mode">
-          <button class="mode-btn" id="ts-mode-file" type="button">File</button>
-          <button class="mode-btn" id="ts-mode-live" type="button">Live</button>
-        </div>
-        <button class="ts-action-btn" id="ts-open" type="button">Open MIDI</button>
-        <button class="ts-btn" id="ts-tracks" title="Tracks" aria-label="Open track list">
-          ${ICON_TRACKS}
-        </button>
-      </div>
+      <button class="ts-home" id="ts-home" type="button" aria-label="Piano Roll home">
+        ${ICON_WORDMARK}
+        <span class="ts-home-name">Piano Roll</span>
+      </button>
 
-      <div class="ts-center">
-        <div class="ts-kicker" id="ts-kicker">Choose a mode</div>
-        <div class="ts-title-row">
-          <span class="ts-title" id="ts-title">
-            <span class="ts-placeholder">Open MIDI or play live</span>
-          </span>
-          <div class="ts-bars" aria-hidden="true">
-            <span></span><span></span><span></span><span></span>
-          </div>
-        </div>
+      <div class="ts-status" id="ts-status" aria-live="polite">
+        <span class="ts-status-dot" aria-hidden="true"></span>
+        <span class="ts-status-main">
+          <span class="ts-status-kicker" id="ts-context-kicker">Ready</span>
+          <span class="ts-status-title" id="ts-context-title">Open MIDI or play live</span>
+        </span>
+        <span class="ts-bars" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
+        </span>
       </div>
 
       <div class="ts-end">
-        <button class="midi-chip" id="ts-midi" type="button" aria-label="Enable MIDI">
-          ${ICON_MIDI}
-          <span id="ts-midi-label">Enable MIDI</span>
+        <button class="ts-pill" id="ts-open" type="button" aria-label="Open MIDI file">
+          ${ICON_UPLOAD}<span>Open MIDI</span>
         </button>
-        <button class="ts-theme-btn" id="ts-theme" title="Cycle theme" aria-label="Cycle theme">
+        <button class="ts-pill ts-pill--live" id="ts-live" type="button" aria-label="Go live">
+          ${ICON_WAVE}<span class="ts-live-label">Live</span>
+        </button>
+        <button class="ts-pill ts-pill--file" id="ts-tracks" type="button" aria-label="Tracks">
+          ${ICON_TRACKS}<span>Tracks</span>
+        </button>
+        <div class="ts-sep" aria-hidden="true"></div>
+        <button class="ts-pill ts-pill--midi" id="ts-midi" type="button"
+                aria-label="MIDI device" title="MIDI device">
+          ${ICON_MIDI}
+          <span id="ts-menu-midi-label" class="ts-midi-label">MIDI</span>
+        </button>
+        <button class="ts-theme-btn ts-particle-btn" id="ts-particle" type="button"
+                aria-label="Cycle particle style" title="Cycle particle style">
+          <span class="ts-particle-icon" aria-hidden="true">${ICON_SPARKLES}</span>
+          <span class="theme-label" id="ts-particle-label">Sparks</span>
+        </button>
+        <button class="ts-theme-btn" id="ts-theme" type="button"
+                aria-label="Cycle theme" title="Cycle theme">
           <span class="theme-dot" id="ts-theme-dot"></span>
           <span class="theme-label" id="ts-theme-label">Theme</span>
         </button>
@@ -133,40 +150,51 @@ export class Controls {
         <button class="hud-drag-handle" id="hud-drag" type="button" aria-label="Move controls">
           ${ICON_GRIP}
         </button>
-        <button class="btn-skip" id="hud-skip-back" title="Back 10s">${ICON_SKIP_BACK}</button>
-        <button class="btn-play" id="hud-play" aria-label="Play">${ICON_PLAY}</button>
-        <button class="btn-skip" id="hud-skip-fwd" title="Forward 10s">${ICON_SKIP_FWD}</button>
 
-        <div class="hud-divider"></div>
+        <div class="hud-group hud-group--transport">
+          <button class="btn-skip" id="hud-skip-back" title="Back 10s" aria-label="Back 10 seconds">${ICON_SKIP_BACK}</button>
+          <button class="btn-play" id="hud-play" aria-label="Play">${ICON_PLAY}</button>
+          <button class="btn-skip" id="hud-skip-fwd" title="Forward 10s" aria-label="Forward 10 seconds">${ICON_SKIP_FWD}</button>
+        </div>
 
-        <div class="scrubber-wrap">
+        <div class="hud-divider hud-group--transport"></div>
+
+        <div class="scrubber-wrap hud-group--transport">
           <span class="time-display" id="hud-time">0:00</span>
           <input type="range" id="hud-scrubber" class="scrubber"
-            min="0" max="100" step="0.1" value="0" />
+            min="0" max="100" step="0.1" value="0" aria-label="Seek" />
           <span class="time-display dim" id="hud-duration">0:00</span>
         </div>
 
-        <div class="hud-divider"></div>
+        <div class="hud-divider hud-group--transport"></div>
 
-        <div class="ctrl-group">
+        <div class="ctrl-group" title="Volume">
           <span class="ctrl-icon">${ICON_VOLUME}</span>
           <input type="range" id="hud-volume" class="mini-slider"
-            min="0" max="1" step="0.02" value="0.8" />
+            min="0" max="1" step="0.02" value="0.8" aria-label="Volume" />
         </div>
 
-        <div class="ctrl-group">
+        <div class="ctrl-group hud-group--transport" title="Speed">
           <span class="speed-val" id="hud-speed-val">1x</span>
           <input type="range" id="hud-speed" class="mini-slider"
-            min="0.25" max="2" step="0.05" value="1" />
+            min="0.25" max="2" step="0.05" value="1" aria-label="Speed" />
         </div>
 
         <div class="hud-divider"></div>
 
-        <div class="ctrl-group">
+        <div class="ctrl-group" title="Zoom">
           <span class="ctrl-icon">${ICON_ZOOM}</span>
           <input type="range" id="hud-zoom" class="mini-slider mini-slider--zoom"
-            min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="10" value="${ZOOM_DEFAULT}" />
+            min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="10" value="${ZOOM_DEFAULT}" aria-label="Zoom" />
         </div>
+
+        <div class="hud-divider hud-group--instrument"></div>
+
+        <button class="hud-instr-btn hud-group--instrument" id="hud-instr"
+                type="button" title="Cycle instrument" aria-label="Cycle instrument">
+          <span class="hud-instr-icon">${ICON_INSTRUMENT}</span>
+          <span class="hud-instr-label" id="hud-instr-label">Piano</span>
+        </button>
       </div>
     `
     this.opts.container.appendChild(el)
@@ -207,18 +235,22 @@ export class Controls {
     this.scrubber = this.hud.querySelector<HTMLInputElement>('#hud-scrubber')!
     this.timeDisplay = this.hud.querySelector<HTMLElement>('#hud-time')!
     this.durationEl = this.hud.querySelector<HTMLElement>('#hud-duration')!
-    this.midiBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-midi')!
-    this.midiLabelEl = this.topStrip.querySelector<HTMLElement>('#ts-midi-label')!
-    this.titleEl = this.topStrip.querySelector<HTMLElement>('#ts-title')!
-    this.kickerEl = this.topStrip.querySelector<HTMLElement>('#ts-kicker')!
+    this.homeBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-home')!
+    this.statusEl = this.topStrip.querySelector<HTMLElement>('#ts-status')!
+    this.contextKickerEl = this.topStrip.querySelector<HTMLElement>('#ts-context-kicker')!
+    this.contextTitleEl = this.topStrip.querySelector<HTMLElement>('#ts-context-title')!
     this.openBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-open')!
+    this.liveBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-live')!
+    this.liveLabelEl = this.topStrip.querySelector<HTMLElement>('.ts-live-label')!
     this.tracksBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-tracks')!
+    this.midiBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-midi')!
+    this.midiLabelEl = this.topStrip.querySelector<HTMLElement>('#ts-menu-midi-label')!
     this.recordBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-record')!
-    this.fileModeBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-mode-file')!
-    this.liveModeBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-mode-live')!
     this.hudDragHandle = this.hud.querySelector<HTMLButtonElement>('#hud-drag')!
     this.themeBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-theme')!
     this.themeLabelEl = this.topStrip.querySelector<HTMLElement>('#ts-theme-label')!
+    this.particleBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-particle')!
+    this.particleLabelEl = this.topStrip.querySelector<HTMLElement>('#ts-particle-label')!
 
     this.playBtn.addEventListener('click', () => {
       if (state.mode.value !== 'file') return
@@ -283,13 +315,20 @@ export class Controls {
       onZoom?.(parseFloat((e.target as HTMLInputElement).value))
     })
 
-    this.topStrip.querySelector('#ts-theme')!.addEventListener('click', () => this.opts.onThemeCycle?.())
-    this.midiBtn.addEventListener('click', () => this.opts.onMidiConnect?.())
-    this.tracksBtn.addEventListener('click', () => this.opts.onOpenTracks?.())
+    this.themeBtn.addEventListener('click', () => this.opts.onThemeCycle?.())
+    this.particleBtn.addEventListener('click', () => this.opts.onParticleCycle?.())
     this.recordBtn.addEventListener('click', () => this.opts.onRecord?.())
+    this.hud.querySelector<HTMLButtonElement>('#hud-instr')!
+      .addEventListener('click', () => this.opts.onInstrumentCycle?.())
+    this.homeBtn.addEventListener('click', () => this.opts.onHome?.())
     this.openBtn.addEventListener('click', () => this.opts.onOpenFile?.())
-    this.fileModeBtn.addEventListener('click', () => this.opts.onModeRequest?.('file'))
-    this.liveModeBtn.addEventListener('click', () => this.opts.onModeRequest?.('live'))
+    this.tracksBtn.addEventListener('click', () => this.opts.onOpenTracks?.())
+    this.midiBtn.addEventListener('click', () => this.opts.onMidiConnect?.())
+    this.liveBtn.addEventListener('click', () => {
+      if (this.opts.state.mode.value === 'live') this.opts.onHome?.()
+      else this.opts.onModeRequest?.('live')
+    })
+
     this.hudDragHandle.addEventListener('pointerdown', (e) => this.startHudDrag(e))
   }
 
@@ -320,6 +359,9 @@ export class Controls {
 
     clock.subscribe((t) => {
       if (state.mode.value !== 'file' || this.isScrubbing) return
+      // Skip UI updates during export — frame-by-frame seeks would thrash the
+      // scrubber behind the export modal and compete with the encoder for cycles.
+      if (state.status.value === 'exporting') return
       const dur = state.duration.value
 
       // Scrubber knob moves every frame for smooth tracking
@@ -373,18 +415,26 @@ export class Controls {
     this.octaveEl.textContent = `C${octave}`
   }
 
+  updateInstrument(name: string): void {
+    const el = this.hud.querySelector<HTMLElement>('#hud-instr-label')
+    if (el) el.textContent = name
+  }
+
+  updateParticleStyle(name: string): void {
+    this.particleLabelEl.textContent = name
+    this.particleBtn.title = `Particles: ${name} — click to cycle`
+    this.particleBtn.setAttribute('aria-label', `Particle style: ${name}. Click to cycle.`)
+  }
+
   updateMidiStatus(status: MidiDeviceStatus, deviceName: string): void {
     this.currentMidiStatus = status
     this.currentMidiDeviceName = deviceName
-    this.midiBtn.dataset['midiStatus'] = status
-    this.midiBtn.classList.toggle('midi-connected', status === 'connected')
-    this.midiBtn.classList.toggle('midi-blocked', status === 'blocked')
-    this.midiBtn.classList.toggle('midi-unavailable', status === 'unavailable')
-
-    const label = getMidiLabel(status, deviceName)
-    this.midiBtn.title = label
-    this.midiBtn.setAttribute('aria-label', label)
-    this.midiLabelEl.textContent = label
+    this.topStrip.dataset['midiStatus'] = status
+    this.midiBtn.classList.toggle('ts-pill--on', status === 'connected')
+    this.midiLabelEl.textContent = getMidiPillLabel(status, deviceName)
+    const full = getMidiMenuLabel(status, deviceName)
+    this.midiBtn.title = full
+    this.midiBtn.setAttribute('aria-label', full)
     this.refreshUi()
   }
 
@@ -405,59 +455,70 @@ export class Controls {
     const hasFile = midi !== null
     const isFileMode = mode === 'file'
     const isLoadingFile = isFileMode && status === 'loading'
-    const showHud = isFileMode && hasFile && !isLoadingFile
+    // HUD is visible for file playback AND live mode (with a reduced set of controls).
+    const showFileHud = isFileMode && hasFile && !isLoadingFile
+    const showLiveHud = mode === 'live'
+    const showHud = showFileHud || showLiveHud
 
     this.topStrip.classList.add('strip--active')
     this.topStrip.classList.toggle('strip--playing', isFileMode && status === 'playing')
     this.topStrip.classList.toggle('strip--exporting', status === 'exporting')
     this.topStrip.dataset['mode'] = mode
+    this.topStrip.dataset['hasFile'] = hasFile ? 'true' : 'false'
 
-    this.fileModeBtn.classList.toggle('mode-btn--active', mode === 'file')
-    this.liveModeBtn.classList.toggle('mode-btn--active', mode === 'live')
-
+    // Contextual pill visibility
     this.tracksBtn.classList.toggle('hidden', !isFileMode || !hasFile || isLoadingFile)
     this.recordBtn.classList.toggle('hidden', !isFileMode || !hasFile || isLoadingFile)
+
+    // "Live" pill: active state in live mode, label flips to Home
+    this.liveBtn.classList.toggle('ts-pill--on', mode === 'live')
+    this.liveLabelEl.textContent = mode === 'live' ? 'Home' : 'Live'
 
     this.hud.classList.toggle('hud--active', showHud)
     this.hud.classList.toggle('hud--playing', isFileMode && status === 'playing')
     this.hud.classList.toggle('hud--exporting', status === 'exporting')
+    this.hud.classList.toggle('hud--live', showLiveHud)
+    this.hud.classList.toggle('hud--file', showFileHud)
     this.applyHudOffset()
     this.playBtn.innerHTML = status === 'playing' ? ICON_PAUSE : ICON_PLAY
 
     this.keyHint.classList.toggle('kh--visible', mode === 'live')
 
-    this.renderHeader(mode, midi?.name ?? null)
+    this.renderContext(mode, midi?.name ?? null)
 
-    if (isFileMode && status === 'playing') {
+    // Auto-hide the HUD when idle in any mode where it's visible.
+    // File mode: only while playing (pausing needs the controls accessible).
+    // Live mode: always eligible to auto-hide after inactivity.
+    if ((isFileMode && status === 'playing') || showLiveHud) {
       this.scheduleIdle()
     } else {
       this.clearIdle()
     }
   }
 
-  private renderHeader(mode: AppMode, fileName: string | null): void {
+  private renderContext(mode: AppMode, fileName: string | null): void {
     if (mode === 'file' && this.opts.state.status.value === 'loading') {
-      this.kickerEl.textContent = 'Loading'
-      this.titleEl.textContent = 'Opening MIDI'
+      this.contextKickerEl.textContent = 'Loading'
+      this.contextTitleEl.textContent = 'Opening MIDI'
       return
     }
 
     if (mode === 'live') {
-      this.kickerEl.textContent = 'Live'
-      this.titleEl.textContent = this.currentMidiStatus === 'connected'
-        ? (this.currentMidiDeviceName || 'MIDI ready')
-        : 'Play live'
+      this.contextKickerEl.textContent = 'Live'
+      this.contextTitleEl.textContent = this.currentMidiStatus === 'connected'
+        ? (this.currentMidiDeviceName || 'MIDI session')
+        : 'Play with your keyboard'
       return
     }
 
     if (mode === 'file') {
-      this.kickerEl.textContent = 'File'
-      this.titleEl.textContent = fileName ?? 'Open MIDI'
+      this.contextKickerEl.textContent = 'Now playing'
+      this.contextTitleEl.textContent = fileName ?? 'Open MIDI'
       return
     }
 
-    this.kickerEl.textContent = 'Ready'
-    this.titleEl.textContent = 'Open MIDI or play live'
+    this.contextKickerEl.textContent = 'Ready'
+    this.contextTitleEl.textContent = 'Open MIDI or play live'
   }
 
   private wakeUp(): void {
@@ -468,7 +529,11 @@ export class Controls {
 
   private scheduleIdle(): void {
     this.clearIdle()
-    if (this.opts.state.mode.value !== 'file' || this.opts.state.status.value !== 'playing') return
+    const mode = this.opts.state.mode.value
+    const status = this.opts.state.status.value
+    const isPlaying = mode === 'file' && status === 'playing'
+    const isLive = mode === 'live'
+    if (!isPlaying && !isLive) return
     this.idleTimer = setTimeout(() => {
       if (!this.isScrubbing) {
         this.topStrip.classList.add('strip--dim')
@@ -557,11 +622,20 @@ export class Controls {
   }
 }
 
-function getMidiLabel(status: MidiDeviceStatus, deviceName: string): string {
-  if (status === 'connected') return deviceName || 'MIDI connected'
+function getMidiMenuLabel(status: MidiDeviceStatus, deviceName: string): string {
+  if (status === 'connected') return `MIDI: ${deviceName || 'connected'}`
+  if (status === 'blocked') return 'Enable MIDI device'
+  if (status === 'unavailable') return 'MIDI unavailable in this browser'
+  return 'Connect a MIDI device'
+}
+
+function getMidiPillLabel(status: MidiDeviceStatus, deviceName: string): string {
+  if (status === 'connected') {
+    const n = deviceName.split(',')[0]?.trim()
+    return n && n.length < 22 ? n : 'MIDI'
+  }
   if (status === 'blocked') return 'Enable MIDI'
-  if (status === 'unavailable') return 'MIDI unavailable'
-  return 'No MIDI device'
+  return 'MIDI'
 }
 
 function formatTime(s: number): string {
@@ -579,7 +653,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
-const ICON_TRACKS = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+const ICON_TRACKS = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
   <line x1="4" y1="6" x2="20" y2="6"/>
   <line x1="4" y1="12" x2="20" y2="12"/>
   <line x1="4" y1="18" x2="20" y2="18"/>
@@ -594,6 +668,32 @@ const ICON_MIDI = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" s
   <rect x="5"  y="4" width="3" height="6" rx="1" fill="currentColor" stroke="none"/>
   <rect x="10" y="4" width="3" height="6" rx="1" fill="currentColor" stroke="none"/>
   <rect x="15" y="4" width="3" height="6" rx="1" fill="currentColor" stroke="none"/>
+</svg>`
+
+const ICON_WORDMARK = `<svg class="ts-home-mark" width="22" height="18" viewBox="0 0 32 24" fill="currentColor" aria-hidden="true">
+  <rect x="1" y="6" width="5" height="15" rx="1.5"/>
+  <rect x="9" y="1" width="5" height="20" rx="1.5"/>
+  <rect x="17" y="4" width="5" height="12" rx="1.5" opacity="0.55"/>
+  <rect x="25" y="8" width="5" height="9" rx="1.5" opacity="0.35"/>
+</svg>`
+
+const ICON_CHEV = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <polyline points="6 9 12 15 18 9"/>
+</svg>`
+
+const ICON_UPLOAD = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+  <polyline points="17 8 12 3 7 8"/>
+  <line x1="12" y1="3" x2="12" y2="15"/>
+</svg>`
+
+const ICON_WAVE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+  <path d="M3 12h2l2-6 3 12 3-10 3 8 2-4h3"/>
+</svg>`
+
+const ICON_CLOSE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+  <line x1="6" y1="6" x2="18" y2="18"/>
+  <line x1="6" y1="18" x2="18" y2="6"/>
 </svg>`
 
 const ICON_RECORD = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -631,6 +731,16 @@ const ICON_SKIP_FWD = `<svg width="15" height="15" viewBox="0 0 24 24" fill="non
 const ICON_VOLUME = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
   <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
   <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+</svg>`
+
+const ICON_INSTRUMENT = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+  <path d="M9 3h6a1 1 0 0 1 1 1v14a3 3 0 1 1-2 0V9h-2v9a3 3 0 1 1-2 0V4a1 1 0 0 1 1-1z" opacity="0.9"/>
+</svg>`
+
+const ICON_SPARKLES = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+  <path d="M12 3l1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3z"/>
+  <path d="M19 13l.7 2.2 2.3.8-2.3.8-.7 2.2-.7-2.2-2.3-.8 2.3-.8.7-2.2z" opacity="0.7"/>
+  <path d="M5 14l.6 1.9 1.9.6-1.9.6-.6 1.9-.6-1.9-1.9-.6 1.9-.6.6-1.9z" opacity="0.55"/>
 </svg>`
 
 const ICON_ZOOM = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

@@ -1,12 +1,13 @@
 import { parseMidiFile } from './core/midi/parser'
 import { MasterClock } from './core/clock/MasterClock'
 import { PianoRollRenderer } from './renderer/PianoRollRenderer'
-import { SynthEngine } from './audio/SynthEngine'
+import { PARTICLE_STYLES } from './renderer/ParticleSystem'
+import { SynthEngine, INSTRUMENTS } from './audio/SynthEngine'
 import { appState } from './store/state'
 import { DropZone } from './ui/DropZone'
 import { Controls } from './ui/Controls'
 import { TrackPanel } from './ui/TrackPanel'
-import { ExportModal } from './ui/ExportModal'
+import { ExportModal, type ExportSettings, type ExportResolution } from './ui/ExportModal'
 import { KeyboardResizer } from './ui/KeyboardResizer'
 import { VideoExporter } from './export/VideoExporter'
 import { THEMES, type Theme } from './renderer/theme'
@@ -31,6 +32,8 @@ export class App {
   private currentExporter: VideoExporter | null = null
 
   private themeIndex = loadThemeIndex()
+  private instrumentIndex = loadInstrumentIndex()
+  private particleIndex = loadParticleIndex()
   private audioPrimed = false
   private onVisibilityChange = (): void => { if (document.hidden) this.releaseAllLiveNotes() }
   private onWindowBlur = (): void => this.releaseAllLiveNotes()
@@ -66,12 +69,15 @@ export class App {
       onRecord:      () => this.exportModal.open(),
       onOpenFile:    () => this.openFilePicker(),
       onModeRequest: (mode) => this.requestMode(mode),
+      onHome:        () => this.enterHomeMode(),
+      onInstrumentCycle: () => this.cycleInstrument(),
+      onParticleCycle:   () => this.cycleParticleStyle(),
     })
 
     this.trackPanel = new TrackPanel(overlay, this.renderer, () => this.openFilePicker())
 
     this.exportModal = new ExportModal(overlay)
-    this.exportModal.onStart  = (fps) => void this.startExport(fps)
+    this.exportModal.onStart  = (settings) => void this.startExport(settings)
     this.exportModal.onCancel = () => this.cancelExport()
 
     this.kbdResizer = new KeyboardResizer(
@@ -82,6 +88,18 @@ export class App {
     this.kbdResizer.restoreSaved()
 
     this.applyTheme(THEMES[this.themeIndex]!)
+    this.applyInstrument()
+    this.applyParticleStyle()
+
+    // Kick off piano sample download in the background — safe at boot since
+    // we don't touch AudioContext yet. Makes the first note feel instant.
+    const w = window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }
+    if (typeof w.requestIdleCallback === 'function') {
+      w.requestIdleCallback(() => this.synth.preloadDefault(), { timeout: 2000 })
+    } else {
+      setTimeout(() => this.synth.preloadDefault(), 600)
+    }
+
     this.controls.updateMidiStatus(this.midiInput.status.value, '')
     this.dropzone.updateMidiStatus(this.midiInput.status.value, '')
 
@@ -239,11 +257,38 @@ export class App {
     saveThemeIndex(this.themeIndex)
   }
 
-  private async startExport(fps: number): Promise<void> {
+  private cycleInstrument(): void {
+    this.instrumentIndex = (this.instrumentIndex + 1) % INSTRUMENTS.length
+    this.applyInstrument()
+    saveInstrumentIndex(this.instrumentIndex)
+  }
+
+  private applyInstrument(): void {
+    const info = INSTRUMENTS[this.instrumentIndex]!
+    this.controls.updateInstrument(info.name)
+    void this.synth.setInstrument(info.id)
+  }
+
+  private cycleParticleStyle(): void {
+    this.particleIndex = (this.particleIndex + 1) % PARTICLE_STYLES.length
+    this.applyParticleStyle()
+    saveParticleIndex(this.particleIndex)
+  }
+
+  private applyParticleStyle(): void {
+    const info = PARTICLE_STYLES[this.particleIndex]!
+    this.renderer.setParticleStyle(info.id)
+    this.controls.updateParticleStyle(info.name)
+  }
+
+  private async startExport(settings: ExportSettings): Promise<void> {
     const midi = appState.loadedMidi.value
     if (!midi || appState.mode.value !== 'file') return
 
     const wasPlaying = appState.status.value === 'playing'
+    // Snapshot the playhead so we can restore position after export instead of
+    // snapping back to t=0.
+    const resumeAt = this.clock.currentTime
     this.clock.pause()
     this.liveNotes.reset()
     this.synth.liveReleaseAll()
@@ -251,13 +296,23 @@ export class App {
     this.synth.pause()
     this.renderer.pauseAutoRender()
 
+    // If the user picked a fixed resolution, resize the renderer to exact
+    // target pixels. resolution=1 so backing store == output size (no DPR scale).
+    const originalCanvas = this.renderer.canvasSize
+    const target = resolveExportDims(settings.resolution)
+    const resized = target !== null &&
+      (target.width !== originalCanvas.width || target.height !== originalCanvas.height)
+    if (resized) {
+      this.renderer.resize(target.width, target.height, 1)
+    }
+
     const exporter = new VideoExporter(this.renderer.canvas)
     this.currentExporter = exporter
 
     try {
       await exporter.export({
-        fps,
-        duration: midi.duration,
+        fps:           settings.fps,
+        duration:      midi.duration,
         onSeek:        (t) => this.clock.seek(t),
         onRenderFrame: (t, dt) => this.renderer.renderManualFrame(t, dt),
         onProgress:    (stage, pct) => this.exportModal.updateProgress(stage, pct),
@@ -273,8 +328,13 @@ export class App {
       this.exportModal.close()
     } finally {
       this.currentExporter = null
+      if (resized) {
+        // Match window dimensions instead of the stale originalCanvas values
+        // in case the window was resized while we were exporting.
+        this.renderer.resize(window.innerWidth, window.innerHeight, originalCanvas.resolution)
+      }
       this.renderer.resumeAutoRender()
-      this.clock.seek(0)
+      this.clock.seek(resumeAt)
       appState.setReady()
       if (wasPlaying) {
         this.clock.play()
@@ -426,6 +486,8 @@ export class App {
 }
 
 const THEME_STORAGE_KEY = 'pianoroll.themeIndex'
+const INSTRUMENT_STORAGE_KEY = 'pianoroll.instrumentIndex'
+const PARTICLE_STORAGE_KEY = 'pianoroll.particleIndex'
 
 function loadThemeIndex(): number {
   const raw = localStorage.getItem(THEME_STORAGE_KEY)
@@ -436,4 +498,39 @@ function loadThemeIndex(): number {
 
 function saveThemeIndex(index: number): void {
   localStorage.setItem(THEME_STORAGE_KEY, String(index))
+}
+
+function loadInstrumentIndex(): number {
+  const raw = localStorage.getItem(INSTRUMENT_STORAGE_KEY)
+  if (raw === null) return 0
+  const n = Number(raw)
+  return Number.isInteger(n) && n >= 0 && n < INSTRUMENTS.length ? n : 0
+}
+
+function saveInstrumentIndex(index: number): void {
+  localStorage.setItem(INSTRUMENT_STORAGE_KEY, String(index))
+}
+
+function loadParticleIndex(): number {
+  const defaultIndex = PARTICLE_STYLES.findIndex(s => s.id === 'embers')
+  const fallback = defaultIndex >= 0 ? defaultIndex : 0
+  const raw = localStorage.getItem(PARTICLE_STORAGE_KEY)
+  if (raw === null) return fallback
+  const n = Number(raw)
+  return Number.isInteger(n) && n >= 0 && n < PARTICLE_STYLES.length ? n : fallback
+}
+
+function saveParticleIndex(index: number): void {
+  localStorage.setItem(PARTICLE_STORAGE_KEY, String(index))
+}
+
+// Resolves a user-facing resolution preset to concrete pixel dimensions.
+// Returns `null` when the preset means "keep whatever the canvas currently is"
+// so the caller can skip the resize entirely.
+function resolveExportDims(preset: ExportResolution): { width: number; height: number } | null {
+  switch (preset) {
+    case '720p':  return { width: 1280, height: 720 }
+    case '1080p': return { width: 1920, height: 1080 }
+    case 'match': return null
+  }
 }

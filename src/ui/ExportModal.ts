@@ -1,3 +1,13 @@
+// Supported export resolution presets. `match` keeps the current canvas size
+// (whatever the user's window is) — useful for already-well-sized displays or
+// for users who've tuned the window to look exactly how they want.
+export type ExportResolution = 'match' | '720p' | '1080p'
+
+export interface ExportSettings {
+  fps: number
+  resolution: ExportResolution
+}
+
 export class ExportModal {
   private el: HTMLElement
   private settingsPhase!: HTMLElement
@@ -7,8 +17,9 @@ export class ExportModal {
   private pctEl!: HTMLElement
   private phase: 'settings' | 'progress' = 'settings'
   private selectedFps = 30
+  private selectedResolution: ExportResolution = '1080p'
 
-  onStart?: (fps: number) => void
+  onStart?: (settings: ExportSettings) => void
   onCancel?: () => void
 
   constructor(container: HTMLElement) {
@@ -21,6 +32,14 @@ export class ExportModal {
           <div class="export-card-icon">${ICON_RECORD}</div>
           <h2 class="export-card-title">Record MP4</h2>
           <p class="export-card-sub">Captures the full visualization — audio not included</p>
+          <div class="export-field">
+            <span class="export-field-label">Resolution</span>
+            <div class="fps-group" id="res-group">
+              <button class="fps-btn res-btn" data-res="match">Match window</button>
+              <button class="fps-btn res-btn" data-res="720p">720p</button>
+              <button class="fps-btn res-btn fps-btn--on" data-res="1080p">1080p</button>
+            </div>
+          </div>
           <div class="export-field">
             <span class="export-field-label">Frame rate</span>
             <div class="fps-group" id="fps-group">
@@ -61,17 +80,26 @@ export class ExportModal {
     this.pctEl         = this.el.querySelector('#ep-pct')!
 
     // FPS selector
-    this.el.querySelectorAll<HTMLButtonElement>('.fps-btn').forEach(btn => {
+    this.el.querySelectorAll<HTMLButtonElement>('#fps-group .fps-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        this.el.querySelectorAll('.fps-btn').forEach(b => b.classList.remove('fps-btn--on'))
+        this.el.querySelectorAll('#fps-group .fps-btn').forEach(b => b.classList.remove('fps-btn--on'))
         btn.classList.add('fps-btn--on')
         this.selectedFps = parseInt(btn.dataset['fps']!, 10)
       })
     })
 
+    // Resolution selector
+    this.el.querySelectorAll<HTMLButtonElement>('#res-group .res-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.el.querySelectorAll('#res-group .res-btn').forEach(b => b.classList.remove('fps-btn--on'))
+        btn.classList.add('fps-btn--on')
+        this.selectedResolution = btn.dataset['res'] as ExportResolution
+      })
+    })
+
     this.el.querySelector('#ep-start')!.addEventListener('click', () => {
       this.showPhase('progress')
-      this.onStart?.(this.selectedFps)
+      this.onStart?.({ fps: this.selectedFps, resolution: this.selectedResolution })
     })
 
     this.el.querySelector('#ep-cancel-settings')!.addEventListener('click', () => this.close())
