@@ -75,13 +75,15 @@ export class MidiInputManager {
     const pitch    = data[1]!
     const rawVel   = data[2] ?? 0
     const velocity = rawVel / 127
-    let clockTime = this.clock.currentTime
-    const receivedTime = (e as MIDIMessageEvent & { receivedTime?: number }).receivedTime
 
-    // Use the device event timestamp when available so the visual hit-point
-    // lands closer to the real key press instead of the callback delivery time.
-    if (typeof performance !== 'undefined' && Number.isFinite(receivedTime)) {
-      const deltaSeconds = ((receivedTime ?? 0) - performance.now()) / 1000
+    // `e.timeStamp` is a DOMHighResTimeStamp on the same clock as
+    // `performance.now()` and reflects when the hardware event was dispatched,
+    // not when our callback runs. Subtracting gives a negative delta (the event
+    // is always in the past by the time we see it); applying it shifts the
+    // visual hit-point back to the real key press.
+    let clockTime = this.clock.currentTime
+    if (typeof performance !== 'undefined' && Number.isFinite(e.timeStamp)) {
+      const deltaSeconds = (e.timeStamp - performance.now()) / 1000
       clockTime = Math.max(0, clockTime + deltaSeconds * this.clock.speed)
     }
 

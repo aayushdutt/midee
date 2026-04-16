@@ -49,19 +49,20 @@ export class NoteRenderer {
       }
     }
 
-    // Add new ones (insert below glow layer)
     for (const track of tracks) {
       if (!this.trackGraphics.has(track.id)) {
         const g = new Graphics()
         g.label = `notes-${track.id}`
-        // Insert before glow container so glow renders on top
+        // Insert before the glow container so glow renders on top.
         this.container.addChildAt(g, this.container.children.indexOf(this.glowContainer))
         this.trackGraphics.set(track.id, g)
       }
     }
   }
 
-  // Called every frame from the main render loop
+  // Called every frame from the main render loop.
+  // Draws base notes and active-note glow in a single pass; accumulates the
+  // glow-filter tint inline so no intermediate array is allocated per frame.
   draw(
     tracks: MidiTrack[],
     currentTime: number,
@@ -69,7 +70,11 @@ export class NoteRenderer {
     visibleTrackIds: Set<string>,
   ): void {
     const { noteRadius } = this.theme
-    const activeNotes: Array<{ x: number; y: number; w: number; h: number; color: number }> = []
+    const nowLineY = viewport.nowLineY
+    this.glowGraphics.clear()
+
+    let activeCount = 0
+    let sumR = 0, sumG = 0, sumB = 0
 
     for (const track of tracks) {
       const g = this.trackGraphics.get(track.id)
@@ -80,6 +85,9 @@ export class NoteRenderer {
       if (!visibleTrackIds.has(track.id)) continue
 
       const noteColor = getTrackColor(track, this.theme)
+      const colorR = (noteColor >> 16) & 0xff
+      const colorG = (noteColor >> 8) & 0xff
+      const colorB = noteColor & 0xff
 
       for (const note of track.notes) {
         if (!viewport.isTimeVisible(note.time, note.duration, currentTime)) continue
@@ -87,9 +95,9 @@ export class NoteRenderer {
         const x = viewport.pitchToX(note.pitch)
         const w = Math.max(viewport.pitchWidth(note.pitch) - 1, 2)
         const timeDelta = note.time - currentTime
-        const noteBottom = Math.min(viewport.timeOffsetToY(timeDelta), viewport.nowLineY)
+        const noteBottom = Math.min(viewport.timeOffsetToY(timeDelta), nowLineY)
         const noteTop = viewport.timeOffsetToY(timeDelta + note.duration)
-        if (noteTop >= viewport.nowLineY) continue
+        if (noteTop >= nowLineY) continue
         const h = Math.max(noteBottom - noteTop, 3)
         const y = noteTop
 
@@ -99,24 +107,22 @@ export class NoteRenderer {
         g.roundRect(x, y, w, h, noteRadius)
         g.fill({ color: noteColor, alpha })
 
-        // Collect notes that are actively playing for the glow pass
-        const isActive = note.time <= currentTime && note.time + note.duration >= currentTime
-        if (isActive) {
-          activeNotes.push({ x, y, w, h, color: noteColor })
+        if (note.time <= currentTime && note.time + note.duration >= currentTime) {
+          this.glowGraphics.roundRect(x, y, w, h, noteRadius)
+          this.glowGraphics.fill({ color: noteColor, alpha: 0.9 })
+          sumR += colorR
+          sumG += colorG
+          sumB += colorB
+          activeCount++
         }
       }
     }
 
-    // Draw the glow layer — only active notes
-    this.glowGraphics.clear()
-    for (const n of activeNotes) {
-      this.glowGraphics.roundRect(n.x, n.y, n.w, n.h, noteRadius)
-      this.glowGraphics.fill({ color: n.color, alpha: 0.9 })
-    }
-
-    // Update glow color to blend all active track colors (simple average)
-    if (activeNotes.length > 0) {
-      const avgColor = averageColors(activeNotes.map(n => n.color))
+    if (activeCount > 0) {
+      const avgColor =
+        (Math.round(sumR / activeCount) << 16) |
+        (Math.round(sumG / activeCount) << 8) |
+        Math.round(sumB / activeCount)
       this.glowFilter.color = avgColor
       this.glowContainer.visible = true
     } else {
@@ -135,16 +141,4 @@ export class NoteRenderer {
     this.glowGraphics.clear()
     this.glowContainer.visible = false
   }
-}
-
-function averageColors(colors: number[]): number {
-  if (colors.length === 0) return 0xffffff
-  let r = 0, g = 0, b = 0
-  for (const c of colors) {
-    r += (c >> 16) & 0xff
-    g += (c >> 8) & 0xff
-    b += c & 0xff
-  }
-  const n = colors.length
-  return ((Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n))
 }

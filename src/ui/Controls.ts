@@ -49,6 +49,10 @@ export class Controls {
   private idleTimer: ReturnType<typeof setTimeout> | null = null
   private currentMidiStatus: MidiDeviceStatus = 'disconnected'
   private currentMidiDeviceName = ''
+  // Cached values for throttling DOM writes — only update when the user would
+  // actually see a difference. Cuts ~180 DOM writes/sec during playback.
+  private lastDisplaySec = -1
+  private lastFillPct = -1
   private hudOffsetX = 0
   private hudOffsetY = 0
   private isDraggingHud = false
@@ -231,12 +235,14 @@ export class Controls {
     this.hud.querySelector('#hud-skip-back')!.addEventListener('click', () => {
       if (state.mode.value !== 'file') return
       const t = Math.max(0, clock.currentTime - SKIP_SECONDS)
+      this.invalidateTimeCache()
       clock.seek(t)
       onSeek?.(t)
     })
     this.hud.querySelector('#hud-skip-fwd')!.addEventListener('click', () => {
       if (state.mode.value !== 'file') return
       const t = Math.min(state.duration.value, clock.currentTime + SKIP_SECONDS)
+      this.invalidateTimeCache()
       clock.seek(t)
       onSeek?.(t)
     })
@@ -256,6 +262,7 @@ export class Controls {
     this.scrubber.addEventListener('change', () => {
       this.isScrubbing = false
       const t = parseFloat(this.scrubber.value)
+      this.invalidateTimeCache()
       clock.seek(t)
       onSeek?.(t)
     })
@@ -314,9 +321,23 @@ export class Controls {
     clock.subscribe((t) => {
       if (state.mode.value !== 'file' || this.isScrubbing) return
       const dur = state.duration.value
+
+      // Scrubber knob moves every frame for smooth tracking
       this.scrubber.value = String(t)
-      this.timeDisplay.textContent = formatTime(t)
-      this.updateFill(t)
+
+      // Time display changes at second resolution
+      const sec = Math.floor(t)
+      if (sec !== this.lastDisplaySec) {
+        this.timeDisplay.textContent = formatTime(t)
+        this.lastDisplaySec = sec
+      }
+
+      // Fill gradient — 0.1% resolution is indistinguishable from 60fps
+      const pct = dur > 0 ? Math.min((t / dur) * 100, 100) : 0
+      if (Math.abs(pct - this.lastFillPct) >= 0.1) {
+        this.scrubber.style.setProperty('--pct', `${pct.toFixed(1)}%`)
+        this.lastFillPct = pct
+      }
 
       if (dur > 0 && t >= dur) {
         clock.pause()
@@ -526,6 +547,13 @@ export class Controls {
     const dur = this.opts.state.duration.value
     const pct = dur > 0 ? Math.min((t / dur) * 100, 100) : 0
     this.scrubber.style.setProperty('--pct', `${pct}%`)
+  }
+
+  // Force the next clock tick to redraw the time display and fill gradient,
+  // even if the new time happens to fall within a cached threshold.
+  private invalidateTimeCache(): void {
+    this.lastDisplaySec = -1
+    this.lastFillPct = -1
   }
 }
 

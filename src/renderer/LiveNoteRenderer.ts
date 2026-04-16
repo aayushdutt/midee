@@ -1,6 +1,6 @@
 import { Container, Graphics } from 'pixi.js'
 import { GlowFilter } from 'pixi-filters'
-import type { LiveNote } from '../midi/LiveNoteStore'
+import type { LiveNote, LiveNoteStore } from '../midi/LiveNoteStore'
 import type { Theme } from './theme'
 import type { Viewport } from './viewport'
 
@@ -50,14 +50,16 @@ export class LiveNoteRenderer {
   }
 
   draw(
-    notes: readonly LiveNote[],
+    store: LiveNoteStore,
     currentTime: number,
     viewport: Viewport,
   ): void {
     this.baseGraphics.clear()
     this.glowGraphics.clear()
 
-    if (notes.length === 0) {
+    const released = store.releasedNotes
+    const held = store.heldNotes
+    if (released.length === 0 && held.size === 0) {
       this.glowContainer.visible = false
       return
     }
@@ -67,34 +69,41 @@ export class LiveNoteRenderer {
     const color = this.theme.trackColors[0] ?? this.theme.nowLine
     const { pixelsPerSecond } = viewport.config
     const nowY = viewport.nowLineY
-    let hasHeldNotes = false
 
-    for (const note of notes) {
-      const x = viewport.pitchToX(note.pitch)
-      const w = Math.max(viewport.pitchWidth(note.pitch) - 1, 2)
-      const endTime = note.endTime ?? currentTime
-      const noteDuration = Math.max(endTime - note.startTime, 0)
-      const releasedSec = note.endTime === null ? 0 : Math.max(currentTime - note.endTime, 0)
-      const height = Math.max(noteDuration * pixelsPerSecond, 3)
-      const y = nowY - height - releasedSec * pixelsPerSecond
-      if (y + height <= 0) continue
-      // Clamp corner radius so PixiJS never receives radius > half the height
-      const radius = Math.min(this.theme.noteRadius, height / 2, w / 2)
-      const alpha = 0.55 + note.velocity * 0.45
-
-      // Base layer — slightly transparent
-      this.baseGraphics.roundRect(x, y, w, height, radius)
-      this.baseGraphics.fill({ color, alpha: alpha * 0.75 })
-
-      if (note.endTime === null) {
-        hasHeldNotes = true
-        this.glowGraphics.roundRect(x, y, w, height, radius)
-        this.glowGraphics.fill({ color, alpha })
-      }
-    }
+    for (const note of released) this.drawOne(note, currentTime, pixelsPerSecond, nowY, viewport, color, false)
+    for (const note of held.values()) this.drawOne(note, currentTime, pixelsPerSecond, nowY, viewport, color, true)
 
     this.glowFilter.color = color
-    this.glowContainer.visible = hasHeldNotes
+    this.glowContainer.visible = held.size > 0
+  }
+
+  private drawOne(
+    note: LiveNote,
+    currentTime: number,
+    pixelsPerSecond: number,
+    nowY: number,
+    viewport: Viewport,
+    color: number,
+    isHeld: boolean,
+  ): void {
+    const x = viewport.pitchToX(note.pitch)
+    const w = Math.max(viewport.pitchWidth(note.pitch) - 1, 2)
+    const endTime = note.endTime ?? currentTime
+    const noteDuration = Math.max(endTime - note.startTime, 0)
+    const releasedSec = note.endTime === null ? 0 : Math.max(currentTime - note.endTime, 0)
+    const height = Math.max(noteDuration * pixelsPerSecond, 3)
+    const y = nowY - height - releasedSec * pixelsPerSecond
+    if (y + height <= 0) return
+    const radius = Math.min(this.theme.noteRadius, height / 2, w / 2)
+    const alpha = 0.55 + note.velocity * 0.45
+
+    this.baseGraphics.roundRect(x, y, w, height, radius)
+    this.baseGraphics.fill({ color, alpha: alpha * 0.75 })
+
+    if (isHeld) {
+      this.glowGraphics.roundRect(x, y, w, height, radius)
+      this.glowGraphics.fill({ color, alpha })
+    }
   }
 
   updateTheme(theme: Theme): void {

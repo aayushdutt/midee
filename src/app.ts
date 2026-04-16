@@ -30,7 +30,7 @@ export class App {
   private loadingEl:    HTMLElement | null = null
   private currentExporter: VideoExporter | null = null
 
-  private themeIndex = 0
+  private themeIndex = loadThemeIndex()
   private audioPrimed = false
   private onVisibilityChange = (): void => { if (document.hidden) this.releaseAllLiveNotes() }
   private onWindowBlur = (): void => this.releaseAllLiveNotes()
@@ -236,6 +236,7 @@ export class App {
   private cycleTheme(): void {
     this.themeIndex = (this.themeIndex + 1) % THEMES.length
     this.applyTheme(THEMES[this.themeIndex]!)
+    saveThemeIndex(this.themeIndex)
   }
 
   private async startExport(fps: number): Promise<void> {
@@ -422,4 +423,17 @@ export class App {
     this.renderer.destroy()
     this.synth.dispose()
   }
+}
+
+const THEME_STORAGE_KEY = 'pianoroll.themeIndex'
+
+function loadThemeIndex(): number {
+  const raw = localStorage.getItem(THEME_STORAGE_KEY)
+  if (raw === null) return 0
+  const n = Number(raw)
+  return Number.isInteger(n) && n >= 0 && n < THEMES.length ? n : 0
+}
+
+function saveThemeIndex(index: number): void {
+  localStorage.setItem(THEME_STORAGE_KEY, String(index))
 }
