@@ -129,6 +129,12 @@ export class NoteRenderer {
     this.glowFilter.distance = theme.noteGlowDistance
     this.glowFilter.outerStrength = theme.noteGlowStrength
   }
+
+  clear(): void {
+    this.trackGraphics.forEach(g => g.clear())
+    this.glowGraphics.clear()
+    this.glowContainer.visible = false
+  }
 }
 
 function averageColors(colors: number[]): number {

@@ -101,4 +101,10 @@ export class LiveNoteRenderer {
     this.glowFilter.distance     = theme.noteGlowDistance
     this.glowFilter.outerStrength = theme.noteGlowStrength
   }
+
+  clear(): void {
+    this.baseGraphics.clear()
+    this.glowGraphics.clear()
+    this.glowContainer.visible = false
+  }
 }

@@ -145,6 +145,8 @@ export class PianoRollRenderer {
     this.midi = null
     this.visibleTrackIds.clear()
     this.noteRenderer.setTracks([])
+    this.noteRenderer.clear()
+    this.liveNoteRenderer.clear()
     this.particles.clear()
     this.prevActivePitches.clear()
     this.beatGrid.graphics.clear()
@@ -231,6 +233,8 @@ export class PianoRollRenderer {
 
       this.beatGrid.draw(currentTime, this.midi.bpm, this.midi.timeSignature[0] ?? 4, this.viewport, this.theme)
       this.noteRenderer.draw(this.midi.tracks, currentTime, this.viewport, this.visibleTrackIds)
+    } else {
+      this.noteRenderer.clear()
     }
 
     this.prevActivePitches = activePitches
