@@ -72,6 +72,14 @@ export class SynthEngine implements AudioEngine {
     // until a user gesture. After the first call this returns in <1ms.
     await Tone.start()
 
+    // If the transport was stopped or paused while we were awaiting (e.g. user
+    // switched modes or clicked pause immediately), don't proceed with start.
+    if (Tone.getTransport().state !== 'started' && Tone.getTransport().state !== 'stopped') {
+      // If someone else already started or fully stopped it, we might be in a race.
+      // If it's explicitly paused now, it means a pause() call happened during our await.
+      if (Tone.getTransport().state === 'paused') return
+    }
+
     const transport = Tone.getTransport()
 
     // Fast path: transport is paused and position hasn't changed — just resume.
