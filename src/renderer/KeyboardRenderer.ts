@@ -93,8 +93,9 @@ export class KeyboardRenderer {
   }
 
   // Called every frame — draws only the keys that are currently pressed.
-  // Synthesia-style: a tinted key body plus a bright accent band at the top
-  // where the falling note "lands", giving a clear landing-point cue.
+  // Style: the key itself lights up inside its exact border (no top band,
+  // no rectangular overlay) and emits a soft glow around it. Three stacked
+  // halo layers of decreasing alpha fake a bloom without a shader filter.
   drawActiveKeys(activePitches: Set<number>, viewport: Viewport): void {
     if (!this.activeLayerDirty && this.matchesLast(activePitches)) return
 
@@ -105,14 +106,13 @@ export class KeyboardRenderer {
     const { keyboardHeight } = viewport.config
     const positions = viewport.getAllKeyPositions()
     const accent = this.theme.trackColors[0] ?? this.theme.nowLine
-    const bandThickness = Math.max(3, Math.round(keyboardHeight * 0.045))
 
+    // Halos drawn first (so the solid body sits on top).
+    const halos: readonly [number, number][] = [[10, 0.05], [6, 0.10], [3, 0.18]]
     for (const pitch of activePitches) {
       const pos = positions.get(pitch)
       if (!pos) continue
-
       const isBlack = isBlackKey(pitch)
-      const bodyColor = isBlack ? this.theme.blackKeyActive : this.theme.whiteKeyActive
       const h = isBlack ? keyboardHeight * 0.62 : keyboardHeight - 4
       const margin = isBlack ? 0 : 1
       const x = pos.x + margin
@@ -120,13 +120,14 @@ export class KeyboardRenderer {
       const y = isBlack ? 0 : 2
       const radius = isBlack ? 2 : 3
 
-      // Body tint
-      this.activeLayer.roundRect(x, y, w, h, radius)
-      this.activeLayer.fill({ color: bodyColor, alpha: 0.88 })
+      for (const [expand, alpha] of halos) {
+        this.activeLayer.roundRect(x - expand, y - expand, w + expand * 2, h + expand * 2, radius + expand)
+        this.activeLayer.fill({ color: accent, alpha })
+      }
 
-      // Landing band (top edge, where notes meet the key)
-      this.activeLayer.roundRect(x, y, w, bandThickness, radius)
-      this.activeLayer.fill({ color: accent, alpha: 1 })
+      // Body — exact static-key shape so the active state lives inside the key's border.
+      this.activeLayer.roundRect(x, y, w, h, radius)
+      this.activeLayer.fill({ color: accent, alpha: isBlack ? 0.92 : 0.78 })
     }
   }
 

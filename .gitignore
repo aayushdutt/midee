@@ -21,3 +21,6 @@ pnpm-debug.log*
 
 # OS files
 .DS_Store
+
+# Research / scratch notes (local only)
+*_RESEARCH.md

@@ -10,10 +10,16 @@ import { Viewport } from './viewport'
 import { darkTheme, getTrackColor, type Theme } from './theme'
 import type { LiveNoteStore } from '../midi/LiveNoteStore'
 
-const DEFAULT_KEYBOARD_HEIGHT = 120
+const DEFAULT_KEYBOARD_HEIGHT = 140
 export const KEYBOARD_HEIGHT_MIN = 80
 export const KEYBOARD_HEIGHT_MAX = 220
 const DEFAULT_PIXELS_PER_SECOND = 200
+
+// Sustained emission cadence for held notes. Initial burst fires on note-on
+// (full preset count); subsequent tiny puffs emit every `SUSTAIN_INTERVAL_SEC`
+// while the key stays held. Puff density is per-style (see ParticleSystem).
+const SUSTAIN_INITIAL_DELAY_SEC = 0.18
+const SUSTAIN_INTERVAL_SEC = 0.14
 
 export class PianoRollRenderer {
   private app!: Application
@@ -39,6 +45,12 @@ export class PianoRollRenderer {
   private currActive = new Set<number>()
   private activePitchNums = new Set<number>()
   private exportMode = false
+
+  // Next time (in seconds of clock-time) to emit a sustained trail-burst for
+  // each active note. Held keys keep breathing out particles at this cadence;
+  // entries get reaped when the note ends.
+  private scheduledEmitNext = new Map<number, number>()
+  private liveEmitNext = new Map<number, number>()
 
   async init(canvas: HTMLCanvasElement): Promise<void> {
     this.app = new Application()
@@ -164,6 +176,8 @@ export class PianoRollRenderer {
     this.particles.clear()
     this.prevActive.clear()
     this.currActive.clear()
+    this.scheduledEmitNext.clear()
+    this.liveEmitNext.clear()
     this.beatGrid.graphics.clear()
     this.renderStaticFrame(0)
   }
@@ -194,12 +208,18 @@ export class PianoRollRenderer {
     return this.keyboardHeight
   }
 
+  setParticleStyle(style: import('./ParticleSystem').ParticleStyle): void {
+    this.particles.setStyle(style)
+  }
+
   setTheme(theme: Theme): void {
     this.theme = theme
     this.app.renderer.background.color = theme.background
     this.noteRenderer.updateTheme(theme)
     this.liveNoteRenderer.updateTheme(theme)
     this.keyboardRenderer.updateTheme(theme)
+    // Particle motion is intentionally theme-independent — only the color
+    // changes (via the caller's trackColors[0]). Behaviour stays consistent.
     this.rebuildStaticLayers()
     this.renderStaticFrame(0)
   }
@@ -215,9 +235,13 @@ export class PianoRollRenderer {
     this.renderFrame(clock.currentTime, ticker.deltaMS / 1000, clock.playing)
   }
 
+  // Drives rendering during video export. `emitParticles: true` so note-on
+  // bursts appear in the captured output — the exporter steps time forward
+  // monotonically from t=0, so prev/curr note tracking works just like live
+  // playback.
   renderManualFrame(time: number, dt: number): void {
     if (!this.midi) return
-    this.renderFrame(time, dt, false)
+    this.renderFrame(time, dt, true)
     this.app.renderer.render(this.app.stage)
   }
 
@@ -253,11 +277,29 @@ export class PianoRollRenderer {
           curr.add(key)
           pitchNums.add(note.pitch)
 
-          if (emitParticles && !prev.has(key)) {
-            const cx = this.viewport.pitchToX(note.pitch) + this.viewport.pitchWidth(note.pitch) / 2
-            this.particles.burst(cx, nowLineY, trackColor)
+          if (!emitParticles) continue
+
+          const w = this.viewport.pitchWidth(note.pitch)
+          const cx = this.viewport.pitchToX(note.pitch) + w / 2
+
+          if (!prev.has(key)) {
+            // Note-on: full initial burst + schedule the first sustained puff.
+            this.particles.burst(cx, nowLineY, trackColor, w)
+            this.scheduledEmitNext.set(key, currentTime + SUSTAIN_INITIAL_DELAY_SEC)
+          } else {
+            // Held note: release a small puff each tick to keep the plume alive.
+            const nextAt = this.scheduledEmitNext.get(key)
+            if (nextAt !== undefined && currentTime >= nextAt) {
+              this.particles.sustainBurst(cx, nowLineY, trackColor, w)
+              this.scheduledEmitNext.set(key, currentTime + SUSTAIN_INTERVAL_SEC)
+            }
           }
         }
+      }
+
+      // Reap entries for notes that ended since the last frame.
+      for (const key of this.scheduledEmitNext.keys()) {
+        if (!curr.has(key)) this.scheduledEmitNext.delete(key)
       }
 
       this.beatGrid.draw(currentTime, this.midi.bpm, this.midi.timeSignature[0] ?? 4, this.viewport, this.theme)
@@ -276,12 +318,36 @@ export class PianoRollRenderer {
       const maxReleasedAge = this.viewport.nowLineY / this.viewport.config.pixelsPerSecond
       this.liveNoteStore.pruneInvisible(currentTime, maxReleasedAge)
 
-      for (const pitch of this.liveNoteStore.heldNotes.keys()) {
+      const held = this.liveNoteStore.heldNotes
+      const liveColor = this.theme.trackColors[0] ?? this.theme.nowLine
+      const nowLineY = this.viewport.nowLineY
+
+      for (const [pitch] of held) {
         pitchNums.add(pitch)
+        if (!emitParticles) continue
+
+        const nextAt = this.liveEmitNext.get(pitch)
+        if (nextAt === undefined) {
+          // First frame we see this held note — note-on was already bursted
+          // synchronously via burstParticleAt. Schedule the first sustain puff.
+          this.liveEmitNext.set(pitch, currentTime + SUSTAIN_INITIAL_DELAY_SEC)
+        } else if (currentTime >= nextAt) {
+          const w = this.viewport.pitchWidth(pitch)
+          const cx = this.viewport.pitchToX(pitch) + w / 2
+          this.particles.sustainBurst(cx, nowLineY, liveColor, w)
+          this.liveEmitNext.set(pitch, currentTime + SUSTAIN_INTERVAL_SEC)
+        }
       }
+
+      // Reap released notes.
+      for (const pitch of this.liveEmitNext.keys()) {
+        if (!held.has(pitch)) this.liveEmitNext.delete(pitch)
+      }
+
       this.liveNoteRenderer.draw(this.liveNoteStore, currentTime, this.viewport)
     } else {
       this.liveNoteRenderer.clear()
+      if (this.liveEmitNext.size > 0) this.liveEmitNext.clear()
     }
 
     this.keyboardRenderer.drawActiveKeys(pitchNums, this.viewport)
@@ -289,8 +355,10 @@ export class PianoRollRenderer {
   }
 
   burstParticleAt(pitch: number): void {
-    const cx = this.viewport.pitchToX(pitch) + this.viewport.pitchWidth(pitch) / 2
-    this.particles.burst(cx, this.viewport.nowLineY, this.theme.nowLine)
+    const w = this.viewport.pitchWidth(pitch)
+    const cx = this.viewport.pitchToX(pitch) + w / 2
+    const color = this.theme.trackColors[0] ?? this.theme.nowLine
+    this.particles.burst(cx, this.viewport.nowLineY, color, w)
   }
 
   setLiveNoteStore(store: LiveNoteStore): void {
@@ -321,13 +389,34 @@ export class PianoRollRenderer {
     return this.viewport.pitchAtPoint(clientX - rect.left, clientY - rect.top)
   }
 
-  private handleResize = (): void => {
-    const w = window.innerWidth
-    const h = window.innerHeight
-    this.app.renderer.resize(w, h)
-    this.viewport.update({ canvasWidth: w, canvasHeight: h })
+  // Current backing-store size + render resolution. Used by the exporter to
+  // snapshot state before swapping in a custom export resolution.
+  get canvasSize(): { width: number; height: number; resolution: number } {
+    return {
+      width: this.app.canvas.width,
+      height: this.app.canvas.height,
+      resolution: this.app.renderer.resolution,
+    }
+  }
+
+  // Public resize — lets the exporter target an exact pixel size independent
+  // of the window. Pass `resolution = 1` when exporting so the canvas backing
+  // store matches the requested output dimensions exactly.
+  resize(width: number, height: number, resolution?: number): void {
+    if (resolution !== undefined && resolution !== this.app.renderer.resolution) {
+      this.app.renderer.resolution = resolution
+    }
+    this.app.renderer.resize(width, height)
+    this.viewport.update({ canvasWidth: width, canvasHeight: height })
     this.rebuildStaticLayers()
     this.renderStaticFrame(0)
+  }
+
+  private handleResize = (): void => {
+    // Ignore viewport events during export — the exporter owns canvas size
+    // until it restores it in its own finally block.
+    if (this.exportMode) return
+    this.resize(window.innerWidth, window.innerHeight)
   }
 
   destroy(): void {
