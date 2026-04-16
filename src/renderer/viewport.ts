@@ -21,8 +21,11 @@ export class Viewport {
   }
 
   update(partial: Partial<ViewportConfig>): void {
+    const prevWidth = this.cfg.canvasWidth
     this.cfg = { ...this.cfg, ...partial }
-    this.buildKeyLayout()
+    // Key layout depends only on canvasWidth; skip the rebuild when zoom,
+    // keyboard height, or canvas height change alone.
+    if (this.cfg.canvasWidth !== prevWidth) this.buildKeyLayout()
   }
 
   get config(): Readonly<ViewportConfig> {

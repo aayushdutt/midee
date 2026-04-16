@@ -15,12 +15,12 @@ export class LiveNoteStore {
     return this._held
   }
 
-  get hasRenderableNotes(): boolean {
-    return this._held.size > 0 || this._released.length > 0
+  get releasedNotes(): readonly LiveNote[] {
+    return this._released
   }
 
-  get renderableNotes(): readonly LiveNote[] {
-    return [...this._released, ...this._held.values()]
+  get hasRenderableNotes(): boolean {
+    return this._held.size > 0 || this._released.length > 0
   }
 
   press(pitch: number, velocity: number, clockTime: number): void {
@@ -46,10 +46,18 @@ export class LiveNoteStore {
   }
 
   pruneInvisible(currentTime: number, maxAgeAfterRelease: number): void {
-    this._released = this._released.filter((note) => {
-      if (note.endTime === null) return true
-      return currentTime - note.endTime < maxAgeAfterRelease
-    })
+    // In-place compaction — no allocation per frame.
+    const arr = this._released
+    let writeIdx = 0
+    for (let i = 0; i < arr.length; i++) {
+      const note = arr[i]!
+      const keep = note.endTime === null || currentTime - note.endTime < maxAgeAfterRelease
+      if (keep) {
+        if (writeIdx !== i) arr[writeIdx] = note
+        writeIdx++
+      }
+    }
+    arr.length = writeIdx
   }
 
   // Clear everything — new file loaded or user explicitly resets.

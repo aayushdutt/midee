@@ -15,6 +15,11 @@ export class KeyboardRenderer {
   private activeLayer: Graphics
   private keyboardTexture: RenderTexture | null = null
 
+  // Snapshot of the last-drawn pitch set. If nothing changed we skip the
+  // clear + redraw entirely (common during sustained chords and idle frames).
+  private lastActivePitches: number[] = []
+  private activeLayerDirty = true
+
   constructor(
     private app: Application,
     private theme: Theme,
@@ -91,6 +96,10 @@ export class KeyboardRenderer {
   // Synthesia-style: a tinted key body plus a bright accent band at the top
   // where the falling note "lands", giving a clear landing-point cue.
   drawActiveKeys(activePitches: Set<number>, viewport: Viewport): void {
+    if (!this.activeLayerDirty && this.matchesLast(activePitches)) return
+
+    this.activeLayerDirty = false
+    this.snapshotActive(activePitches)
     this.activeLayer.clear()
 
     const { keyboardHeight } = viewport.config
@@ -123,5 +132,20 @@ export class KeyboardRenderer {
 
   updateTheme(theme: Theme): void {
     this.theme = theme
+    // Colors baked into the active-key fill changed — force a redraw.
+    this.activeLayerDirty = true
+  }
+
+  private matchesLast(activePitches: Set<number>): boolean {
+    if (activePitches.size !== this.lastActivePitches.length) return false
+    for (const pitch of this.lastActivePitches) {
+      if (!activePitches.has(pitch)) return false
+    }
+    return true
+  }
+
+  private snapshotActive(activePitches: Set<number>): void {
+    this.lastActivePitches.length = 0
+    for (const pitch of activePitches) this.lastActivePitches.push(pitch)
   }
 }
