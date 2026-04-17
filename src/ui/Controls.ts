@@ -1,6 +1,7 @@
 import type { appState, AppMode } from '../store/state'
 import type { MasterClock } from '../core/clock/MasterClock'
 import type { MidiDeviceStatus } from '../midi/MidiInputManager'
+import type { LoopState } from '../midi/LoopEngine'
 
 type State = typeof appState
 
@@ -25,6 +26,14 @@ export interface ControlsOptions {
   onHome?: () => void
   onInstrumentCycle?: () => void
   onParticleCycle?: () => void
+  onLoopToggle?: () => void
+  onLoopClear?: () => void
+  onLoopSave?: () => void
+  onLoopUndo?: () => void
+  onMetronomeToggle?: () => void
+  onMetronomeBpmChange?: (bpm: number) => void
+  onSessionToggle?: () => void
+  onHudPinChange?: (pinned: boolean) => void
 }
 
 export class Controls {
@@ -47,10 +56,25 @@ export class Controls {
   private midiLabelEl!: HTMLElement
   private recordBtn!: HTMLButtonElement
   private hudDragHandle!: HTMLButtonElement
+  private hudPinBtn!: HTMLButtonElement
+  private hudPinned = false
   private themeBtn!: HTMLButtonElement
   private themeLabelEl!: HTMLElement
   private particleBtn!: HTMLButtonElement
   private particleLabelEl!: HTMLElement
+  private loopBtn!: HTMLButtonElement
+  private loopLabelEl!: HTMLElement
+  private loopClearBtn!: HTMLButtonElement
+  private loopSaveBtn!: HTMLButtonElement
+  private loopUndoBtn!: HTMLButtonElement
+  private sessionBtn!: HTMLButtonElement
+  private sessionLabelEl!: HTMLElement
+  private metroBtn!: HTMLButtonElement
+  private metroGroupEl!: HTMLElement
+  private metroBpmEl!: HTMLElement
+  private metroBeatEl!: HTMLElement
+  private metroDecBtn!: HTMLButtonElement
+  private metroIncBtn!: HTMLButtonElement
   private octaveEl!: HTMLElement
   private isScrubbing = false
   private idleTimer: ReturnType<typeof setTimeout> | null = null
@@ -132,9 +156,9 @@ export class Controls {
           <span class="theme-dot" id="ts-theme-dot"></span>
           <span class="theme-label" id="ts-theme-label">Theme</span>
         </button>
-        <button class="ts-record-btn" id="ts-record" type="button" aria-label="Record MP4">
-          ${ICON_RECORD}
-          <span>Record</span>
+        <button class="ts-record-btn" id="ts-record" type="button" aria-label="Export MP4">
+          ${ICON_EXPORT}
+          <span>Export</span>
         </button>
       </div>
     `
@@ -149,6 +173,10 @@ export class Controls {
       <div class="hud-bar">
         <button class="hud-drag-handle" id="hud-drag" type="button" aria-label="Move controls">
           ${ICON_GRIP}
+        </button>
+        <button class="hud-pin-btn" id="hud-pin" type="button"
+                title="Pin controls — prevents auto-hide" aria-label="Pin controls">
+          ${ICON_PIN}
         </button>
 
         <div class="hud-group hud-group--transport">
@@ -194,6 +222,46 @@ export class Controls {
                 type="button" title="Cycle instrument" aria-label="Cycle instrument">
           <span class="hud-instr-icon">${ICON_INSTRUMENT}</span>
           <span class="hud-instr-label" id="hud-instr-label">Piano</span>
+        </button>
+
+        <div class="hud-divider hud-group--live"></div>
+
+        <div class="hud-metro hud-group--live" id="hud-metro-group" title="Scroll on BPM to adjust">
+          <button class="hud-metro-toggle" id="hud-metro" type="button"
+                  aria-label="Toggle metronome">
+            <span class="hud-metro-icon">${ICON_METRONOME}</span>
+            <span class="hud-metro-beat" aria-hidden="true"></span>
+          </button>
+          <button class="hud-metro-step" id="hud-metro-dec" type="button"
+                  aria-label="Decrease BPM">−</button>
+          <span class="hud-metro-bpm" id="hud-metro-bpm">120</span>
+          <button class="hud-metro-step" id="hud-metro-inc" type="button"
+                  aria-label="Increase BPM">+</button>
+        </div>
+
+        <button class="hud-session-btn hud-group--live" id="hud-session"
+                type="button" title="Record everything you play to MIDI"
+                aria-label="Record session">
+          <span class="hud-session-dot" aria-hidden="true"></span>
+          <span class="hud-session-label" id="hud-session-label">Record</span>
+        </button>
+
+        <button class="hud-loop-btn hud-group--live" id="hud-loop"
+                type="button" title="Play a phrase then loop it" aria-label="Looper">
+          <span class="hud-loop-icon">${ICON_LOOP}</span>
+          <span class="hud-loop-label" id="hud-loop-label">Loop</span>
+        </button>
+        <button class="hud-loop-undo hud-group--live hidden" id="hud-loop-undo"
+                type="button" title="Undo last layer" aria-label="Undo last layer">
+          ${ICON_UNDO}
+        </button>
+        <button class="hud-loop-save hud-group--live hidden" id="hud-loop-save"
+                type="button" title="Download loop as MIDI" aria-label="Download loop as MIDI">
+          ${ICON_DOWNLOAD}
+        </button>
+        <button class="hud-loop-clear hud-group--live hidden" id="hud-loop-clear"
+                type="button" title="Clear loop" aria-label="Clear loop">
+          ${ICON_CLOSE}
         </button>
       </div>
     `
@@ -247,10 +315,24 @@ export class Controls {
     this.midiLabelEl = this.topStrip.querySelector<HTMLElement>('#ts-menu-midi-label')!
     this.recordBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-record')!
     this.hudDragHandle = this.hud.querySelector<HTMLButtonElement>('#hud-drag')!
+    this.hudPinBtn = this.hud.querySelector<HTMLButtonElement>('#hud-pin')!
     this.themeBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-theme')!
     this.themeLabelEl = this.topStrip.querySelector<HTMLElement>('#ts-theme-label')!
     this.particleBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-particle')!
     this.particleLabelEl = this.topStrip.querySelector<HTMLElement>('#ts-particle-label')!
+    this.loopBtn = this.hud.querySelector<HTMLButtonElement>('#hud-loop')!
+    this.loopLabelEl = this.hud.querySelector<HTMLElement>('#hud-loop-label')!
+    this.loopClearBtn = this.hud.querySelector<HTMLButtonElement>('#hud-loop-clear')!
+    this.loopSaveBtn = this.hud.querySelector<HTMLButtonElement>('#hud-loop-save')!
+    this.loopUndoBtn = this.hud.querySelector<HTMLButtonElement>('#hud-loop-undo')!
+    this.sessionBtn = this.hud.querySelector<HTMLButtonElement>('#hud-session')!
+    this.sessionLabelEl = this.hud.querySelector<HTMLElement>('#hud-session-label')!
+    this.metroBtn = this.hud.querySelector<HTMLButtonElement>('#hud-metro')!
+    this.metroGroupEl = this.hud.querySelector<HTMLElement>('#hud-metro-group')!
+    this.metroBpmEl = this.hud.querySelector<HTMLElement>('#hud-metro-bpm')!
+    this.metroBeatEl = this.hud.querySelector<HTMLElement>('.hud-metro-beat')!
+    this.metroDecBtn = this.hud.querySelector<HTMLButtonElement>('#hud-metro-dec')!
+    this.metroIncBtn = this.hud.querySelector<HTMLButtonElement>('#hud-metro-inc')!
 
     this.playBtn.addEventListener('click', () => {
       if (state.mode.value !== 'file') return
@@ -328,28 +410,66 @@ export class Controls {
       if (this.opts.state.mode.value === 'live') this.opts.onHome?.()
       else this.opts.onModeRequest?.('live')
     })
+    this.loopBtn.addEventListener('click', () => this.opts.onLoopToggle?.())
+    this.loopClearBtn.addEventListener('click', () => this.opts.onLoopClear?.())
+    this.loopSaveBtn.addEventListener('click', () => this.opts.onLoopSave?.())
+    this.loopUndoBtn.addEventListener('click', () => this.opts.onLoopUndo?.())
+    this.sessionBtn.addEventListener('click', () => this.opts.onSessionToggle?.())
+    this.metroBtn.addEventListener('click', () => this.opts.onMetronomeToggle?.())
+    this.metroDecBtn.addEventListener('click', () => this.bumpBpm(-1))
+    this.metroIncBtn.addEventListener('click', () => this.bumpBpm(+1))
+    this.metroGroupEl.addEventListener('wheel', (e) => {
+      e.preventDefault()
+      const dir = e.deltaY < 0 ? 1 : -1
+      const step = e.shiftKey ? 10 : 1
+      this.bumpBpm(dir * step)
+    }, { passive: false })
 
     this.hudDragHandle.addEventListener('pointerdown', (e) => this.startHudDrag(e))
+    this.hudPinBtn.addEventListener('click', () => this.togglePin())
   }
 
   private handleKey(e: KeyboardEvent): void {
-    if ((e.target as HTMLElement).tagName === 'INPUT') return
-    if (this.opts.state.mode.value !== 'file') return
+    const target = e.target as HTMLElement
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
+    const mode = this.opts.state.mode.value
 
-    if (e.code === 'Space') {
+    // Shift+P toggles the pin anywhere the HUD is visible.
+    if (e.shiftKey && e.code === 'KeyP') {
       e.preventDefault()
-      this.playBtn.click()
-    } else if (e.code === 'ArrowLeft') {
-      e.preventDefault()
-      this.hud.querySelector<HTMLButtonElement>('#hud-skip-back')!.click()
-    } else if (e.code === 'ArrowRight') {
-      e.preventDefault()
-      this.hud.querySelector<HTMLButtonElement>('#hud-skip-fwd')!.click()
-    } else if (e.code === 'KeyT') {
-      this.opts.onOpenTracks?.()
-    } else if (e.code === 'KeyR') {
-      if (!this.hud.classList.contains('hud--exporting')) {
-        this.opts.onRecord?.()
+      this.togglePin()
+      return
+    }
+
+    if (mode === 'file') {
+      if (e.code === 'Space') {
+        e.preventDefault()
+        this.playBtn.click()
+      } else if (e.code === 'ArrowLeft') {
+        e.preventDefault()
+        this.hud.querySelector<HTMLButtonElement>('#hud-skip-back')!.click()
+      } else if (e.code === 'ArrowRight') {
+        e.preventDefault()
+        this.hud.querySelector<HTMLButtonElement>('#hud-skip-fwd')!.click()
+      } else if (e.code === 'KeyT') {
+        this.opts.onOpenTracks?.()
+      } else if (e.code === 'KeyR') {
+        if (!this.hud.classList.contains('hud--exporting')) {
+          this.opts.onRecord?.()
+        }
+      }
+      return
+    }
+
+    // Live-mode action hotkeys — all gated on Shift so they don't collide with
+    // the FL-style typing-keyboard note map.
+    if (mode === 'live' && e.shiftKey) {
+      switch (e.code) {
+        case 'KeyR': e.preventDefault(); this.opts.onSessionToggle?.(); break
+        case 'KeyL': e.preventDefault(); this.opts.onLoopToggle?.(); break
+        case 'KeyU': e.preventDefault(); this.opts.onLoopUndo?.(); break
+        case 'KeyC': e.preventDefault(); this.opts.onLoopClear?.(); break
+        case 'KeyM': e.preventDefault(); this.opts.onMetronomeToggle?.(); break
       }
     }
   }
@@ -424,6 +544,62 @@ export class Controls {
     this.particleLabelEl.textContent = name
     this.particleBtn.title = `Particles: ${name} — click to cycle`
     this.particleBtn.setAttribute('aria-label', `Particle style: ${name}. Click to cycle.`)
+  }
+
+  updateSessionRecording(recording: boolean, elapsedSec: number): void {
+    this.sessionBtn.classList.toggle('hud-session-btn--on', recording)
+    this.sessionLabelEl.textContent = recording ? formatMMSS(elapsedSec) : 'Record'
+  }
+
+  // 0–1 fraction around the loop button as a conic-gradient ring. Hidden when
+  // the loop isn't playing (the setter flips a class to toggle visibility).
+  updateLoopProgress(fraction: number): void {
+    this.loopBtn.style.setProperty('--loop-progress', `${Math.max(0, Math.min(1, fraction)) * 360}deg`)
+  }
+
+  updateMetronome(running: boolean, bpm: number): void {
+    this.metroBpmEl.textContent = String(bpm)
+    this.metroGroupEl.classList.toggle('hud-metro--on', running)
+    this.metroBtn.classList.toggle('hud-metro-toggle--on', running)
+  }
+
+  // Called once per beat from Metronome; triggers a brief visual pulse on the
+  // icon. Restarts the CSS animation by toggling the class off and on.
+  pulseMetronomeBeat(isDownbeat: boolean): void {
+    this.metroBeatEl.classList.remove('hud-metro-beat--tick', 'hud-metro-beat--down')
+    // Force reflow so the re-added class re-triggers the animation.
+    void this.metroBeatEl.offsetWidth
+    this.metroBeatEl.classList.add(isDownbeat ? 'hud-metro-beat--down' : 'hud-metro-beat--tick')
+  }
+
+  setHudPinned(pinned: boolean): void {
+    this.hudPinned = pinned
+    this.hudPinBtn.classList.toggle('hud-pin-btn--on', pinned)
+    this.hudPinBtn.setAttribute('aria-pressed', String(pinned))
+    if (pinned) this.clearIdle()
+    else this.scheduleIdle()
+  }
+
+  private togglePin(): void {
+    this.setHudPinned(!this.hudPinned)
+    this.opts.onHudPinChange?.(this.hudPinned)
+  }
+
+  private bumpBpm(delta: number): void {
+    const current = parseInt(this.metroBpmEl.textContent ?? '120', 10)
+    this.opts.onMetronomeBpmChange?.(current + delta)
+  }
+
+  updateLoopState(state: LoopState, layerCount: number): void {
+    this.loopLabelEl.textContent = loopLabel(state, layerCount)
+    this.loopBtn.dataset['loopState'] = state
+    const active = state !== 'idle' && state !== 'armed'
+    this.loopClearBtn.classList.toggle('hidden', !active)
+    this.loopSaveBtn.classList.toggle('hidden', state !== 'playing' && state !== 'overdubbing')
+    // Undo is only meaningful when there's a past state to restore to — i.e.
+    // while overdubbing (cancel in-progress) or when ≥1 committed layer exists.
+    const canUndo = state === 'overdubbing' || (state === 'playing' && layerCount >= 1)
+    this.loopUndoBtn.classList.toggle('hidden', !canUndo)
   }
 
   updateMidiStatus(status: MidiDeviceStatus, deviceName: string): void {
@@ -524,11 +700,13 @@ export class Controls {
   private wakeUp(): void {
     this.topStrip.classList.remove('strip--dim')
     this.hud.classList.remove('hud--idle')
+    this.keyHint.classList.remove('kh--idle')
     this.scheduleIdle()
   }
 
   private scheduleIdle(): void {
     this.clearIdle()
+    if (this.hudPinned) return
     const mode = this.opts.state.mode.value
     const status = this.opts.state.status.value
     const isPlaying = mode === 'file' && status === 'playing'
@@ -538,6 +716,7 @@ export class Controls {
       if (!this.isScrubbing) {
         this.topStrip.classList.add('strip--dim')
         this.hud.classList.add('hud--idle')
+        this.keyHint.classList.add('kh--idle')
       }
     }, IDLE_MS)
   }
@@ -549,6 +728,7 @@ export class Controls {
     }
     this.topStrip.classList.remove('strip--dim')
     this.hud.classList.remove('hud--idle')
+    this.keyHint.classList.remove('kh--idle')
   }
 
   private startHudDrag(e: PointerEvent): void {
@@ -644,6 +824,12 @@ function formatTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, '0')}`
 }
 
+function formatMMSS(s: number): string {
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60)
+  return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`
+}
+
 function formatSpeed(s: number): string {
   if (s === 1) return '1x'
   return `${s % 1 === 0 ? s : s.toFixed(2).replace(/0+$/, '')}x`
@@ -652,6 +838,40 @@ function formatSpeed(s: number): string {
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
+
+function loopLabel(state: LoopState, layerCount: number): string {
+  switch (state) {
+    case 'idle':        return 'Loop'
+    case 'armed':       return 'Play now…'
+    case 'recording':   return 'Stop'
+    case 'playing':     return layerCount > 1 ? `Loop ×${layerCount}` : 'Tap to overdub'
+    case 'overdubbing': return `Overdub ${layerCount + 1}`
+  }
+}
+
+const ICON_LOOP = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="17 1 21 5 17 9"/>
+  <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+  <polyline points="7 23 3 19 7 15"/>
+  <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+</svg>`
+
+const ICON_DOWNLOAD = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+  <polyline points="7 10 12 15 17 10"/>
+  <line x1="12" y1="15" x2="12" y2="3"/>
+</svg>`
+
+const ICON_UNDO = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <polyline points="3 7 3 13 9 13"/>
+  <path d="M3 13a9 9 0 1 0 3-7l-3 4"/>
+</svg>`
+
+const ICON_METRONOME = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M6 22 L10 3 H14 L18 22 Z"/>
+  <line x1="5" y1="17" x2="19" y2="17"/>
+  <line x1="12" y1="17" x2="17" y2="6"/>
+</svg>`
 
 const ICON_TRACKS = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
   <line x1="4" y1="6" x2="20" y2="6"/>
@@ -701,6 +921,12 @@ const ICON_RECORD = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none"
   <circle cx="12" cy="12" r="9"/>
 </svg>`
 
+const ICON_EXPORT = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M12 3v12"/>
+  <polyline points="7 8 12 3 17 8"/>
+  <rect x="3" y="15" width="18" height="6" rx="1.5"/>
+</svg>`
+
 const ICON_PLAY = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
   <polygon points="6 3 20 12 6 21 6 3"/>
 </svg>`
@@ -716,6 +942,11 @@ const ICON_GRIP = `<svg width="10" height="10" viewBox="0 0 24 24" fill="current
   <circle cx="15" cy="12" r="1.6"/>
   <circle cx="9" cy="18" r="1.6"/>
   <circle cx="15" cy="18" r="1.6"/>
+</svg>`
+
+const ICON_PIN = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <line x1="12" y1="17" x2="12" y2="22"/>
+  <path d="M5 17h14l-1.5-2V9a5.5 5.5 0 1 0-11 0v6L5 17z"/>
 </svg>`
 
 const ICON_SKIP_BACK = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

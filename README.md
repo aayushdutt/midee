@@ -11,7 +11,7 @@ Built on PixiJS (WebGL) + Tone.js, with an in-browser MP4 exporter via WebCodecs
 - **Four instruments** — Piano (sampled), Rhodes, Pad, Pluck.
 - **Particle bursts & glow** — with sustained trails while notes are held.
 - **Five themes** — Dark, Midnight, Neon, Sunset, Ocean.
-- **MP4 export** — frame-accurate, 720p / 1080p / match-window, fully offline.
+- **MP4 export** — frame-accurate with baked-in audio. 720p, 1080p, Vertical (TikTok/Reels), Square, or match window. Fully offline.
 
 ## Quick start
 

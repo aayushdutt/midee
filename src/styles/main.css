@@ -840,6 +840,34 @@ html, body {
   cursor: grabbing;
 }
 
+/* Pin toggle — disables auto-hide when active. Sits next to the drag handle
+   so grip + pin live in the same "handle" cluster. */
+.hud-pin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s, transform 0.12s var(--ease-spring);
+}
+.hud-pin-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+.hud-pin-btn:active { transform: scale(0.9); }
+.hud-pin-btn.hud-pin-btn--on {
+  color: var(--accent);
+  background: var(--accent-soft);
+  transform: rotate(-18deg);
+}
+.hud-pin-btn.hud-pin-btn--on:hover { color: var(--accent); }
+
 /* Play button */
 .btn-play {
   width: 34px;
@@ -1029,6 +1057,288 @@ html, body {
 
 .hud-instr-icon { color: var(--accent); display: inline-flex; }
 
+/* Metronome + Looper + Session Record — live-mode only. */
+#hud:not(.hud--live) .hud-group--live { display: none; }
+
+/* Session record — prominent red when capturing, with an mm:ss timer where
+   the "Record" label usually sits. */
+.hud-session-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px 0 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s, border-color 0.15s, transform 0.12s var(--ease-spring);
+}
+.hud-session-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.hud-session-btn:active { transform: scale(0.97); }
+
+.hud-session-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e2384a;
+  box-shadow: 0 0 0 0 rgba(226, 56, 74, 0.4);
+  transition: box-shadow 0.2s;
+}
+
+.hud-session-btn.hud-session-btn--on {
+  background: #e2384a;
+  border-color: #e2384a;
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(226, 56, 74, 0.45);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.hud-session-btn.hud-session-btn--on .hud-session-dot {
+  background: #fff;
+  animation: session-breathe 1.4s ease-in-out infinite;
+}
+
+@keyframes session-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.7); }
+  50%      { box-shadow: 0 0 0 6px rgba(255, 255, 255, 0); }
+}
+
+
+/* Metronome compound widget: icon toggle + BPM with ± steppers. Shares one
+   rounded shell so the three controls read as a single object. */
+.hud-metro {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 3px;
+  border-radius: var(--r-pill);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  transition: border-color 0.15s, background 0.15s;
+}
+.hud-metro:hover { border-color: rgba(255, 255, 255, 0.14); }
+
+.hud-metro.hud-metro--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.hud-metro-toggle {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.12s var(--ease-spring);
+}
+.hud-metro-toggle:hover { background: rgba(255, 255, 255, 0.08); }
+.hud-metro-toggle:active { transform: scale(0.92); }
+
+.hud-metro-toggle--on {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+.hud-metro-toggle--on:hover { background: var(--accent); filter: brightness(1.08); }
+
+.hud-metro-icon { display: inline-flex; }
+
+/* Beat indicator — a tiny dot overlaying the icon that flashes on each click. */
+.hud-metro-beat {
+  position: absolute;
+  top: 2px; right: 2px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+.hud-metro-beat--tick { animation: metro-tick 180ms ease-out; }
+.hud-metro-beat--down { animation: metro-tick-down 240ms ease-out; background: #fff; }
+.hud-metro-toggle--on .hud-metro-beat { background: #fff; }
+
+@keyframes metro-tick {
+  0%   { opacity: 0;    transform: scale(0.7); }
+  15%  { opacity: 1;    transform: scale(1); }
+  100% { opacity: 0;    transform: scale(1.2); }
+}
+@keyframes metro-tick-down {
+  0%   { opacity: 0;    transform: scale(0.7); }
+  10%  { opacity: 1;    transform: scale(1.3); }
+  100% { opacity: 0;    transform: scale(1.6); }
+}
+
+.hud-metro-step {
+  width: 20px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.12s, background 0.12s, transform 0.1s var(--ease-spring);
+}
+.hud-metro-step:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+.hud-metro-step:active { transform: scale(0.9); }
+
+.hud-metro-bpm {
+  min-width: 28px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  padding: 0 2px;
+  user-select: none;
+}
+
+
+.hud-loop-btn {
+  --loop-progress: 0deg;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 14px 0 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s, border-color 0.15s, transform 0.12s var(--ease-spring);
+}
+
+/* Loop cycle progress — a thin conic ring that fills as the loop plays. Only
+   visible during 'playing' state so it doesn't distract at rest. */
+.hud-loop-btn[data-loop-state="playing"]::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: calc(var(--r-pill) + 3px);
+  padding: 2px;
+  background: conic-gradient(#fff var(--loop-progress), rgba(255, 255, 255, 0.18) 0deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.75;
+}
+
+.hud-loop-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.hud-loop-btn:active { transform: scale(0.97); }
+
+.hud-loop-icon { color: var(--accent); display: inline-flex; }
+
+.hud-loop-btn[data-loop-state="armed"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  animation: loop-pulse 1.1s ease-in-out infinite;
+}
+.hud-loop-btn[data-loop-state="armed"] .hud-loop-icon { color: var(--accent); }
+
+.hud-loop-btn[data-loop-state="recording"] {
+  background: #e2384a;
+  border-color: #e2384a;
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(226, 56, 74, 0.45);
+  animation: loop-pulse 0.9s ease-in-out infinite;
+}
+.hud-loop-btn[data-loop-state="recording"] .hud-loop-icon { color: #fff; }
+
+.hud-loop-btn[data-loop-state="playing"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 10px var(--accent-glow);
+}
+.hud-loop-btn[data-loop-state="playing"] .hud-loop-icon { color: #fff; }
+
+.hud-loop-btn[data-loop-state="overdubbing"] {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(245, 158, 11, 0.45);
+  animation: loop-pulse 0.9s ease-in-out infinite;
+}
+.hud-loop-btn[data-loop-state="overdubbing"] .hud-loop-icon { color: #fff; }
+.hud-loop-btn[data-loop-state="overdubbing"]::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: calc(var(--r-pill) + 3px);
+  padding: 2px;
+  background: conic-gradient(#fff var(--loop-progress), rgba(255, 255, 255, 0.18) 0deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+@keyframes loop-pulse {
+  0%, 100% { opacity: 1;     transform: scale(1); }
+  50%      { opacity: 0.72;  transform: scale(0.98); }
+}
+
+.hud-loop-clear,
+.hud-loop-save,
+.hud-loop-undo {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, transform 0.12s var(--ease-spring);
+}
+
+.hud-loop-clear:hover,
+.hud-loop-save:hover,
+.hud-loop-undo:hover { color: var(--text); background: rgba(255, 255, 255, 0.09); }
+.hud-loop-clear:active,
+.hud-loop-save:active,
+.hud-loop-undo:active { transform: scale(0.94); }
+
+.hud-loop-save { color: var(--accent); }
+.hud-loop-save:hover { color: var(--accent); background: var(--accent-soft); }
+
 .speed-val {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -1067,6 +1377,11 @@ html, body {
 #key-hint.kh--visible {
   opacity: 1;
   transform: none;
+}
+
+#key-hint.kh--visible.kh--idle {
+  opacity: 0;
+  transform: translateX(-8px);
 }
 
 .kh-body {
@@ -1459,8 +1774,8 @@ html, body {
   background: var(--surface-hi);
   border: 1px solid var(--border-hi);
   border-radius: var(--r-xl);
-  padding: 32px 36px 28px;
-  width: 348px;
+  padding: 28px 30px 24px;
+  width: 420px;
   box-shadow:
     0 32px 80px rgba(0, 0, 0, 0.75),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
@@ -1475,40 +1790,155 @@ html, body {
 }
 
 /* Settings phase */
+.export-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.export-header-text { flex: 1; min-width: 0; }
+
 .export-card-icon {
   color: var(--accent);
-  margin-bottom: 12px;
-  opacity: 0.85;
+  opacity: 0.88;
+  padding: 8px;
+  background: var(--accent-soft);
+  border-radius: var(--r-md);
+  display: inline-flex;
 }
 
 .export-card-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.03em;
   color: var(--text);
-  margin-bottom: 6px;
+  margin-bottom: 3px;
 }
 
 .export-card-sub {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-muted);
-  margin-bottom: 24px;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
-.export-field {
+.export-section {
+  margin-bottom: 18px;
+}
+
+.export-section-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.export-section--disabled {
+  opacity: 0.35;
+  pointer-events: none;
+  filter: saturate(0.2);
+  transition: opacity 0.2s, filter 0.2s;
+}
+
+/* Segmented controls inside the export modal span full width with equal-sized
+   cells, so Output and Frame rate sit at the same visual weight under their
+   shared section-label style. */
+.export-section .fps-group { width: 100%; }
+.export-section .fps-btn { flex: 1; padding: 6px 10px; }
+
+/* Resolution card grid — 3 columns × 2 rows, last row left-aligned. Each card
+   shows a tiny preview rectangle at the format's actual aspect ratio so the
+   picker reads visually before the dimensions do. */
+.res-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.res-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s, transform 0.12s var(--ease-spring);
+}
+
+.res-card:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-hi);
+}
+
+.res-card:active { transform: scale(0.97); }
+
+.res-card.res-card--on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.res-card-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: inherit;
+  letter-spacing: -0.01em;
+}
+
+.res-card-dim {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.res-card--on .res-card-dim { color: var(--text); opacity: 0.7; }
+
+/* Aspect-ratio preview rectangles. Each is centered in a 44×32 slot and sized
+   proportional to the target format — user scans the shape before reading. */
+.res-preview {
+  width: 100%;
+  height: 34px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 28px;
+  justify-content: center;
+  margin-bottom: 6px;
 }
 
-.export-field-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-muted);
+.res-preview::before {
+  content: '';
+  display: block;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  transition: background 0.15s, border-color 0.15s;
 }
+
+.res-card--on .res-preview::before {
+  background: linear-gradient(135deg, var(--accent), rgba(255, 255, 255, 0.06));
+  border-color: var(--accent);
+}
+
+.res-preview--landscape::before { width: 50px; height: 28px; }
+.res-preview--vertical::before  { width: 16px; height: 28px; }
+.res-preview--square::before    { width: 28px; height: 28px; }
+.res-preview--match::before {
+  width: 42px;
+  height: 28px;
+  border-style: dashed;
+  background: transparent;
+}
+.res-card--on .res-preview--match::before { background: transparent; }
 
 /* FPS segmented control */
 .fps-group {
@@ -1518,6 +1948,11 @@ html, body {
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   padding: 3px;
+}
+
+.fps-group.fps-group--wrap {
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .fps-btn {
@@ -1549,6 +1984,9 @@ html, body {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
 }
 
 .modal-btn {
@@ -1636,6 +2074,137 @@ html, body {
   letter-spacing: 0.04em;
 }
 
+
+/* ─────────────────────────────────────────
+   POST-SESSION MODAL (live-mode → next step)
+───────────────────────────────────────── */
+
+#post-session-modal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 80;
+  background: transparent;
+  pointer-events: none;
+  transition: background 0.28s, backdrop-filter 0.28s;
+}
+
+#post-session-modal.open {
+  background: rgba(4, 4, 10, 0.70);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  pointer-events: auto;
+}
+
+.post-session-card {
+  background: var(--surface-hi);
+  border: 1px solid var(--border-hi);
+  border-radius: var(--r-xl);
+  padding: 26px 28px 20px;
+  width: 400px;
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  opacity: 0;
+  transform: scale(0.94) translateY(8px);
+  transition: opacity 0.28s var(--ease-out), transform 0.28s var(--ease-out);
+}
+
+#post-session-modal.open .post-session-card {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+
+.post-session-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.post-session-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font);
+  transition: background 0.15s, border-color 0.15s, transform 0.12s var(--ease-spring);
+}
+
+.post-session-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-hi);
+}
+
+.post-session-option:active { transform: scale(0.985); }
+
+.post-session-option--primary {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.post-session-option--primary:hover {
+  background: var(--accent-soft);
+  filter: brightness(1.08);
+}
+
+.post-session-option--muted { color: var(--text-muted); }
+
+.post-session-option-icon {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.05);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+
+.post-session-option--primary .post-session-option-icon {
+  background: var(--accent);
+  color: #fff;
+}
+
+.post-session-option--muted .post-session-option-icon { color: var(--text-muted); }
+
+.post-session-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.post-session-option-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: inherit;
+  letter-spacing: -0.01em;
+}
+
+.post-session-option-sub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.post-session-option-sub code {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+}
 
 /* ─────────────────────────────────────────
    LOADING OVERLAY

@@ -100,7 +100,10 @@ export class ComputerKeyboardInput {
   }
 
   private shouldIgnore(e: KeyboardEvent): boolean {
-    if (e.ctrlKey || e.metaKey || e.altKey) return true
+    // Shift reserves letter keys for app-level hotkeys (Shift+R record,
+    // Shift+L loop, etc.); without this guard the user would also trigger a
+    // note via the FL-style key map whenever they hit a shortcut.
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return true
     const target = e.target as HTMLElement | null
     if (!target) return false
     const tag = target.tagName
