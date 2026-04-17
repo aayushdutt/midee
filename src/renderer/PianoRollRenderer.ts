@@ -44,7 +44,11 @@ export class PianoRollRenderer {
   // so comparisons never allocate strings in the hot path.
   private prevActive = new Set<number>()
   private currActive = new Set<number>()
-  private activePitchNums = new Set<number>()
+  // Map pitch → color so the keyboard overlay picks up each track's own hue
+  // rather than a single accent. Last-write-wins when multiple tracks sound
+  // the same pitch — acceptable; the rest of the visualization already does
+  // the same.
+  private activeKeyColors = new Map<number, number>()
   private exportMode = false
 
   // Next time (in seconds of clock-time) to emit a sustained trail-burst for
@@ -195,6 +199,25 @@ export class PianoRollRenderer {
     this.viewport.update({ pixelsPerSecond })
   }
 
+  // Narrows or widens the visible pitch range. Used during vertical/square
+  // export so the keyboard zooms onto the piece's actual range instead of
+  // squeezing all 88 keys into a 1080px-wide canvas.
+  setPitchRange(min: number, max: number): void {
+    this.viewport.update({ pitchMin: min, pitchMax: max })
+    this.rebuildStaticLayers()
+  }
+
+  get pitchRange(): { min: number; max: number } {
+    return {
+      min: this.viewport.config.pitchMin ?? 21,
+      max: this.viewport.config.pitchMax ?? 108,
+    }
+  }
+
+  get currentPixelsPerSecond(): number {
+    return this.pixelsPerSecond
+  }
+
   setKeyboardHeight(px: number): void {
     const clamped = Math.max(KEYBOARD_HEIGHT_MIN, Math.min(KEYBOARD_HEIGHT_MAX, Math.round(px)))
     if (clamped === this.keyboardHeight) return
@@ -254,9 +277,9 @@ export class PianoRollRenderer {
 
   private renderFrame(currentTime: number, dt: number, emitParticles: boolean): void {
     const curr = this.currActive
-    const pitchNums = this.activePitchNums
+    const activeColors = this.activeKeyColors
     curr.clear()
-    pitchNums.clear()
+    activeColors.clear()
 
     // ── Scheduled MIDI notes ──────────────────────────────────────────────
     // Single pass collects active pitches and emits note-on particle bursts.
@@ -269,7 +292,9 @@ export class PianoRollRenderer {
       for (let ti = 0; ti < tracks.length; ti++) {
         const track = tracks[ti]!
         if (!this.visibleTrackIds.has(track.id)) continue
-        const trackColor = emitParticles ? getTrackColor(track, this.theme) : 0
+        // Always compute the track color — we now use it for the keyboard
+        // overlay too, not just particle bursts.
+        const trackColor = getTrackColor(track, this.theme)
         const keyBase = ti * 128
 
         for (const note of track.notes) {
@@ -277,7 +302,7 @@ export class PianoRollRenderer {
 
           const key = keyBase + note.pitch
           curr.add(key)
-          pitchNums.add(note.pitch)
+          activeColors.set(note.pitch, trackColor)
 
           if (!emitParticles) continue
 
@@ -327,7 +352,7 @@ export class PianoRollRenderer {
       const nowLineY = this.viewport.nowLineY
 
       for (const [pitch] of held) {
-        pitchNums.add(pitch)
+        activeColors.set(pitch, liveColor)
         if (!emitParticles) continue
 
         const nextAt = this.liveEmitNext.get(pitch)
@@ -344,9 +369,12 @@ export class PianoRollRenderer {
       }
 
       // Loop-held notes still light up the keyboard but don't emit particles —
-      // keeps the "me vs my loop" visual distinction clear.
+      // keeps the "me vs my loop" visual distinction clear. Use the live color
+      // unless a live note is also active on the same pitch (already set).
       if (loopHeld) {
-        for (const [pitch] of loopHeld) pitchNums.add(pitch)
+        for (const [pitch] of loopHeld) {
+          if (!activeColors.has(pitch)) activeColors.set(pitch, liveColor)
+        }
       }
 
       // Reap released notes.
@@ -360,7 +388,7 @@ export class PianoRollRenderer {
       if (this.liveEmitNext.size > 0) this.liveEmitNext.clear()
     }
 
-    this.keyboardRenderer.drawActiveKeys(pitchNums, this.viewport)
+    this.keyboardRenderer.drawActiveKeys(activeColors, this.viewport)
     this.particles.update(dt)
   }
 

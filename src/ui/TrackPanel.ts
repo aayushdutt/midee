@@ -2,45 +2,52 @@ import type { MidiFile } from '../core/midi/types'
 import type { PianoRollRenderer } from '../renderer/PianoRollRenderer'
 import { escHtml, hexToCSS } from './utils'
 
+// Popover dropdown anchored under the Tracks button in the top strip.
+// Each track has a mute toggle; a "Load new file" footer reopens the Open MIDI
+// modal for quick swap.
+
 export class TrackPanel {
-  private backdrop: HTMLElement
   private panel: HTMLElement
   private itemsEl: HTMLElement
+  private trigger: HTMLElement | null = null
   private isOpen = false
+
+  private onDocPointer = (e: PointerEvent): void => {
+    const target = e.target as Node
+    if (this.panel.contains(target)) return
+    if (this.trigger && this.trigger.contains(target)) return
+    this.close()
+  }
+  private onKey = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape' && this.isOpen) this.close()
+  }
+  private onResize = (): void => { if (this.isOpen) this.positionUnder() }
 
   constructor(
     container: HTMLElement,
     private renderer: PianoRollRenderer,
     private onLoadNew: () => void,
   ) {
-    this.backdrop = document.createElement('div')
-    this.backdrop.className = 'panel-backdrop'
-    this.backdrop.addEventListener('click', () => this.close())
-
     this.panel = document.createElement('div')
     this.panel.id = 'track-panel'
+    this.panel.className = 'ts-popover'
     this.panel.innerHTML = `
       <div class="panel-header">
         <span class="panel-label">Tracks</span>
-        <button class="panel-close-btn" aria-label="Close">${ICON_CLOSE}</button>
       </div>
       <div class="panel-items" id="panel-items"></div>
       <div class="panel-footer">
-        <button class="panel-load-btn" id="panel-load-new">
+        <button class="panel-load-btn" id="panel-load-new" type="button">
           ${ICON_UPLOAD}
           Load new file
         </button>
       </div>
     `
     this.itemsEl = this.panel.querySelector<HTMLElement>('#panel-items')!
-
-    this.panel.querySelector('.panel-close-btn')!.addEventListener('click', () => this.close())
     this.panel.querySelector('#panel-load-new')!.addEventListener('click', () => {
       this.close()
       this.onLoadNew()
     })
-
-    container.appendChild(this.backdrop)
     container.appendChild(this.panel)
   }
 
@@ -68,27 +75,55 @@ export class TrackPanel {
     })
   }
 
+  // Anchors the popover under a trigger element (the top-strip Tracks button).
+  setTrigger(el: HTMLElement): void {
+    this.trigger = el
+  }
+
   toggle(): void { this.isOpen ? this.close() : this.open() }
 
   open(): void {
+    if (this.isOpen) return
     this.isOpen = true
-    this.backdrop.classList.add('open')
-    this.panel.classList.add('open')
+    this.panel.classList.add('ts-popover--open')
+    this.positionUnder()
+    // Defer listener attach to the next tick so the click that opened us
+    // doesn't immediately bubble and close it.
+    setTimeout(() => {
+      document.addEventListener('pointerdown', this.onDocPointer)
+      document.addEventListener('keydown', this.onKey)
+      window.addEventListener('resize', this.onResize)
+    }, 0)
   }
 
   close(): void {
+    if (!this.isOpen) return
     this.isOpen = false
-    this.backdrop.classList.remove('open')
-    this.panel.classList.remove('open')
+    this.panel.classList.remove('ts-popover--open')
+    document.removeEventListener('pointerdown', this.onDocPointer)
+    document.removeEventListener('keydown', this.onKey)
+    window.removeEventListener('resize', this.onResize)
   }
 
   hide(): void { this.close() }
-}
 
-const ICON_CLOSE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-  <line x1="18" y1="6" x2="6" y2="18"/>
-  <line x1="6" y1="6" x2="18" y2="18"/>
-</svg>`
+  private positionUnder(): void {
+    const trigger = this.trigger
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    const panelW = this.panel.offsetWidth || 320
+    // Right-align with the trigger so the popover doesn't get pushed off-screen
+    // when the trigger is near the right edge of the strip.
+    const right = Math.max(12, window.innerWidth - rect.right)
+    const top = rect.bottom + 8
+    this.panel.style.right = `${right}px`
+    this.panel.style.top = `${top}px`
+    this.panel.style.left = ''
+    // Belt-and-suspenders: if we still don't fit, clamp to viewport.
+    const desiredLeft = window.innerWidth - right - panelW
+    if (desiredLeft < 12) this.panel.style.right = `${Math.max(12, window.innerWidth - panelW - 12)}px`
+  }
+}
 
 const ICON_UPLOAD = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>

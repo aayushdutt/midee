@@ -18,10 +18,12 @@ import { ComputerKeyboardInput } from './midi/ComputerKeyboardInput'
 import { LiveNoteStore } from './midi/LiveNoteStore'
 import { LoopEngine } from './midi/LoopEngine'
 import { SessionRecorder } from './midi/SessionRecorder'
-import { encodeCapturedEvents, triggerMidiDownload } from './midi/MidiEncoding'
+import { encodeCapturedEvents, midiFileToBytes, triggerMidiDownload } from './midi/MidiEncoding'
 import type { CapturedEvent } from './midi/MidiEncoding'
 import { sessionToMidiFile } from './midi/SessionToMidi'
 import { PostSessionModal, type SessionAction } from './ui/PostSessionModal'
+import { InstrumentMenu } from './ui/InstrumentMenu'
+import { getSample, fetchSampleMidi } from './core/samples'
 
 export class App {
   private clock         = new MasterClock()
@@ -36,6 +38,7 @@ export class App {
   private sessionRec!:  SessionRecorder
   private postSessionModal!: PostSessionModal
   private pendingSession: { events: CapturedEvent[]; duration: number } | null = null
+  private instrumentMenu!: InstrumentMenu
   private activeMouseNote: number | null = null
   private dropzone!:    DropZone
   private controls!:    Controls
@@ -105,6 +108,7 @@ export class App {
       overlay,
       (file) => void this.loadMidi(file),
       () => this.enterLiveMode(),
+      (sampleId) => this.loadSample(sampleId),
     )
 
     this.controls = new Controls({
@@ -168,7 +172,25 @@ export class App {
     this.loopEngine.progress.subscribe((p) => this.controls.updateLoopProgress(p))
     pushSession()
 
+    // Keep the HUD visible whenever something is actively running — session
+    // capture, any loop state, or the metronome. Prevents auto-hide from
+    // stealing the transport mid-take.
+    const recomputeActivity = (): void => {
+      const recording = this.sessionRec.recording.value
+      const loopActive = this.loopEngine.state.value !== 'idle'
+      const metroOn = this.metronome.running.value
+      this.controls.setHudActivityLock(recording || loopActive || metroOn)
+    }
+    this.sessionRec.recording.subscribe(recomputeActivity)
+    this.loopEngine.state.subscribe(recomputeActivity)
+    this.metronome.running.subscribe(recomputeActivity)
+    recomputeActivity()
+
     this.trackPanel = new TrackPanel(overlay, this.renderer, () => this.openFilePicker())
+    this.trackPanel.setTrigger(this.controls.tracksButton)
+
+    this.instrumentMenu = new InstrumentMenu(this.controls.instrumentSlot, overlay)
+    this.instrumentMenu.onSelect = (id) => this.setInstrumentById(id)
 
     this.exportModal = new ExportModal(overlay)
     this.exportModal.onStart  = (settings) => void this.startExport(settings)
@@ -227,8 +249,10 @@ export class App {
     this.keyboardInput.noteOff.subscribe((evt) => { if (evt) this.handleLiveNoteOff(evt) })
     this.keyboardInput.octave.subscribe((o) => this.controls.updateOctave(o))
 
-    // Mouse/touch on the on-screen keyboard
+    // Mouse/touch on the on-screen keyboard — down to press, move to slide
+    // between keys (glissando), up/cancel/leave to release.
     canvas.addEventListener('pointerdown', this.onCanvasPointerDown)
+    canvas.addEventListener('pointermove', this.onCanvasPointerMove)
     canvas.addEventListener('pointerup', this.onCanvasPointerUp)
     canvas.addEventListener('pointercancel', this.onCanvasPointerUp)
     canvas.addEventListener('pointerleave', this.onCanvasPointerUp)
@@ -261,7 +285,8 @@ export class App {
 
   private handleLiveNoteOn(evt: MidiNoteEvent): void {
     if (appState.status.value === 'exporting') return
-    if (appState.mode.value === 'file') return
+    // Home → first note dissolves into live mode. File mode plays-along alongside
+    // whatever scheduled MIDI is running (or paused), which is the point.
     if (appState.mode.value === 'home') this.enterLiveMode(false)
 
     this.synth.liveNoteOn(evt.pitch, evt.velocity)
@@ -270,15 +295,20 @@ export class App {
     this.loopEngine.captureNoteOn(evt.pitch, evt.velocity, evt.clockTime)
     this.sessionRec.captureNoteOn(evt.pitch, evt.velocity, evt.clockTime)
 
-    const s = appState.status.value
-    if (s === 'idle' || s === 'ready' || s === 'paused') {
-      this.clock.play()
-      appState.startPlaying()
+    // Live mode's "tap a note to start the session" shortcut — don't hijack
+    // file mode's transport, which the user drives with the play button.
+    if (appState.mode.value === 'live') {
+      const s = appState.status.value
+      if (s === 'idle' || s === 'ready' || s === 'paused') {
+        this.clock.play()
+        appState.startPlaying()
+      }
     }
   }
 
   private handleLiveNoteOff(evt: MidiNoteEvent): void {
-    if (appState.mode.value !== 'live') return
+    const mode = appState.mode.value
+    if (mode !== 'live' && mode !== 'file') return
     this.synth.liveNoteOff(evt.pitch)
     this.liveNotes.release(evt.pitch, evt.clockTime)
     this.loopEngine.captureNoteOff(evt.pitch, evt.clockTime)
@@ -286,7 +316,6 @@ export class App {
   }
 
   private onCanvasPointerDown = (e: PointerEvent): void => {
-    if (appState.mode.value === 'file') return
     if (appState.status.value === 'exporting') return
     const pitch = this.renderer.pitchAtClientPoint(e.clientX, e.clientY)
     if (pitch === null) return
@@ -300,6 +329,19 @@ export class App {
       this.handleLiveNoteOff({ pitch: this.activeMouseNote, velocity: 0, clockTime: this.clock.currentTime })
     }
     this.activeMouseNote = pitch
+    this.handleLiveNoteOn({ pitch, velocity: 0.8, clockTime: this.clock.currentTime })
+  }
+
+  private onCanvasPointerMove = (e: PointerEvent): void => {
+    // Only react while the user is actively pressing — this is the glissando
+    // path, not a hover state.
+    if (this.activeMouseNote === null) return
+    if (appState.status.value === 'exporting') return
+    const pitch = this.renderer.pitchAtClientPoint(e.clientX, e.clientY)
+    if (pitch === null || pitch === this.activeMouseNote) return
+    const prev = this.activeMouseNote
+    this.activeMouseNote = pitch
+    this.handleLiveNoteOff({ pitch: prev, velocity: 0, clockTime: this.clock.currentTime })
     this.handleLiveNoteOn({ pitch, velocity: 0.8, clockTime: this.clock.currentTime })
   }
 
@@ -364,9 +406,18 @@ export class App {
     saveInstrumentIndex(this.instrumentIndex)
   }
 
+  private setInstrumentById(id: string): void {
+    const idx = INSTRUMENTS.findIndex(i => i.id === id)
+    if (idx < 0 || idx === this.instrumentIndex) return
+    this.instrumentIndex = idx
+    this.applyInstrument()
+    saveInstrumentIndex(this.instrumentIndex)
+  }
+
   private applyInstrument(): void {
     const info = INSTRUMENTS[this.instrumentIndex]!
     this.controls.updateInstrument(info.name)
+    this.instrumentMenu?.setCurrent(info.id)
     void this.synth.setInstrument(info.id)
   }
 
@@ -385,6 +436,17 @@ export class App {
   private async startExport(settings: ExportSettings): Promise<void> {
     const midi = appState.loadedMidi.value
     if (!midi || appState.mode.value !== 'file') return
+
+    // MIDI-only output skips all render/encode work — just re-serialise the
+    // loaded MidiFile to .mid bytes. Especially useful after "Open in file
+    // mode" from a live session, where the raw .mid was never downloaded.
+    if (settings.output === 'midi') {
+      const bytes = midiFileToBytes(midi)
+      triggerMidiDownload(bytes, `${sanitiseFilename(midi.name)}.mid`)
+      this.exportModal.close()
+      this.showSuccess(`↓ ${sanitiseFilename(midi.name)}.mid`)
+      return
+    }
 
     const wasPlaying = appState.status.value === 'playing'
     // Snapshot the playhead so we can restore position after export instead of
@@ -407,6 +469,28 @@ export class App {
       (target.width !== originalCanvas.width || target.height !== originalCanvas.height)
     if (resized) {
       this.renderer.resize(target.width, target.height, 1)
+    }
+
+    // Snapshot viewport state so we can restore after export. Vertical/Square
+    // exports optionally zoom onto the piece's pitch range + override scroll
+    // speed for a more cinematic feel; landscape exports leave both untouched.
+    const originalPps = this.renderer.currentPixelsPerSecond
+    const originalRange = this.renderer.pitchRange
+    const isSocialFormat = needsVideo &&
+      (settings.resolution === 'vertical' || settings.resolution === 'square')
+    let pitchChanged = false
+    let ppsChanged = false
+    if (isSocialFormat) {
+      if (settings.focus === 'fit') {
+        const fit = fitPitchRange(midi)
+        this.renderer.setPitchRange(fit.min, fit.max)
+        pitchChanged = true
+      }
+      const pps = speedToPps(settings.speed)
+      if (pps !== originalPps) {
+        this.renderer.setZoom(pps)
+        ppsChanged = true
+      }
     }
 
     const filename = settings.output === 'audio-only'
@@ -460,6 +544,8 @@ export class App {
         // in case the window was resized while we were exporting.
         this.renderer.resize(window.innerWidth, window.innerHeight, originalCanvas.resolution)
       }
+      if (pitchChanged) this.renderer.setPitchRange(originalRange.min, originalRange.max)
+      if (ppsChanged) this.renderer.setZoom(originalPps)
       this.renderer.resumeAutoRender()
       this.clock.seek(resumeAt)
       appState.setReady()
@@ -474,8 +560,35 @@ export class App {
     this.currentExporter?.cancel()
   }
 
+  // Entry point for every "open MIDI" action — top strip button, track panel,
+  // mode-transition fallbacks. Samples already live on the home card, so the
+  // button goes straight to the native file picker instead of routing through
+  // a redundant modal.
   private openFilePicker(): void {
     this.dropzone.openFilePicker()
+  }
+
+  private async loadSample(sampleId: string): Promise<void> {
+    const sample = getSample(sampleId)
+    if (!sample) return
+    this.primeInteractiveAudio()
+    let midi
+    try {
+      midi = await fetchSampleMidi(sample)
+    } catch (err) {
+      console.error('[loadSample] fetch failed', err)
+      this.showError('Could not load that sample — check your network and try again.')
+      return
+    }
+    this.loadSessionAsFile(midi)
+    // Samples are a "watch it" gesture — start playback as soon as the synth
+    // is ready. Sample click counts as the user gesture that unlocks audio.
+    setTimeout(() => {
+      if (appState.mode.value === 'file' && appState.status.value !== 'playing') {
+        this.clock.play()
+        appState.startPlaying()
+      }
+    }, 250)
   }
 
   private requestMode(mode: 'file' | 'live'): void {
@@ -526,7 +639,8 @@ export class App {
     this.renderer.loadMidi(midi)
     this.trackPanel.render(midi)
     this.dropzone.hide()
-    this.keyboardInput.disable()
+    // Typing keyboard stays enabled — users can play along with the file.
+    this.keyboardInput.enable()
     document.title = `${midi.name} · Piano Roll`
   }
 
@@ -590,12 +704,6 @@ export class App {
       )
       this.pendingSession = null
       this.loadSessionAsFile(midi)
-      // The user picked "Open in file mode" — they're on the path to export.
-      // Auto-open the export modal after a beat so the next step is obvious;
-      // they can still cancel if they want to scrub around first.
-      setTimeout(() => {
-        if (appState.mode.value === 'file') this.exportModal.open()
-      }, 600)
     }
   }
 
@@ -611,7 +719,8 @@ export class App {
     this.renderer.loadMidi(midi)
     this.trackPanel.render(midi)
     this.dropzone.hide()
-    this.keyboardInput.disable()
+    // Typing keyboard stays on — users can play along with their own session.
+    this.keyboardInput.enable()
     document.title = `${midi.name} · Piano Roll`
   }
 
@@ -704,6 +813,7 @@ export class App {
     window.removeEventListener('pointerdown', this.onFirstPointerDown)
     window.removeEventListener('keydown', this.onFirstKeyDown)
     this.renderer.canvas.removeEventListener('pointerdown', this.onCanvasPointerDown)
+    this.renderer.canvas.removeEventListener('pointermove', this.onCanvasPointerMove)
     this.renderer.canvas.removeEventListener('pointerup', this.onCanvasPointerUp)
     this.renderer.canvas.removeEventListener('pointercancel', this.onCanvasPointerUp)
     this.renderer.canvas.removeEventListener('pointerleave', this.onCanvasPointerUp)
@@ -773,6 +883,42 @@ function loadMetronomeBpm(): number {
 
 function saveMetronomeBpm(bpm: number): void {
   localStorage.setItem(METRONOME_BPM_KEY, String(bpm))
+}
+
+// Scans the MIDI's notes for min/max pitch and pads outward by a few keys so
+// the visible range feels natural rather than clipping right at the extremes.
+// Clamps to the MIDI-usable octaves on 88-key piano.
+function fitPitchRange(midi: import('./core/midi/types').MidiFile): { min: number; max: number } {
+  let lo = 108, hi = 21
+  for (const track of midi.tracks) {
+    for (const n of track.notes) {
+      if (n.pitch < lo) lo = n.pitch
+      if (n.pitch > hi) hi = n.pitch
+    }
+  }
+  if (hi < lo) return { min: 21, max: 108 }
+  // Pad ~3 semitones each side; widen if the range is tiny so cards don't
+  // look like a single-octave slice on a half-chorused piece.
+  const pad = Math.max(3, Math.round((hi - lo) * 0.12))
+  return {
+    min: Math.max(21, lo - pad),
+    max: Math.min(108, hi + pad),
+  }
+}
+
+function speedToPps(speed: 'compact' | 'standard' | 'drama'): number {
+  switch (speed) {
+    case 'compact':  return 300
+    case 'standard': return 200
+    case 'drama':    return 120
+  }
+}
+
+// Strips characters that misbehave in filenames across Windows/macOS/Linux.
+// Falls back to a constant if the result is empty.
+function sanitiseFilename(name: string): string {
+  const cleaned = name.replace(/[\\/:*?"<>|]+/g, ' ').trim()
+  return cleaned.length > 0 ? cleaned : 'pianoroll'
 }
 
 function loadHudPinned(): boolean {

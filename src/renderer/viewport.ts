@@ -9,6 +9,11 @@ export interface ViewportConfig {
   canvasHeight: number
   keyboardHeight: number
   pixelsPerSecond: number
+  // Visible pitch range — defaults to the full piano (21..108). Narrowing
+  // these bounds makes each key wider and focuses the roll on a piece's
+  // actual range (used by the "Fit to piece" export option).
+  pitchMin?: number
+  pitchMax?: number
 }
 
 export class Viewport {
@@ -22,10 +27,16 @@ export class Viewport {
 
   update(partial: Partial<ViewportConfig>): void {
     const prevWidth = this.cfg.canvasWidth
+    const prevMin = this.cfg.pitchMin
+    const prevMax = this.cfg.pitchMax
     this.cfg = { ...this.cfg, ...partial }
-    // Key layout depends only on canvasWidth; skip the rebuild when zoom,
-    // keyboard height, or canvas height change alone.
-    if (this.cfg.canvasWidth !== prevWidth) this.buildKeyLayout()
+    // Key layout depends on canvasWidth and the pitch range; skip the rebuild
+    // when only zoom / keyboard height / canvas height change.
+    if (
+      this.cfg.canvasWidth !== prevWidth ||
+      this.cfg.pitchMin !== prevMin ||
+      this.cfg.pitchMax !== prevMax
+    ) this.buildKeyLayout()
   }
 
   get config(): Readonly<ViewportConfig> {
@@ -100,23 +111,27 @@ export class Viewport {
   private buildKeyLayout(): void {
     this.keyPositions.clear()
 
+    const pMin = Math.max(MIDI_MIN, this.cfg.pitchMin ?? MIDI_MIN)
+    const pMax = Math.min(MIDI_MAX, this.cfg.pitchMax ?? MIDI_MAX)
+
     let wCount = 0
-    for (let p = MIDI_MIN; p <= MIDI_MAX; p++) {
+    for (let p = pMin; p <= pMax; p++) {
       if (!isBlackKey(p)) wCount++
     }
+    if (wCount === 0) return
 
     const whiteW = this.cfg.canvasWidth / wCount
     const blackW = whiteW * 0.58
     const blackOffset = whiteW - blackW / 2
 
     let wIndex = 0
-    for (let p = MIDI_MIN; p <= MIDI_MAX; p++) {
+    for (let p = pMin; p <= pMax; p++) {
       if (isBlackKey(p)) continue
       this.keyPositions.set(p, { x: wIndex * whiteW, width: whiteW })
       wIndex++
     }
 
-    for (let p = MIDI_MIN; p <= MIDI_MAX; p++) {
+    for (let p = pMin; p <= pMax; p++) {
       if (!isBlackKey(p)) continue
       const left = this.keyPositions.get(p - 1)
       if (!left) continue

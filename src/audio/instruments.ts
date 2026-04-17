@@ -8,14 +8,15 @@ export type InstrumentId = 'piano' | 'rhodes' | 'pad' | 'pluck'
 export interface InstrumentInfo {
   id: InstrumentId
   name: string       // display name
+  description: string   // short character-of-voice hint
   sampled: boolean   // whether loading requires a network fetch
 }
 
 export const INSTRUMENTS: readonly InstrumentInfo[] = [
-  { id: 'piano',  name: 'Piano',  sampled: true  },
-  { id: 'rhodes', name: 'Rhodes', sampled: false },
-  { id: 'pad',    name: 'Pad',    sampled: false },
-  { id: 'pluck',  name: 'Pluck',  sampled: false },
+  { id: 'piano',  name: 'Piano',  description: 'Warm acoustic grand',    sampled: true  },
+  { id: 'rhodes', name: 'Rhodes', description: 'Mellow electric piano',  sampled: false },
+  { id: 'pad',    name: 'Pad',    description: 'Airy sustained pad',     sampled: false },
+  { id: 'pluck',  name: 'Pluck',  description: 'Bright percussive',      sampled: false },
 ]
 
 export interface InstrumentRuntime {

@@ -63,15 +63,16 @@ const STYLES: Record<ParticleStyle, StyleConfig> = {
     turbulence: 1.2, alphaScale: 1,
     fadeCurve: 'twinkle', hueJitter: 5, valueJitter: 0.08, blend: 'add',
   },
-  // Bloom: a few large, soft motes drifting upward. Dreamy, not dense —
-  // sparse counts + low alpha so additive blending never builds into a wall.
-  // Heavy turbulence lets each mote meander on its way up.
+  // Bloom: a few soft motes drifting upward, then gone. Tuned down from the
+  // original "dreamy" preset — old life range (2.4–4.0s) made bursts linger
+  // past their welcome; now each mote lives just long enough to register
+  // without polluting the roll with persistent glow.
   bloom: {
     count: 4, sustainCount: 1,
-    speedMin: 0.08, speedMax: 0.35, lifeMin: 2.4, lifeMax: 4.0,
-    sizeMin: 7, sizeMax: 16, gravity: -0.006, drag: 0.06,
+    speedMin: 0.12, speedMax: 0.45, lifeMin: 1.0, lifeMax: 1.7,
+    sizeMin: 6, sizeMax: 12, gravity: -0.008, drag: 0.08,
     upwardArc: 0.65, windStrength: 0.9, windFlutter: 0.2,
-    turbulence: 3.2, alphaScale: 0.45,
+    turbulence: 2.4, alphaScale: 0.32,
     fadeCurve: 'swell', hueJitter: 3, valueJitter: 0.05, blend: 'add',
   },
   // Sparkle: crisp, glinty, with real character — deep pulse, varied rate.
@@ -336,13 +337,14 @@ function alphaAt(curve: StyleConfig['fadeCurve'], u: number, phase: number, t: n
     return b * b
   }
   if (curve === 'swell') {
-    // Bloom: almost full alpha immediately (no "coming-in late" problem).
-    // Plateaus through the middle, then smoothsteps out over the last 45%.
-    if (u < 0.1) return 0.85 + u * 1.5         // 0.85 → 1.0 across the first 10%
-    if (u < 0.55) return 1.0                   // hold
-    const tail = (u - 0.55) / 0.45             // 0 → 1 over final 45%
+    // Bloom: rises quickly, brief plateau, then a long smooth fade. The
+    // tightened plateau (was u<0.55, now u<0.25) and earlier taper are what
+    // make the effect feel subtle instead of lingering.
+    if (u < 0.08) return 0.75 + u * 3.125       // 0.75 → 1.0 across first 8%
+    if (u < 0.25) return 1.0                    // brief hold
+    const tail = (u - 0.25) / 0.75              // 0 → 1 over final 75%
     const k = 1 - tail
-    return k * k * (3 - 2 * k)                 // smoothstep out
+    return k * k * (3 - 2 * k)                  // smoothstep out
   }
   if (curve === 'flash') {
     // Sparkle: deep pulse riding on an ease-out base. Each particle's own

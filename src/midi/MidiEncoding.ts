@@ -1,4 +1,5 @@
 import { Midi } from '@tonejs/midi'
+import type { MidiFile } from '../core/midi/types'
 
 // Shared note-event format used by both LoopEngine and SessionRecorder.
 // Time is in seconds from the start of the capture.
@@ -68,6 +69,29 @@ export function encodeCapturedEvents(
   track.name = trackName
   for (const n of notes) {
     track.addNote({ midi: n.pitch, time: n.time, duration: n.duration, velocity: n.velocity })
+  }
+  return midi.toArray()
+}
+
+// Re-encode an internal MidiFile (parsed or synthesised) back to .mid bytes.
+// Preserves every track and its note set so the DAW sees the same structure
+// the app was playing.
+export function midiFileToBytes(source: MidiFile): Uint8Array {
+  const midi = new Midi()
+  midi.header.setTempo(source.bpm)
+  midi.name = source.name
+  for (const t of source.tracks) {
+    const track = midi.addTrack()
+    track.name = t.name
+    track.channel = t.channel
+    for (const n of t.notes) {
+      track.addNote({
+        midi: n.pitch,
+        time: n.time,
+        duration: n.duration,
+        velocity: n.velocity,
+      })
+    }
   }
   return midi.toArray()
 }

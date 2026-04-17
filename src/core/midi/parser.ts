@@ -15,8 +15,8 @@ const TRACK_COLORS = [
   0x14b8a6, // teal
 ]
 
-export async function parseMidiFile(file: File): Promise<MidiFile> {
-  const buffer = await file.arrayBuffer()
+export async function parseMidiFile(source: File | ArrayBuffer, name?: string): Promise<MidiFile> {
+  const buffer = source instanceof ArrayBuffer ? source : await source.arrayBuffer()
   const midi = new Midi(buffer)
 
   const tracks: MidiTrack[] = midi.tracks
@@ -46,8 +46,9 @@ export async function parseMidiFile(file: File): Promise<MidiFile> {
   const num = rawTimeSig[0] ?? 4
   const den = rawTimeSig[1] ?? 4
 
+  const rawName = name ?? (source instanceof File ? source.name : 'Untitled')
   return {
-    name: file.name.replace(/\.mid[i]?$/i, ''),
+    name: rawName.replace(/\.mid[i]?$/i, ''),
     duration: midi.duration,
     bpm,
     timeSignature: [num, den] as [number, number],
