@@ -34,6 +34,7 @@ export class PianoRollRenderer {
 
   private midi: MidiFile | null = null
   private liveNoteStore: LiveNoteStore | null = null
+  private loopNoteStore: LiveNoteStore | null = null
   private visibleTrackIds = new Set<string>()
   private theme: Theme = darkTheme
   private pixelsPerSecond = DEFAULT_PIXELS_PER_SECOND
@@ -230,7 +231,8 @@ export class PianoRollRenderer {
 
   private onTick(clock: MasterClock, ticker: Ticker): void {
     if (this.exportMode) return
-    const hasLive = this.liveNoteStore?.hasRenderableNotes ?? false
+    const hasLive = (this.liveNoteStore?.hasRenderableNotes ?? false)
+      || (this.loopNoteStore?.hasRenderableNotes ?? false)
     if (!this.midi && !hasLive) return
     this.renderFrame(clock.currentTime, ticker.deltaMS / 1000, clock.playing)
   }
@@ -317,8 +319,10 @@ export class PianoRollRenderer {
     if (this.liveNoteStore) {
       const maxReleasedAge = this.viewport.nowLineY / this.viewport.config.pixelsPerSecond
       this.liveNoteStore.pruneInvisible(currentTime, maxReleasedAge)
+      this.loopNoteStore?.pruneInvisible(currentTime, maxReleasedAge)
 
       const held = this.liveNoteStore.heldNotes
+      const loopHeld = this.loopNoteStore?.heldNotes
       const liveColor = this.theme.trackColors[0] ?? this.theme.nowLine
       const nowLineY = this.viewport.nowLineY
 
@@ -339,12 +343,18 @@ export class PianoRollRenderer {
         }
       }
 
+      // Loop-held notes still light up the keyboard but don't emit particles —
+      // keeps the "me vs my loop" visual distinction clear.
+      if (loopHeld) {
+        for (const [pitch] of loopHeld) pitchNums.add(pitch)
+      }
+
       // Reap released notes.
       for (const pitch of this.liveEmitNext.keys()) {
         if (!held.has(pitch)) this.liveEmitNext.delete(pitch)
       }
 
-      this.liveNoteRenderer.draw(this.liveNoteStore, currentTime, this.viewport)
+      this.liveNoteRenderer.draw(this.liveNoteStore, this.loopNoteStore, currentTime, this.viewport)
     } else {
       this.liveNoteRenderer.clear()
       if (this.liveEmitNext.size > 0) this.liveEmitNext.clear()
@@ -363,6 +373,10 @@ export class PianoRollRenderer {
 
   setLiveNoteStore(store: LiveNoteStore): void {
     this.liveNoteStore = store
+  }
+
+  setLoopNoteStore(store: LiveNoteStore | null): void {
+    this.loopNoteStore = store
   }
 
   pauseAutoRender(): void {

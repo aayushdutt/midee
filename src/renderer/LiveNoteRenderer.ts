@@ -8,12 +8,15 @@ import type { Viewport } from './viewport'
 // once released, the captured trail keeps translating upward with time until it
 // leaves the roll.
 //
+// An optional secondary store renders ghost notes for loop playback — dimmer,
+// no glow, drawn behind live notes so the user can tell "me vs. my loop" at a
+// glance.
+//
 // Y-axis math (y increases downward in canvas space):
 //   held:     y = nowLineY - height
 //   released: y = nowLineY - height - releasedAge * pixelsPerSecond
-//
-// Live notes extend upward from the strike line so they visually agree with
-// imported notes arriving from above.
+
+const GHOST_ALPHA_SCALE = 0.45
 
 export class LiveNoteRenderer {
   readonly container: Container
@@ -50,16 +53,17 @@ export class LiveNoteRenderer {
   }
 
   draw(
-    store: LiveNoteStore,
+    primary: LiveNoteStore,
+    loop: LiveNoteStore | null,
     currentTime: number,
     viewport: Viewport,
   ): void {
     this.baseGraphics.clear()
     this.glowGraphics.clear()
 
-    const released = store.releasedNotes
-    const held = store.heldNotes
-    if (released.length === 0 && held.size === 0) {
+    const primaryEmpty = primary.releasedNotes.length === 0 && primary.heldNotes.size === 0
+    const loopEmpty = loop === null || (loop.releasedNotes.length === 0 && loop.heldNotes.size === 0)
+    if (primaryEmpty && loopEmpty) {
       this.glowContainer.visible = false
       return
     }
@@ -70,11 +74,17 @@ export class LiveNoteRenderer {
     const { pixelsPerSecond } = viewport.config
     const nowY = viewport.nowLineY
 
-    for (const note of released) this.drawOne(note, currentTime, pixelsPerSecond, nowY, viewport, color, false)
-    for (const note of held.values()) this.drawOne(note, currentTime, pixelsPerSecond, nowY, viewport, color, true)
+    // Ghosts draw first so live notes layer on top.
+    if (loop !== null) {
+      for (const note of loop.releasedNotes) this.drawOne(note, currentTime, pixelsPerSecond, nowY, viewport, color, false, GHOST_ALPHA_SCALE)
+      for (const note of loop.heldNotes.values()) this.drawOne(note, currentTime, pixelsPerSecond, nowY, viewport, color, false, GHOST_ALPHA_SCALE)
+    }
+
+    for (const note of primary.releasedNotes) this.drawOne(note, currentTime, pixelsPerSecond, nowY, viewport, color, false, 1)
+    for (const note of primary.heldNotes.values()) this.drawOne(note, currentTime, pixelsPerSecond, nowY, viewport, color, true, 1)
 
     this.glowFilter.color = color
-    this.glowContainer.visible = held.size > 0
+    this.glowContainer.visible = primary.heldNotes.size > 0
   }
 
   private drawOne(
@@ -84,7 +94,8 @@ export class LiveNoteRenderer {
     nowY: number,
     viewport: Viewport,
     color: number,
-    isHeld: boolean,
+    drawGlow: boolean,
+    alphaScale: number,
   ): void {
     const x = viewport.pitchToX(note.pitch)
     const w = Math.max(viewport.pitchWidth(note.pitch) - 1, 2)
@@ -95,12 +106,12 @@ export class LiveNoteRenderer {
     const y = nowY - height - releasedSec * pixelsPerSecond
     if (y + height <= 0) return
     const radius = Math.min(this.theme.noteRadius, height / 2, w / 2)
-    const alpha = 0.55 + note.velocity * 0.45
+    const alpha = (0.55 + note.velocity * 0.45) * alphaScale
 
     this.baseGraphics.roundRect(x, y, w, height, radius)
     this.baseGraphics.fill({ color, alpha: alpha * 0.75 })
 
-    if (isHeld) {
+    if (drawGlow) {
       this.glowGraphics.roundRect(x, y, w, height, radius)
       this.glowGraphics.fill({ color, alpha })
     }

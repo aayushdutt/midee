@@ -3,6 +3,7 @@ import { MasterClock } from './core/clock/MasterClock'
 import { PianoRollRenderer } from './renderer/PianoRollRenderer'
 import { PARTICLE_STYLES } from './renderer/ParticleSystem'
 import { SynthEngine, INSTRUMENTS } from './audio/SynthEngine'
+import { Metronome } from './audio/Metronome'
 import { appState } from './store/state'
 import { DropZone } from './ui/DropZone'
 import { Controls } from './ui/Controls'
@@ -10,10 +11,17 @@ import { TrackPanel } from './ui/TrackPanel'
 import { ExportModal, type ExportSettings, type ExportResolution } from './ui/ExportModal'
 import { KeyboardResizer } from './ui/KeyboardResizer'
 import { VideoExporter } from './export/VideoExporter'
+import { renderAudioOffline } from './audio/OfflineAudioRenderer'
 import { THEMES, type Theme } from './renderer/theme'
 import { MidiInputManager, type MidiNoteEvent } from './midi/MidiInputManager'
 import { ComputerKeyboardInput } from './midi/ComputerKeyboardInput'
 import { LiveNoteStore } from './midi/LiveNoteStore'
+import { LoopEngine } from './midi/LoopEngine'
+import { SessionRecorder } from './midi/SessionRecorder'
+import { encodeCapturedEvents, triggerMidiDownload } from './midi/MidiEncoding'
+import type { CapturedEvent } from './midi/MidiEncoding'
+import { sessionToMidiFile } from './midi/SessionToMidi'
+import { PostSessionModal, type SessionAction } from './ui/PostSessionModal'
 
 export class App {
   private clock         = new MasterClock()
@@ -22,6 +30,12 @@ export class App {
   private midiInput!:   MidiInputManager
   private keyboardInput!: ComputerKeyboardInput
   private liveNotes     = new LiveNoteStore()
+  private loopNotes     = new LiveNoteStore()
+  private loopEngine!:  LoopEngine
+  private metronome     = new Metronome()
+  private sessionRec!:  SessionRecorder
+  private postSessionModal!: PostSessionModal
+  private pendingSession: { events: CapturedEvent[]; duration: number } | null = null
   private activeMouseNote: number | null = null
   private dropzone!:    DropZone
   private controls!:    Controls
@@ -47,9 +61,45 @@ export class App {
     await this.renderer.init(canvas)
     this.renderer.attachClock(this.clock)
     this.renderer.setLiveNoteStore(this.liveNotes)
+    this.renderer.setLoopNoteStore(this.loopNotes)
 
     this.midiInput = new MidiInputManager(this.clock)
     this.keyboardInput = new ComputerKeyboardInput(this.clock)
+
+    this.loopEngine = new LoopEngine(
+      this.clock,
+      {
+        onPlaybackNoteOn: (pitch, velocity, ctxTime) => {
+          // Audio is sample-accurately scheduled via the AudioContext clock.
+          this.synth.scheduleNoteOn(pitch, velocity, ctxTime)
+          // Visuals and session capture fire at ~wall time by deferring the
+          // work until ctxTime arrives. setTimeout jitter (~1–4 ms) is
+          // imperceptible vs. audio, whereas drawing now (up to 150 ms early)
+          // would visibly desync the falling notes.
+          this.deferToCtxTime(ctxTime, () => {
+            this.loopNotes.press(pitch, velocity, this.clock.currentTime)
+            this.sessionRec.captureNoteOn(pitch, velocity, this.clock.currentTime)
+          })
+        },
+        onPlaybackNoteOff: (pitch, ctxTime) => {
+          this.synth.scheduleNoteOff(pitch, ctxTime)
+          this.deferToCtxTime(ctxTime, () => {
+            this.loopNotes.release(pitch, this.clock.currentTime)
+            this.sessionRec.captureNoteOff(pitch, this.clock.currentTime)
+          })
+        },
+      },
+      // Bar-snap when the metronome is running — rounds loop length to the
+      // nearest whole bar at current BPM (4/4). Off → freeform length.
+      (raw) => {
+        if (!this.metronome.running.value) return raw
+        const secPerBar = (60 / this.metronome.bpm.value) * 4
+        const bars = Math.max(1, Math.round(raw / secPerBar))
+        return bars * secPerBar
+      },
+    )
+
+    this.sessionRec = new SessionRecorder(this.clock)
 
     this.dropzone = new DropZone(
       overlay,
@@ -72,13 +122,60 @@ export class App {
       onHome:        () => this.enterHomeMode(),
       onInstrumentCycle: () => this.cycleInstrument(),
       onParticleCycle:   () => this.cycleParticleStyle(),
+      onLoopToggle:      () => this.loopEngine.toggle(),
+      onLoopClear:       () => this.loopEngine.clear(),
+      onLoopSave:        () => this.saveLoopAsMidi(),
+      onLoopUndo:        () => this.loopEngine.undo(),
+      onMetronomeToggle:     () => this.metronome.toggle(),
+      onMetronomeBpmChange:  (bpm) => {
+        this.metronome.setBpm(bpm)
+        saveMetronomeBpm(this.metronome.bpm.value)
+      },
+      onSessionToggle:       () => this.toggleSessionRecord(),
+      onHudPinChange:        (pinned) => saveHudPinned(pinned),
     })
+
+    this.controls.setHudPinned(loadHudPinned())
+
+    const pushLoop = (): void => this.controls.updateLoopState(
+      this.loopEngine.state.value,
+      this.loopEngine.layerCount.value,
+    )
+    this.loopEngine.state.subscribe(pushLoop)
+    this.loopEngine.layerCount.subscribe(pushLoop)
+    pushLoop()
+
+    this.metronome.setBpm(loadMetronomeBpm())
+    const pushMetronome = (): void => this.controls.updateMetronome(
+      this.metronome.running.value,
+      this.metronome.bpm.value,
+    )
+    this.metronome.running.subscribe(pushMetronome)
+    this.metronome.bpm.subscribe(pushMetronome)
+    this.metronome.beatCount.subscribe((count) => {
+      if (count === 0) return
+      const isDownbeat = ((count - 1) % 4) === 0
+      this.controls.pulseMetronomeBeat(isDownbeat)
+    })
+    pushMetronome()
+
+    const pushSession = (): void => this.controls.updateSessionRecording(
+      this.sessionRec.recording.value,
+      this.sessionRec.elapsed.value,
+    )
+    this.sessionRec.recording.subscribe(pushSession)
+    this.sessionRec.elapsed.subscribe(pushSession)
+    this.loopEngine.progress.subscribe((p) => this.controls.updateLoopProgress(p))
+    pushSession()
 
     this.trackPanel = new TrackPanel(overlay, this.renderer, () => this.openFilePicker())
 
     this.exportModal = new ExportModal(overlay)
     this.exportModal.onStart  = (settings) => void this.startExport(settings)
     this.exportModal.onCancel = () => this.cancelExport()
+
+    this.postSessionModal = new PostSessionModal(overlay)
+    this.postSessionModal.onAction = (action) => this.handleSessionAction(action)
 
     this.kbdResizer = new KeyboardResizer(
       overlay,
@@ -170,6 +267,8 @@ export class App {
     this.synth.liveNoteOn(evt.pitch, evt.velocity)
     this.liveNotes.press(evt.pitch, evt.velocity, evt.clockTime)
     this.renderer.burstParticleAt(evt.pitch)
+    this.loopEngine.captureNoteOn(evt.pitch, evt.velocity, evt.clockTime)
+    this.sessionRec.captureNoteOn(evt.pitch, evt.velocity, evt.clockTime)
 
     const s = appState.status.value
     if (s === 'idle' || s === 'ready' || s === 'paused') {
@@ -182,6 +281,8 @@ export class App {
     if (appState.mode.value !== 'live') return
     this.synth.liveNoteOff(evt.pitch)
     this.liveNotes.release(evt.pitch, evt.clockTime)
+    this.loopEngine.captureNoteOff(evt.pitch, evt.clockTime)
+    this.sessionRec.captureNoteOff(evt.pitch, evt.clockTime)
   }
 
   private onCanvasPointerDown = (e: PointerEvent): void => {
@@ -296,29 +397,55 @@ export class App {
     this.synth.pause()
     this.renderer.pauseAutoRender()
 
-    // If the user picked a fixed resolution, resize the renderer to exact
-    // target pixels. resolution=1 so backing store == output size (no DPR scale).
+    const needsVideo = settings.output !== 'audio-only'
+    const needsAudio = settings.output !== 'video-only'
+
+    // Only resize the canvas when we're actually rendering video.
     const originalCanvas = this.renderer.canvasSize
-    const target = resolveExportDims(settings.resolution)
+    const target = needsVideo ? resolveExportDims(settings.resolution) : null
     const resized = target !== null &&
       (target.width !== originalCanvas.width || target.height !== originalCanvas.height)
     if (resized) {
       this.renderer.resize(target.width, target.height, 1)
     }
 
+    const filename = settings.output === 'audio-only'
+      ? 'pianoroll.m4a'
+      : 'pianoroll.mp4'
+
     const exporter = new VideoExporter(this.renderer.canvas)
     this.currentExporter = exporter
 
     try {
+      let audioBuffer: AudioBuffer | undefined
+      if (needsAudio) {
+        this.exportModal.updateProgress('Rendering audio', 0)
+        try {
+          audioBuffer = await renderAudioOffline({
+            midi,
+            instrumentId: INSTRUMENTS[this.instrumentIndex]!.id,
+            volume:       appState.volume.value,
+          })
+        } catch (err) {
+          console.error('Offline audio render failed:', err)
+          // Audio-only has nothing to export without it — surface the error.
+          if (settings.output === 'audio-only') throw err
+          this.showError('Audio render failed — MP4 will be silent.')
+        }
+      }
+
       await exporter.export({
         fps:           settings.fps,
         duration:      midi.duration,
+        mode:          settings.output,
+        filename,
+        ...(audioBuffer ? { audio: audioBuffer } : {}),
         onSeek:        (t) => this.clock.seek(t),
         onRenderFrame: (t, dt) => this.renderer.renderManualFrame(t, dt),
         onProgress:    (stage, pct) => this.exportModal.updateProgress(stage, pct),
       })
       this.exportModal.close()
-      this.showSuccess('↓ pianoroll.mp4 ready')
+      this.showSuccess(`↓ ${filename} ready`)
     } catch (err) {
       const isCancel = err instanceof DOMException && err.name === 'AbortError'
       if (!isCancel) {
@@ -403,12 +530,118 @@ export class App {
     document.title = `${midi.name} · Piano Roll`
   }
 
+  // Schedules a UI side-effect to run at (roughly) the AudioContext time
+  // `ctxTime`. Used so the visual press of a loop-played note lands with the
+  // audio instead of up to 150 ms early when the scheduler runs ahead.
+  private deferToCtxTime(ctxTime: number, fn: () => void): void {
+    const ctxNow = this.synth.audioContextTime
+    const delayMs = Math.max(0, (ctxTime - ctxNow) * 1000)
+    if (delayMs < 2) { fn(); return }
+    setTimeout(fn, delayMs)
+  }
+
+  private toggleSessionRecord(): void {
+    if (!this.sessionRec.recording.value) {
+      this.primeInteractiveAudio()
+      this.sessionRec.start()
+      return
+    }
+    const { events, duration } = this.sessionRec.stop()
+    if (events.length === 0) {
+      this.showError('Nothing recorded — play a few notes while Record is on.')
+      return
+    }
+    // Hold the recording in memory and let the user pick next steps — saving
+    // a .mid, flipping into file mode to visualize + export MP4, or tossing it.
+    this.pendingSession = { events, duration }
+    const noteCount = events.reduce((n, e) => n + (e.type === 'on' ? 1 : 0), 0)
+    this.postSessionModal.open(duration, noteCount)
+  }
+
+  private handleSessionAction(action: SessionAction): void {
+    const pending = this.pendingSession
+    this.postSessionModal.close()
+    if (!pending) return
+
+    if (action === 'discard') {
+      this.pendingSession = null
+      return
+    }
+
+    if (action === 'download') {
+      const bytes = encodeCapturedEvents(pending.events, {
+        bpm:            this.metronomeBpm(),
+        closeOrphansAt: pending.duration,
+        midiName:       'Pianoroll session',
+        trackName:      'Live performance',
+      })
+      triggerMidiDownload(bytes, 'pianoroll-session.mid')
+      this.showSuccess(`↓ pianoroll-session.mid · ${Math.round(pending.duration)}s`)
+      this.pendingSession = null
+      return
+    }
+
+    if (action === 'open-in-file') {
+      const midi = sessionToMidiFile(
+        pending.events,
+        pending.duration,
+        this.metronomeBpm(),
+        `Live session · ${Math.round(pending.duration)}s`,
+      )
+      this.pendingSession = null
+      this.loadSessionAsFile(midi)
+      // The user picked "Open in file mode" — they're on the path to export.
+      // Auto-open the export modal after a beat so the next step is obvious;
+      // they can still cancel if they want to scrub around first.
+      setTimeout(() => {
+        if (appState.mode.value === 'file') this.exportModal.open()
+      }, 600)
+    }
+  }
+
+  // Drops the live-session MidiFile into the same file-mode pipeline used by
+  // imported .mid files — so it immediately plays back as a rolling piano roll
+  // with MP4/M4A export available.
+  private loadSessionAsFile(midi: import('./core/midi/types').MidiFile): void {
+    this.resetInteractionState()
+    appState.beginFileLoad()
+    this.renderer.clearMidi()
+    this.synth.load(midi).catch((err) => console.error('SynthEngine.load failed:', err))
+    appState.completeFileLoad(midi)
+    this.renderer.loadMidi(midi)
+    this.trackPanel.render(midi)
+    this.dropzone.hide()
+    this.keyboardInput.disable()
+    document.title = `${midi.name} · Piano Roll`
+  }
+
+  private saveLoopAsMidi(): void {
+    const snap = this.loopEngine.snapshot()
+    if (snap.events.length === 0) return
+    const bytes = encodeCapturedEvents(snap.events, {
+      bpm:            this.metronomeBpm(),
+      closeOrphansAt: snap.duration,
+      midiName:       'Pianoroll loop',
+      trackName:      'Loop',
+    })
+    triggerMidiDownload(bytes, 'pianoroll-loop.mid')
+    this.showSuccess('↓ pianoroll-loop.mid')
+  }
+
+  private metronomeBpm(): number {
+    return this.metronome.bpm.value
+  }
+
   private resetInteractionState(): void {
     this.clock.pause()
     this.clock.seek(0)
     this.synth.pause()
     this.synth.seek(0)
     this.liveNotes.reset()
+    this.loopNotes.reset()
+    this.loopEngine.clear()
+    this.sessionRec.cancel()
+    this.metronome.stop()
     this.synth.liveReleaseAll()
   }
 
@@ -479,6 +712,9 @@ export class App {
     this.kbdResizer.dispose()
     this.midiInput.dispose()
     this.keyboardInput.dispose()
+    this.loopEngine.dispose()
+    this.sessionRec.dispose()
+    this.metronome.dispose()
     this.clock.dispose()
     this.renderer.destroy()
     this.synth.dispose()
@@ -488,12 +724,16 @@ export class App {
 const THEME_STORAGE_KEY = 'pianoroll.themeIndex'
 const INSTRUMENT_STORAGE_KEY = 'pianoroll.instrumentIndex'
 const PARTICLE_STORAGE_KEY = 'pianoroll.particleIndex'
+const METRONOME_BPM_KEY = 'pianoroll.metronomeBpm'
+const HUD_PINNED_KEY = 'pianoroll.hudPinned'
 
 function loadThemeIndex(): number {
+  const defaultIdx = THEMES.findIndex(t => t.name === 'Sunset')
+  const fallback = defaultIdx >= 0 ? defaultIdx : 0
   const raw = localStorage.getItem(THEME_STORAGE_KEY)
-  if (raw === null) return 0
+  if (raw === null) return fallback
   const n = Number(raw)
-  return Number.isInteger(n) && n >= 0 && n < THEMES.length ? n : 0
+  return Number.isInteger(n) && n >= 0 && n < THEMES.length ? n : fallback
 }
 
 function saveThemeIndex(index: number): void {
@@ -524,13 +764,34 @@ function saveParticleIndex(index: number): void {
   localStorage.setItem(PARTICLE_STORAGE_KEY, String(index))
 }
 
+function loadMetronomeBpm(): number {
+  const raw = localStorage.getItem(METRONOME_BPM_KEY)
+  if (raw === null) return 120
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 40 && n <= 240 ? Math.round(n) : 120
+}
+
+function saveMetronomeBpm(bpm: number): void {
+  localStorage.setItem(METRONOME_BPM_KEY, String(bpm))
+}
+
+function loadHudPinned(): boolean {
+  return localStorage.getItem(HUD_PINNED_KEY) === 'true'
+}
+
+function saveHudPinned(pinned: boolean): void {
+  localStorage.setItem(HUD_PINNED_KEY, String(pinned))
+}
+
 // Resolves a user-facing resolution preset to concrete pixel dimensions.
 // Returns `null` when the preset means "keep whatever the canvas currently is"
 // so the caller can skip the resize entirely.
 function resolveExportDims(preset: ExportResolution): { width: number; height: number } | null {
   switch (preset) {
-    case '720p':  return { width: 1280, height: 720 }
-    case '1080p': return { width: 1920, height: 1080 }
-    case 'match': return null
+    case '720p':     return { width: 1280, height: 720 }
+    case '1080p':    return { width: 1920, height: 1080 }
+    case 'vertical': return { width: 1080, height: 1920 }
+    case 'square':   return { width: 1080, height: 1080 }
+    case 'match':    return null
   }
 }
