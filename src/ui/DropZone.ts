@@ -1,6 +1,8 @@
 import type { MidiDeviceStatus } from '../midi/MidiInputManager'
+import { SamplesGrid } from './SamplesGrid'
 
 type DropHandler = (file: File) => void
+type SampleHandler = (sampleId: string) => void
 
 function isMidiFile(name: string): boolean {
   const lower = name.toLowerCase()
@@ -32,11 +34,16 @@ export class DropZone {
     if (file && isMidiFile(file.name)) this.onDrop(file)
   }
 
+  private samples: SamplesGrid
+
   constructor(
     container: HTMLElement,
     private onDrop: DropHandler,
     private onLiveMode?: () => void,
+    private onSample?: SampleHandler,
   ) {
+    this.samples = new SamplesGrid()
+    this.samples.onSelect = (id) => this.onSample?.(id)
     this.el = this.build()
     container.appendChild(this.el)
     this.bindEvents()
@@ -62,6 +69,11 @@ export class DropZone {
           </button>
         </div>
 
+        <div class="home-samples">
+          <div class="home-samples-label">or explore a sample</div>
+          <div class="home-samples-mount" id="home-samples-mount"></div>
+        </div>
+
         <div class="home-footnotes">
           <div class="home-midi-status" id="home-midi-status">Looking for MIDI…</div>
           <div class="home-drop-hint">Drop <code>.mid</code> anywhere · play with <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>…</div>
@@ -71,6 +83,7 @@ export class DropZone {
     `
     this.input = el.querySelector<HTMLInputElement>('#midi-input')!
     this.statusEl = el.querySelector<HTMLElement>('#home-midi-status')!
+    el.querySelector<HTMLElement>('#home-samples-mount')!.appendChild(this.samples.root)
     return el
   }
 

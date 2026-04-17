@@ -15,9 +15,10 @@ export class KeyboardRenderer {
   private activeLayer: Graphics
   private keyboardTexture: RenderTexture | null = null
 
-  // Snapshot of the last-drawn pitch set. If nothing changed we skip the
-  // clear + redraw entirely (common during sustained chords and idle frames).
-  private lastActivePitches: number[] = []
+  // Snapshot of the last-drawn pitch→color map as a single signature string.
+  // If nothing changed we skip the clear + redraw entirely (common during
+  // sustained chords and idle frames).
+  private lastSignature = ''
   private activeLayerDirty = true
 
   constructor(
@@ -92,26 +93,25 @@ export class KeyboardRenderer {
     this.activeLayer.y = yOffset
   }
 
-  // Called every frame — draws only the keys that are currently pressed.
-  // Style: the key itself lights up inside its exact border (no top band,
-  // no rectangular overlay) and emits a soft glow around it. Three stacked
-  // halo layers of decreasing alpha fake a bloom without a shader filter.
-  drawActiveKeys(activePitches: Set<number>, viewport: Viewport): void {
-    if (!this.activeLayerDirty && this.matchesLast(activePitches)) return
-
+  // Called every frame — draws only the keys that are currently pressed, each
+  // tinted with the color of the track/source it came from.
+  drawActiveKeys(activeByPitch: Map<number, number>, viewport: Viewport): void {
+    const sig = this.signatureFor(activeByPitch)
+    if (!this.activeLayerDirty && sig === this.lastSignature) return
     this.activeLayerDirty = false
-    this.snapshotActive(activePitches)
+    this.lastSignature = sig
     this.activeLayer.clear()
 
     const { keyboardHeight } = viewport.config
     const positions = viewport.getAllKeyPositions()
-    const accent = this.theme.trackColors[0] ?? this.theme.nowLine
+    const fallback = this.theme.trackColors[0] ?? this.theme.nowLine
 
     // Halos drawn first (so the solid body sits on top).
     const halos: readonly [number, number][] = [[10, 0.05], [6, 0.10], [3, 0.18]]
-    for (const pitch of activePitches) {
+    for (const [pitch, color] of activeByPitch) {
       const pos = positions.get(pitch)
       if (!pos) continue
+      const tint = color || fallback
       const isBlack = isBlackKey(pitch)
       const h = isBlack ? keyboardHeight * 0.62 : keyboardHeight - 4
       const margin = isBlack ? 0 : 1
@@ -122,12 +122,12 @@ export class KeyboardRenderer {
 
       for (const [expand, alpha] of halos) {
         this.activeLayer.roundRect(x - expand, y - expand, w + expand * 2, h + expand * 2, radius + expand)
-        this.activeLayer.fill({ color: accent, alpha })
+        this.activeLayer.fill({ color: tint, alpha })
       }
 
       // Body — exact static-key shape so the active state lives inside the key's border.
       this.activeLayer.roundRect(x, y, w, h, radius)
-      this.activeLayer.fill({ color: accent, alpha: isBlack ? 0.92 : 0.78 })
+      this.activeLayer.fill({ color: tint, alpha: isBlack ? 0.92 : 0.78 })
     }
   }
 
@@ -137,16 +137,14 @@ export class KeyboardRenderer {
     this.activeLayerDirty = true
   }
 
-  private matchesLast(activePitches: Set<number>): boolean {
-    if (activePitches.size !== this.lastActivePitches.length) return false
-    for (const pitch of this.lastActivePitches) {
-      if (!activePitches.has(pitch)) return false
-    }
-    return true
-  }
-
-  private snapshotActive(activePitches: Set<number>): void {
-    this.lastActivePitches.length = 0
-    for (const pitch of activePitches) this.lastActivePitches.push(pitch)
+  // Cheap change-detection: concatenate sorted pitch:color pairs. The map is
+  // small (≤ ~10 active pitches at once) so this is essentially free and
+  // catches both pitch-change and color-change in one check.
+  private signatureFor(activeByPitch: Map<number, number>): string {
+    if (activeByPitch.size === 0) return ''
+    const parts: string[] = []
+    for (const [pitch, color] of activeByPitch) parts.push(`${pitch}:${color}`)
+    parts.sort()
+    return parts.join(',')
   }
 }

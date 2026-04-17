@@ -80,6 +80,11 @@ export class PostSessionModal {
     this.el.addEventListener('click', (e) => {
       if (e.target === this.el && this.phase === 'open') this.onAction?.('discard')
     })
+
+    // Escape → discard (same as clicking backdrop).
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.phase === 'open') this.onAction?.('discard')
+    })
   }
 }
 

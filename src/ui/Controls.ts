@@ -58,6 +58,10 @@ export class Controls {
   private hudDragHandle!: HTMLButtonElement
   private hudPinBtn!: HTMLButtonElement
   private hudPinned = false
+  // Mirrors "something important is happening" — session recording, loop
+  // recording/playing, metronome running. While true we suppress auto-hide
+  // so the user doesn't lose sight of transport controls mid-take.
+  private hudActivityLock = false
   private themeBtn!: HTMLButtonElement
   private themeLabelEl!: HTMLElement
   private particleBtn!: HTMLButtonElement
@@ -140,6 +144,7 @@ export class Controls {
         <button class="ts-pill ts-pill--file" id="ts-tracks" type="button" aria-label="Tracks">
           ${ICON_TRACKS}<span>Tracks</span>
         </button>
+        <span id="ts-instrument-slot"></span>
         <div class="ts-sep" aria-hidden="true"></div>
         <button class="ts-pill ts-pill--midi" id="ts-midi" type="button"
                 aria-label="MIDI device" title="MIDI device">
@@ -216,14 +221,6 @@ export class Controls {
             min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="10" value="${ZOOM_DEFAULT}" aria-label="Zoom" />
         </div>
 
-        <div class="hud-divider hud-group--instrument"></div>
-
-        <button class="hud-instr-btn hud-group--instrument" id="hud-instr"
-                type="button" title="Cycle instrument" aria-label="Cycle instrument">
-          <span class="hud-instr-icon">${ICON_INSTRUMENT}</span>
-          <span class="hud-instr-label" id="hud-instr-label">Piano</span>
-        </button>
-
         <div class="hud-divider hud-group--live"></div>
 
         <div class="hud-metro hud-group--live" id="hud-metro-group" title="Scroll on BPM to adjust">
@@ -275,10 +272,11 @@ export class Controls {
     el.innerHTML = `
       <div class="kh-body">
         <div class="kh-row">
-          <span class="kh-section">Keys</span>
+          <span class="kh-section">Play</span>
           <span class="kh-map">
-            <kbd>A</kbd><kbd>W</kbd><kbd>S</kbd><kbd>E</kbd><kbd>D</kbd>
+            <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd>
             <span class="kh-dots">· · ·</span>
+            <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd>
           </span>
           <span class="kh-section kh-section--muted">or plug in MIDI</span>
         </div>
@@ -287,6 +285,16 @@ export class Controls {
           <span class="kh-map">
             <kbd>↓</kbd><kbd>↑</kbd>
             <span class="kh-current" id="kh-octave">C4</span>
+          </span>
+        </div>
+        <div class="kh-row kh-row--shortcuts">
+          <span class="kh-section">Live</span>
+          <span class="kh-map kh-map--wrap">
+            <span class="kh-combo"><kbd>Tab</kbd> record</span>
+            <span class="kh-combo"><kbd>⇧L</kbd> loop</span>
+            <span class="kh-combo"><kbd>⇧U</kbd> undo</span>
+            <span class="kh-combo"><kbd>⇧C</kbd> clear</span>
+            <span class="kh-combo"><kbd>\`</kbd> click</span>
           </span>
         </div>
       </div>
@@ -400,8 +408,6 @@ export class Controls {
     this.themeBtn.addEventListener('click', () => this.opts.onThemeCycle?.())
     this.particleBtn.addEventListener('click', () => this.opts.onParticleCycle?.())
     this.recordBtn.addEventListener('click', () => this.opts.onRecord?.())
-    this.hud.querySelector<HTMLButtonElement>('#hud-instr')!
-      .addEventListener('click', () => this.opts.onInstrumentCycle?.())
     this.homeBtn.addEventListener('click', () => this.opts.onHome?.())
     this.openBtn.addEventListener('click', () => this.opts.onOpenFile?.())
     this.tracksBtn.addEventListener('click', () => this.opts.onOpenTracks?.())
@@ -461,15 +467,31 @@ export class Controls {
       return
     }
 
-    // Live-mode action hotkeys — all gated on Shift so they don't collide with
-    // the FL-style typing-keyboard note map.
-    if (mode === 'live' && e.shiftKey) {
-      switch (e.code) {
-        case 'KeyR': e.preventDefault(); this.opts.onSessionToggle?.(); break
-        case 'KeyL': e.preventDefault(); this.opts.onLoopToggle?.(); break
-        case 'KeyU': e.preventDefault(); this.opts.onLoopUndo?.(); break
-        case 'KeyC': e.preventDefault(); this.opts.onLoopClear?.(); break
-        case 'KeyM': e.preventDefault(); this.opts.onMetronomeToggle?.(); break
+    if (mode === 'live') {
+      // Single-key alternates for the two most-used actions while playing —
+      // both keys sit outside the FL note map and are reachable by the left
+      // hand without lifting off the note keys.
+      if (e.code === 'Tab') {
+        e.preventDefault()
+        this.opts.onSessionToggle?.()
+        return
+      }
+      if (e.code === 'Backquote') {
+        e.preventDefault()
+        this.opts.onMetronomeToggle?.()
+        return
+      }
+
+      // Shift-letter hotkeys for the rest — gated on Shift so they can't
+      // collide with the FL note map.
+      if (e.shiftKey) {
+        switch (e.code) {
+          case 'KeyR': e.preventDefault(); this.opts.onSessionToggle?.(); break
+          case 'KeyL': e.preventDefault(); this.opts.onLoopToggle?.(); break
+          case 'KeyU': e.preventDefault(); this.opts.onLoopUndo?.(); break
+          case 'KeyC': e.preventDefault(); this.opts.onLoopClear?.(); break
+          case 'KeyM': e.preventDefault(); this.opts.onMetronomeToggle?.(); break
+        }
       }
     }
   }
@@ -535,9 +557,14 @@ export class Controls {
     this.octaveEl.textContent = `C${octave}`
   }
 
-  updateInstrument(name: string): void {
-    const el = this.hud.querySelector<HTMLElement>('#hud-instr-label')
-    if (el) el.textContent = name
+  // Legacy shim — the instrument label now lives in the topbar dropdown, and
+  // app.ts drives it directly through the InstrumentMenu instance. Kept so
+  // older call sites don't break; no-op until fully migrated off.
+  updateInstrument(_name: string): void {}
+
+  get tracksButton(): HTMLElement { return this.tracksBtn }
+  get instrumentSlot(): HTMLElement {
+    return this.topStrip.querySelector<HTMLElement>('#ts-instrument-slot')!
   }
 
   updateParticleStyle(name: string): void {
@@ -577,6 +604,16 @@ export class Controls {
     this.hudPinBtn.classList.toggle('hud-pin-btn--on', pinned)
     this.hudPinBtn.setAttribute('aria-pressed', String(pinned))
     if (pinned) this.clearIdle()
+    else this.scheduleIdle()
+  }
+
+  // Called by app.ts whenever a long-running state changes (recording, loop,
+  // metronome). Same effect as pinning, but silent — the user didn't click,
+  // the app decided.
+  setHudActivityLock(locked: boolean): void {
+    if (this.hudActivityLock === locked) return
+    this.hudActivityLock = locked
+    if (locked) this.clearIdle()
     else this.scheduleIdle()
   }
 
@@ -706,7 +743,7 @@ export class Controls {
 
   private scheduleIdle(): void {
     this.clearIdle()
-    if (this.hudPinned) return
+    if (this.hudPinned || this.hudActivityLock) return
     const mode = this.opts.state.mode.value
     const status = this.opts.state.status.value
     const isPlaying = mode === 'file' && status === 'playing'
