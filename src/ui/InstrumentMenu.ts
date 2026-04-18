@@ -1,4 +1,5 @@
 import { INSTRUMENTS, type InstrumentId } from '../audio/SynthEngine'
+import { isNarrowViewport } from './utils'
 
 // Topbar instrument picker — a pill trigger + dropdown menu. Available in
 // both live and file modes so users can hear any loaded MIDI played back with
@@ -22,7 +23,16 @@ export class InstrumentMenu {
   private onKey = (e: KeyboardEvent): void => {
     if (e.key === 'Escape' && this.isOpen) this.close()
   }
-  private onResize = (): void => { if (this.isOpen) this.positionUnder() }
+  private onResize = (): void => {
+    if (!this.isOpen) return
+    // In sheet mode the layout is CSS-driven and the breakpoint might have
+    // flipped — just close to keep things consistent instead of re-anchoring.
+    if (this.menu.classList.contains('popover--sheet') || isNarrowViewport()) {
+      this.close()
+      return
+    }
+    this.positionUnder()
+  }
 
   constructor(triggerHost: HTMLElement, popoverHost: HTMLElement) {
     this.trigger = document.createElement('button')
@@ -103,7 +113,18 @@ export class InstrumentMenu {
     this.isOpen = true
     this.trigger.classList.add('ts-pill--open')
     this.menu.classList.add('ts-popover--open')
-    this.positionUnder()
+    // Bottom-sheet mode on narrow viewports: CSS handles full-width fixed
+    // positioning, so we skip JS anchoring entirely. Inline positioning from a
+    // previous desktop open is cleared so the CSS rules take effect.
+    if (isNarrowViewport()) {
+      this.menu.classList.add('popover--sheet')
+      this.menu.style.top = ''
+      this.menu.style.right = ''
+      this.menu.style.left = ''
+    } else {
+      this.menu.classList.remove('popover--sheet')
+      this.positionUnder()
+    }
     setTimeout(() => {
       document.addEventListener('pointerdown', this.onDocPointer)
       document.addEventListener('keydown', this.onKey)
@@ -116,6 +137,7 @@ export class InstrumentMenu {
     this.isOpen = false
     this.trigger.classList.remove('ts-pill--open')
     this.menu.classList.remove('ts-popover--open')
+    this.menu.classList.remove('popover--sheet')
     document.removeEventListener('pointerdown', this.onDocPointer)
     document.removeEventListener('keydown', this.onKey)
     window.removeEventListener('resize', this.onResize)

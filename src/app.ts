@@ -23,6 +23,7 @@ import type { CapturedEvent } from './midi/MidiEncoding'
 import { sessionToMidiFile } from './midi/SessionToMidi'
 import { PostSessionModal, type SessionAction } from './ui/PostSessionModal'
 import { InstrumentMenu } from './ui/InstrumentMenu'
+import { installViewportClassSync } from './ui/utils'
 import { getSample, fetchSampleMidi } from './core/samples'
 
 export class App {
@@ -60,6 +61,10 @@ export class App {
   async init(): Promise<void> {
     const canvas  = document.querySelector<HTMLCanvasElement>('#pianoroll')!
     const overlay = document.querySelector<HTMLElement>('#ui-overlay')!
+
+    // Flip `body.is-touch` / `body.is-narrow` so CSS can adapt (bottom-sheet
+    // popovers, touch-friendly hit targets, etc.).
+    installViewportClassSync()
 
     await this.renderer.init(canvas)
     this.renderer.attachClock(this.clock)

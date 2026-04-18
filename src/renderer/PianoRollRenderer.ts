@@ -16,7 +16,42 @@ import type { LiveNoteStore } from '../midi/LiveNoteStore'
 // load (before any saved preference or user drag has synced the CSS var).
 const DEFAULT_KEYBOARD_HEIGHT = 120
 export const KEYBOARD_HEIGHT_MIN = 80
-export const KEYBOARD_HEIGHT_MAX = 220
+// Raised from 220 so portrait phones can host a substantial keyboard —
+// a 220px cap on an 844px-tall iPhone only gives 26% of the screen to the
+// keys. Desktop users rarely drag above ~200px, so this is purely headroom.
+export const KEYBOARD_HEIGHT_MAX = 360
+
+// Fresh-load keyboard size, viewport-aware. Portrait phones get ~20% of
+// viewport so keys feel playable without dominating; landscape phones get
+// a proportionally *smaller* keyboard (~24% capped at 110px) because the
+// viewport is short and the HUD + top-strip + falling-notes area all
+// compete for the same vertical space. Desktop keeps the 120px default.
+function computeInitialKeyboardHeight(): number {
+  if (typeof window === 'undefined' || !window.matchMedia) return DEFAULT_KEYBOARD_HEIGHT
+  const isCoarse = window.matchMedia('(pointer: coarse)').matches
+  if (!isCoarse) return DEFAULT_KEYBOARD_HEIGHT
+  const vh = window.innerHeight || 800
+  const isPortrait = window.matchMedia('(orientation: portrait)').matches
+  if (isPortrait) {
+    return Math.min(KEYBOARD_HEIGHT_MAX, Math.max(140, Math.round(vh * 0.20)))
+  }
+  // Landscape mobile: short viewport (~390px on iPhone). Keep the keyboard
+  // small so the HUD + roll area still have room.
+  return Math.min(120, Math.max(88, Math.round(vh * 0.24)))
+}
+
+// Same formula as KeyboardResizer.viewportBounds — duplicated here so the
+// renderer can re-clamp on rotation without reaching into UI-layer code.
+// Max is 45% of viewport height: on a 390px landscape phone that gives a
+// 176px cap, rescuing rotation from portrait where the keyboard would
+// otherwise dominate over half the screen.
+function viewportKeyboardBounds(): { min: number; max: number } {
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 900
+  const min = Math.max(KEYBOARD_HEIGHT_MIN, Math.round(vh * 0.18))
+  const max = Math.min(KEYBOARD_HEIGHT_MAX, Math.round(vh * 0.45))
+  if (min >= max) return { min: KEYBOARD_HEIGHT_MIN, max: KEYBOARD_HEIGHT_MAX }
+  return { min, max }
+}
 const DEFAULT_PIXELS_PER_SECOND = 200
 
 // Sustained emission cadence for held notes. Initial burst fires on note-on
@@ -73,6 +108,11 @@ export class PianoRollRenderer {
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
     })
+
+    // Pick a viewport-appropriate initial keyboard height before building the
+    // scene — otherwise the first paint uses the desktop 120px default even
+    // on portrait phones, and a later resize would cause a flash.
+    this.keyboardHeight = computeInitialKeyboardHeight()
 
     this.viewport = new Viewport({
       canvasWidth: this.app.screen.width,
@@ -468,6 +508,11 @@ export class PianoRollRenderer {
     // until it restores it in its own finally block.
     if (this.exportMode) return
     this.resize(window.innerWidth, window.innerHeight)
+    // Re-clamp keyboard height so a portrait-sized keyboard doesn't
+    // dominate after rotation into landscape.
+    const { min, max } = viewportKeyboardBounds()
+    const clamped = Math.min(max, Math.max(min, this.keyboardHeight))
+    if (clamped !== this.keyboardHeight) this.setKeyboardHeight(clamped)
   }
 
   destroy(): void {

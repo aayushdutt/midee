@@ -1,6 +1,6 @@
 import type { MidiFile } from '../core/midi/types'
 import type { PianoRollRenderer } from '../renderer/PianoRollRenderer'
-import { escHtml, hexToCSS } from './utils'
+import { escHtml, hexToCSS, isNarrowViewport } from './utils'
 
 // Popover dropdown anchored under the Tracks button in the top strip.
 // Each track has a mute toggle; a "Load new file" footer reopens the Open MIDI
@@ -21,7 +21,16 @@ export class TrackPanel {
   private onKey = (e: KeyboardEvent): void => {
     if (e.key === 'Escape' && this.isOpen) this.close()
   }
-  private onResize = (): void => { if (this.isOpen) this.positionUnder() }
+  private onResize = (): void => {
+    if (!this.isOpen) return
+    // Sheet mode is CSS-driven; if the breakpoint flipped while open, just
+    // close to avoid a half-styled popover.
+    if (this.panel.classList.contains('popover--sheet') || isNarrowViewport()) {
+      this.close()
+      return
+    }
+    this.positionUnder()
+  }
 
   constructor(
     container: HTMLElement,
@@ -86,7 +95,17 @@ export class TrackPanel {
     if (this.isOpen) return
     this.isOpen = true
     this.panel.classList.add('ts-popover--open')
-    this.positionUnder()
+    // Narrow viewports get a bottom-sheet layout from CSS — skip JS anchoring
+    // and clear any inline positioning left over from a previous desktop open.
+    if (isNarrowViewport()) {
+      this.panel.classList.add('popover--sheet')
+      this.panel.style.top = ''
+      this.panel.style.right = ''
+      this.panel.style.left = ''
+    } else {
+      this.panel.classList.remove('popover--sheet')
+      this.positionUnder()
+    }
     // Defer listener attach to the next tick so the click that opened us
     // doesn't immediately bubble and close it.
     setTimeout(() => {
@@ -100,6 +119,7 @@ export class TrackPanel {
     if (!this.isOpen) return
     this.isOpen = false
     this.panel.classList.remove('ts-popover--open')
+    this.panel.classList.remove('popover--sheet')
     document.removeEventListener('pointerdown', this.onDocPointer)
     document.removeEventListener('keydown', this.onKey)
     window.removeEventListener('resize', this.onResize)
