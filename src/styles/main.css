@@ -55,18 +55,25 @@ html, body {
   user-select: none;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Stop iOS rubber-band + Android pull-to-refresh bleeding into the app */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 #app {
   position: relative;
   width: 100vw;
-  height: 100vh;
+  height: 100svh;
+  min-height: 100vh;
 }
 
 #pianoroll {
   display: block;
   width: 100%;
   height: 100%;
+  /* The pixi canvas handles its own gestures — disable browser-native
+     panning/zooming so touch events reach the renderer cleanly. */
+  touch-action: none;
 }
 
 #ui-overlay {
@@ -612,9 +619,11 @@ html, body {
 
 #top-strip {
   position: absolute;
-  top: 14px;
-  left: 14px;
-  right: 14px;
+  /* Push the strip below the iOS notch / Dynamic Island and clear any
+     landscape-notch cutouts on the sides. */
+  top: calc(14px + env(safe-area-inset-top));
+  left: calc(14px + env(safe-area-inset-left));
+  right: calc(14px + env(safe-area-inset-right));
   height: 54px;
   display: grid;
   grid-template-columns: auto auto 1fr auto;
@@ -1068,7 +1077,8 @@ html, body {
 
 #hud {
   position: absolute;
-  bottom: calc(var(--keyboard-h) + var(--hud-gap));
+  /* Float above the keyboard AND the iOS home-indicator safe area. */
+  bottom: calc(var(--keyboard-h) + var(--hud-gap) + env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(calc(-50% + var(--hud-dx, 0px))) translateY(var(--hud-dy, 0px));
   /* Width follows content — avoids a half-empty bar in live mode where
@@ -1668,8 +1678,8 @@ html, body {
 
 #key-hint {
   position: absolute;
-  bottom: calc(var(--keyboard-h) + var(--hud-gap));
-  left: 20px;
+  bottom: calc(var(--keyboard-h) + var(--hud-gap) + env(safe-area-inset-bottom));
+  left: calc(20px + env(safe-area-inset-left));
   z-index: 14;
   pointer-events: none;
   opacity: 0;
@@ -1811,9 +1821,9 @@ html, body {
 
 #kbd-resizer {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: var(--keyboard-h);
+  left: calc(env(safe-area-inset-left));
+  right: calc(env(safe-area-inset-right));
+  bottom: calc(var(--keyboard-h) + env(safe-area-inset-bottom));
   height: 10px;
   transform: translateY(50%);
   z-index: 12;
@@ -1824,6 +1834,14 @@ html, body {
   justify-content: center;
   touch-action: none;
 }
+
+/* Touch devices: hide the resizer seam — dragging a 10px slice on a
+   finger device is fiddly and bumps into the keyboard hit targets. */
+@media (pointer: coarse) {
+  #kbd-resizer { display: none; }
+}
+
+body.is-touch #kbd-resizer { display: none; }
 
 #kbd-resizer::before {
   content: '';
@@ -2852,5 +2870,276 @@ html, body {
   .modal-btn,
   .fps-btn {
     transition-duration: 0.01ms !important;
+  }
+}
+
+
+/* ─────────────────────────────────────────
+   MOBILE / TOUCH (quick-wins)
+   — coarse pointers and narrow viewports.
+   The JS side adds `body.is-touch` on coarse-pointer matches,
+   `.popover--sheet` on narrow-screen popovers, and
+   `.dropzone--touch` on the root dropzone when touch is the
+   primary input.
+───────────────────────────────────────── */
+
+/* Under 640px: collapse secondary topbar widgets. The primary row must
+   still fit a 375px wide iPhone SE, so we keep only home, mode switch,
+   open-file, instrument slot, tracks, and export. Metronome/BPM/speed
+   live in the HUD and will be replaced by a popover sheet later; for
+   now we just let the HUD wrap (already handled above). */
+@media (max-width: 640px) {
+  /* Tighten the topbar shell and let it sit snugly under the notch. */
+  #top-strip {
+    top: calc(8px + env(safe-area-inset-top));
+    left: calc(8px + env(safe-area-inset-left));
+    right: calc(8px + env(safe-area-inset-right));
+    height: 48px;
+    gap: 6px;
+    padding: 0 4px 0 6px;
+  }
+
+  /* Hide the mode-switch *labels* but keep the segmented icons. */
+  .ts-mode-seg .ts-mode-label { display: none; }
+  .ts-mode-seg { padding: 0 8px; min-width: 32px; }
+
+  /* MIDI + theme + particle are secondary on mobile — hide until
+     the overflow-menu popover ships. Keep the instrument slot (it's a
+     popover trigger already) and tracks (file-mode essential). */
+  #top-strip .ts-pill--midi,
+  #top-strip .ts-theme-btn,
+  #top-strip .ts-particle-btn,
+  #top-strip .ts-sep { display: none; }
+
+  /* Status area already collapses at 680px. Free the row. */
+  .ts-status { display: none; }
+
+  /* HUD: scale down so it still fits. The .hud-bar wrap rule above
+     keeps transport + scrubber readable. */
+  #hud {
+    max-width: calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  }
+  .hud-bar { padding: 0 10px; gap: 6px; }
+}
+
+/* ─── Mobile portrait: the desktop HUD shadow is a 24px-offset 75%-opacity
+   drop that extends strongly *onto the keys* on a phone. Keep the HUD's
+   size + shape identical to desktop, widen the gap enough that no visual
+   element (shadow, blur) reaches the keyboard, and use a symmetric
+   shadow (no downward offset) so the HUD's visual footprint is exactly
+   its own bounding box. Result: zero overlap with the piano area. */
+@media (max-width: 640px) and (orientation: portrait) {
+  /* Sit the HUD well above the keyboard — fixed offset from the bottom
+     avoids any viewport/canvas-math drift that was letting the HUD land
+     on the keys. ~38% of the viewport height keeps it roughly mid-way
+     up the roll area regardless of keyboard size. */
+  #hud {
+    bottom: calc(38svh + env(safe-area-inset-bottom));
+  }
+  .hud-bar {
+    /* Opaque so falling notes behind don't make it read as transparent. */
+    background: #07070f;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow:
+      0 0 18px rgba(0, 0, 0, 0.55),
+      0 0 6px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  }
+}
+
+/* ─── Mobile landscape / short viewport: vertical space is genuinely
+   scarce here, so modest compaction earns its keep. The bar shrinks a
+   little, shadow softens, radius drops a notch — still recognizably the
+   same control design, just sized for the available room. The keyboard
+   re-clamps automatically via the renderer's rotation handler. */
+@media (max-width: 900px) and (orientation: landscape),
+       (max-height: 500px) {
+  :root {
+    /* Generous gap so the HUD has real daylight above the keys — the
+       short landscape viewport makes even a small overlap read as
+       the-HUD-is-on-the-piano. */
+    --hud-gap: 20px;
+  }
+  .hud-bar {
+    height: 48px;
+    padding: 0 12px;
+    border-radius: 18px;
+    /* Same rationale as portrait: opaque + no backdrop blur so the HUD
+       never looks transparent over the falling notes. */
+    background: #07070f;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow:
+      0 0 16px rgba(0, 0, 0, 0.55),
+      0 0 6px rgba(0, 0, 0, 0.38),
+      inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  }
+}
+
+/* 380px and below: iPhone SE / small Androids. Drop anything left
+   that's not play/pause + file open + instrument + export. */
+@media (max-width: 380px) {
+  /* Tracks hides — users can still open via the instrument popover or
+     by loading a file. */
+  #top-strip .ts-pill--file { display: none; }
+  /* Make the open-midi pill icon-only (its label is already hidden by
+     the 900px tier). Nothing to change here. */
+  #top-strip { gap: 4px; }
+}
+
+/* ─── Hit-target pass (coarse pointers) ──────────────────────────── */
+@media (pointer: coarse) {
+  /* Bump all buttons to a 44px minimum. Done via min-width/min-height
+     so existing flex sizing still applies; padding stays as-is. */
+  button,
+  .ts-pill,
+  .ts-mode-seg,
+  .ts-home,
+  .ts-theme-btn,
+  .ts-record-btn,
+  .btn-skip,
+  .hud-instr-btn,
+  .hud-session-btn,
+  .hud-loop-btn,
+  .hud-metro-toggle,
+  .hud-metro-step,
+  .home-primary-btn,
+  .home-secondary-btn,
+  .panel-close-btn,
+  .panel-load-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Play button is a circular primary action — grow it proportionally. */
+  .btn-play {
+    width: 48px;
+    height: 48px;
+  }
+
+  /* Range inputs — widen the track and thumb for reliable drags. */
+  .scrubber { height: 6px; }
+  .scrubber::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+  }
+  .scrubber:hover { height: 6px; }
+
+  .mini-slider { height: 6px; }
+  .mini-slider::-webkit-slider-thumb {
+    width: 20px;
+    height: 20px;
+  }
+  .mini-slider:hover { height: 6px; }
+
+  /* Expand metronome sub-controls so the ± keys are thumbable. */
+  .hud-metro { height: 40px; }
+  .hud-metro-toggle { width: 34px; height: 34px; }
+  .hud-metro-step { min-width: 32px; }
+
+  /* Small icon-only hud buttons — widen so a fingertip can land. */
+  .hud-pin-btn,
+  .hud-drag-handle {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* ─── .dropzone--touch — touch-primary CTA copy ──────────────────── */
+/* When this class is on the root dropzone element, the drag-drop copy
+   is irrelevant (no files to drag on a phone). We hide it and let the
+   tap-to-pick button stand alone as the primary CTA. */
+#dropzone.dropzone--touch .home-drop-hint { display: none; }
+#dropzone.dropzone--touch .home-kicker { font-size: 10px; }
+#dropzone.dropzone--touch .home-primary-btn {
+  /* Make the "Open MIDI" button feel like the one-true-CTA. */
+  min-height: 52px;
+  font-size: 14px;
+  padding: 0 22px;
+}
+#dropzone.dropzone--touch .home-secondary-btn {
+  min-height: 48px;
+}
+/* Tighten the footnote row so only the MIDI-status pill shows. */
+#dropzone.dropzone--touch .home-footnotes { gap: 6px; }
+
+/* ─── .popover--sheet — bottom-sheet on narrow screens ───────────── */
+/* The TS side toggles `.popover--sheet` on menu/panel popovers when the
+   viewport is narrow. We style it as a slide-up sheet that comes from
+   the bottom and takes up at most 75% of the small viewport height.
+   Backdrop is handled via a `box-shadow: 0 0 0 100vmax` scrim on the
+   sheet itself — no extra DOM required on the TS side. */
+.popover--sheet {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: auto !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  /* Small-viewport height: respects iOS URL bar so the sheet doesn't
+     get clipped at rest. */
+  max-height: 75svh !important;
+  /* Rounded top corners only — the bottom hugs the device edge. */
+  border-radius: 16px 16px 0 0 !important;
+  /* Respect the home-indicator. */
+  padding-bottom: calc(env(safe-area-inset-bottom) + 8px) !important;
+  /* Backdrop dimmer without needing an extra element. */
+  box-shadow:
+    0 -18px 40px rgba(0, 0, 0, 0.55),
+    0 0 0 100vmax rgba(0, 0, 0, 0.5);
+  /* Slide-in animation: starts off-screen, settles at translateY(0). */
+  transform: translateY(100%) !important;
+  transition: transform 0.28s var(--ease-out), opacity 0.2s var(--ease-out) !important;
+  opacity: 1 !important;
+}
+
+/* When the popover opens, the existing open-class drops in. Accept
+   either the shared `.ts-popover--open` state or a generic `.is-open`
+   so this works for any popover the TS agent opts in. */
+.popover--sheet.ts-popover--open,
+.popover--sheet.is-open {
+  transform: translateY(0) !important;
+  pointer-events: auto !important;
+}
+
+/* Drag handle pill centered at the top of the sheet — a visual affordance
+   for "you can pull this down". No JS hookup required for the visual. */
+.popover--sheet::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 38px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Give the first child of the sheet a little breathing room so the drag
+   handle doesn't overlap the header. */
+.popover--sheet > :first-child {
+  margin-top: 8px;
+}
+
+/* ─── Keyboard height min/max — allow more range on short phones ─── */
+/* Nothing in the CSS caps the keyboard height in px today (the cap lives
+   in the TS constants), but we document the intent here: the JS side
+   should allow up to roughly 40svh on short screens so the keyboard can
+   grow on a small device when the user drags the resizer (desktop
+   only — it's hidden on touch). The variable itself stays px-driven, so
+   we only need to make sure CSS-side bottom offsets don't assume a
+   hard ceiling. */
+@media (max-height: 640px) {
+  :root {
+    /* When vertical space is tight (landscape phones, short laptops),
+       give the HUD less vertical gap from the keyboard so it stays on
+       screen. */
+    --hud-gap: 14px;
   }
 }

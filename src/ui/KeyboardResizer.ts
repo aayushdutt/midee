@@ -2,6 +2,20 @@ import { KEYBOARD_HEIGHT_MIN, KEYBOARD_HEIGHT_MAX } from '../renderer/PianoRollR
 
 const STORAGE_KEY = 'midee.keyboardHeight'
 
+// Viewport-derived bounds so the keyboard stays usable on short phone screens
+// and doesn't dominate on tall ones. Final range is intersected with the
+// renderer's absolute min/max so we never feed it an out-of-spec height.
+function viewportBounds(): { min: number; max: number } {
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 900
+  // Use svh-equivalent via innerHeight — mobile URL bar fluctuations are fine
+  // because we clamp on every resize/restore anyway.
+  const min = Math.max(KEYBOARD_HEIGHT_MIN, Math.round(vh * 0.18))
+  const max = Math.min(KEYBOARD_HEIGHT_MAX, Math.round(vh * 0.60))
+  // Guard against degenerate viewports (min ending up above max).
+  if (min >= max) return { min: KEYBOARD_HEIGHT_MIN, max: KEYBOARD_HEIGHT_MAX }
+  return { min, max }
+}
+
 // Slim horizontal drag bar sitting on the seam between the piano roll and the
 // keyboard. DAW-style (Logic / GarageBand): grab it and drag vertically to
 // resize the keyboard area. Height persists to localStorage.
@@ -24,8 +38,18 @@ export class KeyboardResizer {
     this.el.innerHTML = `<span class="kbd-resizer-grip"></span>`
     container.appendChild(this.el)
 
-    this.el.addEventListener('pointerdown', this.onPointerDown)
-    this.el.addEventListener('dblclick', this.onDoubleClick)
+    // Touch devices get a fixed, CSS-driven keyboard height — the drag grip
+    // is hidden and we skip attaching pointer listeners so stray taps on the
+    // seam can't accidentally move it. Desktop flow is unchanged.
+    if (!this.isCoarsePointer()) {
+      this.el.addEventListener('pointerdown', this.onPointerDown)
+      this.el.addEventListener('dblclick', this.onDoubleClick)
+    }
+  }
+
+  private isCoarsePointer(): boolean {
+    if (typeof window === 'undefined' || !window.matchMedia) return false
+    return window.matchMedia('(pointer: coarse)').matches
   }
 
   // Call after the renderer is initialised so the stored preference is applied.
@@ -33,12 +57,18 @@ export class KeyboardResizer {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return
     const value = Number(raw)
-    if (Number.isFinite(value) && value >= KEYBOARD_HEIGHT_MIN && value <= KEYBOARD_HEIGHT_MAX) {
-      this.setHeight(value)
-    }
+    if (!Number.isFinite(value)) return
+    const { min, max } = viewportBounds()
+    // Clamp the saved value into the current viewport range so a phone never
+    // inherits a desktop-sized keyboard (or vice versa).
+    const clamped = Math.min(max, Math.max(min, value))
+    this.setHeight(clamped)
   }
 
   private onPointerDown = (e: PointerEvent): void => {
+    // Touch mode early-out — redundant with the gated addEventListener in the
+    // constructor, but keeps us safe if the viewport flips mid-session.
+    if (this.isCoarsePointer()) return
     e.preventDefault()
     this.isDragging = true
     this.dragStartY = e.clientY
@@ -69,7 +99,9 @@ export class KeyboardResizer {
   }
 
   private onDoubleClick = (): void => {
-    this.setHeight(120)
+    if (this.isCoarsePointer()) return
+    const { min, max } = viewportBounds()
+    this.setHeight(Math.min(max, Math.max(min, 120)))
     localStorage.removeItem(STORAGE_KEY)
   }
 

@@ -14,6 +14,8 @@ export class DropZone {
   private dragDepth = 0
   private input!: HTMLInputElement
   private statusEl!: HTMLElement
+  private coarsePointerMq: MediaQueryList | null = null
+  private onCoarseChange: ((e: MediaQueryListEvent) => void) | null = null
 
   private docDragEnter = (e: DragEvent): void => {
     if (!hasFiles(e)) return
@@ -109,6 +111,15 @@ export class DropZone {
     document.addEventListener('dragleave', this.docDragLeave)
     document.addEventListener('dragover', this.docDragOver)
     document.addEventListener('drop', this.docDrop)
+
+    // Mirror coarse-pointer state onto the dropzone root so the CSS agent can
+    // swap in a touch-optimised layout without changing our markup.
+    if (typeof window !== 'undefined' && window.matchMedia) {
+      this.coarsePointerMq = window.matchMedia('(pointer: coarse)')
+      this.el.classList.toggle('dropzone--touch', this.coarsePointerMq.matches)
+      this.onCoarseChange = (e) => this.el.classList.toggle('dropzone--touch', e.matches)
+      this.coarsePointerMq.addEventListener('change', this.onCoarseChange)
+    }
   }
 
   updateMidiStatus(status: MidiDeviceStatus, deviceName: string): void {
@@ -133,6 +144,9 @@ export class DropZone {
     document.removeEventListener('dragleave', this.docDragLeave)
     document.removeEventListener('dragover', this.docDragOver)
     document.removeEventListener('drop', this.docDrop)
+    if (this.coarsePointerMq && this.onCoarseChange) {
+      this.coarsePointerMq.removeEventListener('change', this.onCoarseChange)
+    }
   }
 }
 
