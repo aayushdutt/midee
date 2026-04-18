@@ -3174,6 +3174,67 @@ body.is-touch #kbd-resizer { display: none; }
   }
 }
 
+/* ─── Helper tooltips on icon-only controls.
+   Works everywhere without JS: hover on desktop, press-and-hold on touch.
+   A quick tap still triggers the button (CSS :active fires but releases
+   instantly); holding it ~200ms+ shows the tip long enough to read. */
+[data-tip] {
+  position: relative;
+}
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  padding: 5px 9px;
+  background: rgba(12, 12, 20, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  max-width: 80vw;
+  border-radius: 6px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 60;
+}
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after,
+[data-tip]:active::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+/* Desktop HUD lives at the bottom of the viewport — flip the tip above
+   the control so it doesn't drop off the screen edge. */
+.hud-bar [data-tip]::after {
+  top: auto;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%) translateY(4px);
+}
+.hud-bar [data-tip]:hover::after,
+.hud-bar [data-tip]:focus-visible::after,
+.hud-bar [data-tip]:active::after {
+  transform: translateX(-50%) translateY(0);
+}
+/* On mobile portrait the HUD is docked at the top, so flip back to below. */
+@media (max-width: 640px) and (orientation: portrait) {
+  .hud-bar [data-tip]::after {
+    top: calc(100% + 8px);
+    bottom: auto;
+    transform: translateX(-50%) translateY(-4px);
+  }
+  .hud-bar [data-tip]:hover::after,
+  .hud-bar [data-tip]:focus-visible::after,
+  .hud-bar [data-tip]:active::after {
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 /* ─── Mobile landscape / short viewport: vertical space is genuinely
    scarce here, so modest compaction earns its keep. The bar shrinks a
    little, shadow softens, radius drops a notch — still recognizably the
