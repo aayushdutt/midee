@@ -119,19 +119,19 @@ export class Controls {
     const el = document.createElement('div')
     el.id = 'top-strip'
     el.innerHTML = `
-      <button class="ts-home" id="ts-home" type="button" aria-label="midee home">
+      <button class="ts-home" id="ts-home" type="button" aria-label="midee home" data-tip="Home">
         ${ICON_WORDMARK}
         <span class="ts-home-name">midee</span>
       </button>
 
       <div class="ts-mode-switch" role="tablist" aria-label="App mode">
         <button class="ts-mode-seg" id="ts-mode-file" type="button"
-                role="tab" aria-selected="false">
+                role="tab" aria-selected="false" data-tip="Play a MIDI file">
           <span class="ts-mode-icon" aria-hidden="true">${ICON_MODE_FILE}</span>
           <span class="ts-mode-label">File</span>
         </button>
         <button class="ts-mode-seg" id="ts-mode-live" type="button"
-                role="tab" aria-selected="false">
+                role="tab" aria-selected="false" data-tip="Play live">
           <span class="ts-mode-icon" aria-hidden="true">${ICON_MODE_LIVE}</span>
           <span class="ts-mode-label">Live</span>
         </button>
@@ -150,30 +150,30 @@ export class Controls {
       </div>
 
       <div class="ts-end">
-        <button class="ts-pill" id="ts-open" type="button" aria-label="Open MIDI file">
+        <button class="ts-pill" id="ts-open" type="button" aria-label="Open MIDI file" data-tip="Open MIDI file">
           ${ICON_UPLOAD}<span>Open MIDI</span>
         </button>
-        <button class="ts-pill ts-pill--file" id="ts-tracks" type="button" aria-label="Tracks">
+        <button class="ts-pill ts-pill--file" id="ts-tracks" type="button" aria-label="Tracks" data-tip="Tracks">
           ${ICON_TRACKS}<span>Tracks</span>
         </button>
         <span id="ts-instrument-slot"></span>
         <div class="ts-sep" aria-hidden="true"></div>
         <button class="ts-pill ts-pill--midi" id="ts-midi" type="button"
-                aria-label="MIDI device" title="MIDI device">
+                aria-label="MIDI device" data-tip="MIDI device">
           ${ICON_MIDI}
           <span id="ts-menu-midi-label" class="ts-midi-label">MIDI</span>
         </button>
         <button class="ts-theme-btn ts-particle-btn" id="ts-particle" type="button"
-                aria-label="Cycle particle style" title="Cycle particle style">
+                aria-label="Cycle particle style" data-tip="Particle style">
           <span class="ts-particle-icon" aria-hidden="true">${ICON_SPARKLES}</span>
           <span class="theme-label" id="ts-particle-label">Sparks</span>
         </button>
         <button class="ts-theme-btn" id="ts-theme" type="button"
-                aria-label="Cycle theme" title="Cycle theme">
+                aria-label="Cycle theme" data-tip="Theme">
           <span class="theme-dot" id="ts-theme-dot"></span>
           <span class="theme-label" id="ts-theme-label">Theme</span>
         </button>
-        <button class="ts-record-btn" id="ts-record" type="button" aria-label="Export MP4">
+        <button class="ts-record-btn" id="ts-record" type="button" aria-label="Export MP4" data-tip="Export MP4">
           ${ICON_EXPORT}
           <span>Export</span>
         </button>
@@ -188,18 +188,19 @@ export class Controls {
     el.id = 'hud'
     el.innerHTML = `
       <div class="hud-bar">
-        <button class="hud-drag-handle" id="hud-drag" type="button" aria-label="Move controls">
+        <button class="hud-drag-handle" id="hud-drag" type="button"
+                aria-label="Move controls" data-tip="Drag to move controls">
           ${ICON_GRIP}
         </button>
         <button class="hud-pin-btn" id="hud-pin" type="button"
-                title="Pin controls — prevents auto-hide" aria-label="Pin controls">
+                aria-label="Pin controls" data-tip="Pin — prevents auto-hide">
           ${ICON_PIN}
         </button>
 
         <div class="hud-group hud-group--transport">
-          <button class="btn-skip" id="hud-skip-back" title="Back 10s" aria-label="Back 10 seconds">${ICON_SKIP_BACK}</button>
-          <button class="btn-play" id="hud-play" aria-label="Play">${ICON_PLAY}</button>
-          <button class="btn-skip" id="hud-skip-fwd" title="Forward 10s" aria-label="Forward 10 seconds">${ICON_SKIP_FWD}</button>
+          <button class="btn-skip" id="hud-skip-back" aria-label="Back 10 seconds" data-tip="Back 10s">${ICON_SKIP_BACK}</button>
+          <button class="btn-play" id="hud-play" aria-label="Play" data-tip="Play / Pause">${ICON_PLAY}</button>
+          <button class="btn-skip" id="hud-skip-fwd" aria-label="Forward 10 seconds" data-tip="Forward 10s">${ICON_SKIP_FWD}</button>
         </div>
 
         <div class="hud-divider hud-group--transport"></div>
@@ -213,13 +214,13 @@ export class Controls {
 
         <div class="hud-divider hud-group--transport"></div>
 
-        <div class="ctrl-group" title="Volume">
+        <div class="ctrl-group" data-tip="Volume">
           <span class="ctrl-icon">${ICON_VOLUME}</span>
           <input type="range" id="hud-volume" class="mini-slider"
             min="0" max="1" step="0.02" value="0.8" aria-label="Volume" />
         </div>
 
-        <div class="ctrl-group hud-group--transport" title="Speed">
+        <div class="ctrl-group hud-group--transport" data-tip="Playback speed">
           <span class="speed-val" id="hud-speed-val">1x</span>
           <input type="range" id="hud-speed" class="mini-slider"
             min="0.25" max="2" step="0.05" value="1" aria-label="Speed" />
@@ -227,7 +228,7 @@ export class Controls {
 
         <div class="hud-divider"></div>
 
-        <div class="ctrl-group" title="Zoom">
+        <div class="ctrl-group" data-tip="Zoom (note height)">
           <span class="ctrl-icon">${ICON_ZOOM}</span>
           <input type="range" id="hud-zoom" class="mini-slider mini-slider--zoom"
             min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="10" value="${ZOOM_DEFAULT}" aria-label="Zoom" />
@@ -237,7 +238,7 @@ export class Controls {
 
         <div class="hud-metro hud-group--live" id="hud-metro-group" title="Scroll on BPM to adjust">
           <button class="hud-metro-toggle" id="hud-metro" type="button"
-                  aria-label="Toggle metronome">
+                  aria-label="Toggle metronome" data-tip="Metronome">
             <span class="hud-metro-icon">${ICON_METRONOME}</span>
             <span class="hud-metro-beat" aria-hidden="true"></span>
           </button>
@@ -249,27 +250,28 @@ export class Controls {
         </div>
 
         <button class="hud-session-btn hud-group--live" id="hud-session"
-                type="button" title="Record everything you play to MIDI"
-                aria-label="Record session">
+                type="button" aria-label="Record session"
+                data-tip="Record everything you play to MIDI">
           <span class="hud-session-dot" aria-hidden="true"></span>
           <span class="hud-session-label" id="hud-session-label">Record</span>
         </button>
 
         <button class="hud-loop-btn hud-group--live" id="hud-loop"
-                type="button" title="Play a phrase then loop it" aria-label="Looper">
+                type="button" aria-label="Looper"
+                data-tip="Play a phrase then loop it">
           <span class="hud-loop-icon">${ICON_LOOP}</span>
           <span class="hud-loop-label" id="hud-loop-label">Loop</span>
         </button>
         <button class="hud-loop-undo hud-group--live hidden" id="hud-loop-undo"
-                type="button" title="Undo last layer" aria-label="Undo last layer">
+                type="button" aria-label="Undo last layer" data-tip="Undo last layer">
           ${ICON_UNDO}
         </button>
         <button class="hud-loop-save hud-group--live hidden" id="hud-loop-save"
-                type="button" title="Download loop as MIDI" aria-label="Download loop as MIDI">
+                type="button" aria-label="Download loop as MIDI" data-tip="Download loop as MIDI">
           ${ICON_DOWNLOAD}
         </button>
         <button class="hud-loop-clear hud-group--live hidden" id="hud-loop-clear"
-                type="button" title="Clear loop" aria-label="Clear loop">
+                type="button" aria-label="Clear loop" data-tip="Clear loop">
           ${ICON_CLOSE}
         </button>
       </div>
