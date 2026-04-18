@@ -196,8 +196,12 @@ export class App {
 
     this.instrumentMenu = new InstrumentMenu(this.controls.instrumentSlot, overlay)
     this.instrumentMenu.onSelect = (id) => this.setInstrumentById(id)
-    this.synth.loadingInstrument.subscribe((id) => this.instrumentMenu.setLoading(id))
+    this.synth.loadingInstrument.subscribe((id) => {
+      this.instrumentMenu.setLoading(id)
+      this.controls.setInstrumentLoading(id !== null)
+    })
     this.instrumentMenu.setLoading(this.synth.loadingInstrument.value)
+    this.controls.setInstrumentLoading(this.synth.loadingInstrument.value !== null)
 
     this.exportModal = new ExportModal(overlay)
     this.exportModal.onStart  = (settings) => void this.startExport(settings)

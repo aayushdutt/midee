@@ -402,8 +402,10 @@ export class Controls {
       onSeek?.(t)
     })
 
-    this.hud.querySelector<HTMLInputElement>('#hud-volume')!.addEventListener('input', (e) => {
+    const volumeSlider = this.hud.querySelector<HTMLInputElement>('#hud-volume')!
+    volumeSlider.addEventListener('input', (e) => {
       state.setVolume(parseFloat((e.target as HTMLInputElement).value))
+      this.updateSliderFill(volumeSlider)
     })
 
     const speedSlider = this.hud.querySelector<HTMLInputElement>('#hud-speed')!
@@ -412,11 +414,20 @@ export class Controls {
       const s = parseFloat(speedSlider.value)
       speedVal.textContent = formatSpeed(s)
       state.setSpeed(s)
+      this.updateSliderFill(speedSlider)
     })
 
-    this.hud.querySelector<HTMLInputElement>('#hud-zoom')!.addEventListener('input', (e) => {
+    const zoomSlider = this.hud.querySelector<HTMLInputElement>('#hud-zoom')!
+    zoomSlider.addEventListener('input', (e) => {
       onZoom?.(parseFloat((e.target as HTMLInputElement).value))
+      this.updateSliderFill(zoomSlider)
     })
+
+    // Paint the initial fill once so the thumb's accent trail is visible
+    // before the first user interaction (volume defaults to 0.8, etc.).
+    this.updateSliderFill(volumeSlider)
+    this.updateSliderFill(speedSlider)
+    this.updateSliderFill(zoomSlider)
 
     this.themeBtn.addEventListener('click', () => this.opts.onThemeCycle?.())
     this.particleBtn.addEventListener('click', () => this.opts.onParticleCycle?.())
@@ -654,6 +665,13 @@ export class Controls {
     this.loopUndoBtn.classList.toggle('hidden', !canUndo)
   }
 
+  // Flipped on while the active instrument's samples are downloading.
+  // Shown on the play button so users don't click-pause-click again when the
+  // clock visibly runs but audio hasn't started yet.
+  setInstrumentLoading(loading: boolean): void {
+    this.playBtn.classList.toggle('btn-play--loading', loading)
+  }
+
   updateMidiStatus(status: MidiDeviceStatus, deviceName: string): void {
     this.currentMidiStatus = status
     this.currentMidiDeviceName = deviceName
@@ -850,6 +868,16 @@ export class Controls {
     const dur = this.opts.state.duration.value
     const pct = dur > 0 ? Math.min((t / dur) * 100, 100) : 0
     this.scrubber.style.setProperty('--pct', `${pct}%`)
+  }
+
+  // Paint the accent-tinted fill on a range slider based on its current
+  // value. CSS reads `--pct` in a gradient to show the "filled" portion.
+  private updateSliderFill(slider: HTMLInputElement): void {
+    const min = parseFloat(slider.min) || 0
+    const max = parseFloat(slider.max) || 100
+    const val = parseFloat(slider.value)
+    const pct = max > min ? ((val - min) / (max - min)) * 100 : 0
+    slider.style.setProperty('--pct', `${pct.toFixed(1)}%`)
   }
 
   // Force the next clock tick to redraw the time display and fill gradient,
