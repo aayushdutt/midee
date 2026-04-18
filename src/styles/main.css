@@ -1214,6 +1214,27 @@ html, body {
   animation: playing-pulse 2.8s ease-in-out infinite;
 }
 
+/* Loading — samples are still downloading for the active instrument. We
+   draw a spinning ring around the play button so users know "click play,
+   nothing happens" = "about to happen, just wait" rather than "it broke". */
+@keyframes play-loading-spin {
+  to { transform: rotate(360deg); }
+}
+.btn-play--loading {
+  position: relative;
+}
+.btn-play--loading::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  animation: play-loading-spin 0.9s linear infinite;
+  pointer-events: none;
+}
+
 /* Skip buttons */
 .btn-skip {
   background: none;
@@ -1265,38 +1286,87 @@ html, body {
 
 .time-display.dim { color: var(--text-dim); }
 
+/* ─── Sliders (scrubber + mini-sliders) ────────────────────────────────
+   Unified theme: accent fill for progress, white thumb with accent-soft
+   halo, subtle inset depth on the track, accent glow on focus.
+   --pct is live-updated by JS as the value changes. */
+
 .scrubber {
   flex: 1;
-  height: 3px;
+  height: 4px;
   min-width: 0;
   -webkit-appearance: none;
   appearance: none;
-  background: linear-gradient(
-    to right,
-    var(--accent) var(--pct, 0%),
-    rgba(255, 255, 255, 0.08) var(--pct, 0%)
-  );
+  background:
+    linear-gradient(
+      to right,
+      var(--accent) 0,
+      var(--accent) var(--pct, 0%),
+      rgba(255, 255, 255, 0.07) var(--pct, 0%),
+      rgba(255, 255, 255, 0.07) 100%
+    );
   border-radius: var(--r-pill);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.35);
   outline: none;
   cursor: pointer;
-  transition: height 0.15s;
+  transition: height 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
 }
 
-.scrubber:hover { height: 5px; }
+.scrubber:hover { height: 6px; }
+
+.scrubber:focus-visible {
+  box-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, 0.35),
+    0 0 0 3px var(--accent-soft);
+}
 
 .scrubber::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 0 0 2.5px var(--accent-soft), 0 2px 6px rgba(0, 0, 0, 0.5);
+  border: none;
+  box-shadow:
+    0 0 0 2.5px var(--accent-soft),
+    0 2px 6px rgba(0, 0, 0, 0.5);
   cursor: pointer;
-  transition: transform 0.12s var(--ease-spring);
+  transition: transform 0.14s var(--ease-spring), box-shadow 0.14s var(--ease-out);
 }
 
-.scrubber::-webkit-slider-thumb:hover { transform: scale(1.3); }
-.scrubber:active::-webkit-slider-thumb { transform: scale(1.1); }
+.scrubber::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow:
+    0 0 0 2.5px var(--accent-soft),
+    0 2px 6px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.14s var(--ease-spring);
+}
+
+.scrubber::-moz-range-track {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.07);
+}
+.scrubber::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+
+.scrubber:hover::-webkit-slider-thumb,
+.scrubber:hover::-moz-range-thumb {
+  box-shadow:
+    0 0 0 4px var(--accent-soft),
+    0 2px 8px rgba(0, 0, 0, 0.55);
+  transform: scale(1.18);
+}
+.scrubber:active::-webkit-slider-thumb,
+.scrubber:active::-moz-range-thumb { transform: scale(1.08); }
 
 /* Volume / Speed / Zoom */
 .ctrl-group {
@@ -1315,30 +1385,79 @@ html, body {
 
 .mini-slider {
   width: 60px;
-  height: 3px;
+  height: 4px;
   -webkit-appearance: none;
   appearance: none;
-  background: rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(
+      to right,
+      var(--accent) 0,
+      var(--accent) var(--pct, 0%),
+      rgba(255, 255, 255, 0.06) var(--pct, 0%),
+      rgba(255, 255, 255, 0.06) 100%
+    );
   border-radius: var(--r-pill);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.3);
   outline: none;
   cursor: pointer;
-  transition: height 0.15s;
+  transition: height 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
 }
 
 .mini-slider:hover { height: 5px; }
 
-.mini-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--text);
-  cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
-  transition: transform 0.12s;
+.mini-slider:focus-visible {
+  box-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, 0.3),
+    0 0 0 3px var(--accent-soft);
 }
 
-.mini-slider::-webkit-slider-thumb:hover { transform: scale(1.25); }
+.mini-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow:
+    0 0 0 2px var(--accent-soft),
+    0 1px 4px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.14s var(--ease-spring), box-shadow 0.14s var(--ease-out);
+}
+
+.mini-slider::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  box-shadow:
+    0 0 0 2px var(--accent-soft),
+    0 1px 4px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.14s var(--ease-spring);
+}
+
+.mini-slider::-moz-range-track {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.06);
+}
+.mini-slider::-moz-range-progress {
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+}
+
+.mini-slider:hover::-webkit-slider-thumb,
+.mini-slider:hover::-moz-range-thumb {
+  box-shadow:
+    0 0 0 3px var(--accent-soft),
+    0 2px 6px rgba(0, 0, 0, 0.55);
+  transform: scale(1.2);
+}
+.mini-slider:active::-webkit-slider-thumb,
+.mini-slider:active::-moz-range-thumb { transform: scale(1.08); }
 
 .mini-slider--zoom { width: 64px; }
 
@@ -2929,22 +3048,129 @@ body.is-touch #kbd-resizer { display: none; }
    shadow (no downward offset) so the HUD's visual footprint is exactly
    its own bounding box. Result: zero overlap with the piano area. */
 @media (max-width: 640px) and (orientation: portrait) {
-  /* Sit the HUD well above the keyboard — fixed offset from the bottom
-     avoids any viewport/canvas-math drift that was letting the HUD land
-     on the keys. ~38% of the viewport height keeps it roughly mid-way
-     up the roll area regardless of keyboard size. */
+  /* Unified control container docked directly below the top-strip — HUD
+     and top-strip read as one control header. Piano area is entirely
+     its own space, no overlap possible. */
   #hud {
-    bottom: calc(38svh + env(safe-area-inset-bottom));
+    top: calc(48px + 8px + env(safe-area-inset-top));
+    bottom: auto;
+    left: calc(8px + env(safe-area-inset-left));
+    right: calc(8px + env(safe-area-inset-right));
+    transform: none;
+    max-width: none;
+    width: auto;
   }
+  /* Drag / pin are desktop-floating affordances — drop them at fixed dock. */
+  #hud .hud-drag-handle,
+  #hud .hud-pin-btn {
+    display: none;
+  }
+  /* Idle auto-hide on desktop slides down; on mobile that would push it
+     into the roll. Fade only. */
+  #hud.hud--active.hud--idle {
+    transform: none;
+  }
+
+  /* Two-row layout: transport icons centered on row 1, scrubber flows
+     full-width on row 2. Auto height lets both rows breathe. */
   .hud-bar {
-    /* Opaque so falling notes behind don't make it read as transparent. */
+    height: auto;
+    min-height: 48px;
+    padding: 8px 10px;
+    gap: 6px;
+    row-gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+
     background: #07070f;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    border-radius: 14px;
     box-shadow:
-      0 0 18px rgba(0, 0, 0, 0.55),
-      0 0 6px rgba(0, 0, 0, 0.4),
+      0 6px 16px rgba(0, 0, 0, 0.55),
       inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  }
+
+  /* Hide secondary controls that don't fit a 375px row: mini-sliders
+     (volume/speed/zoom), BPM stepper, vertical dividers. Metronome
+     toggle stays as an icon-only button. */
+  .hud-bar .ctrl-group,
+  .hud-bar .hud-divider,
+  .hud-bar .hud-metro-step,
+  .hud-bar .hud-metro-bpm {
+    display: none;
+  }
+
+  /* Metronome pill collapses to just its toggle when steppers/BPM go. */
+  .hud-bar .hud-metro {
+    padding: 0;
+    gap: 0;
+    background: transparent;
+    border: none;
+  }
+
+  /* Scrubber + time displays take their own full-width row. `order: 10`
+     pushes the row to the bottom regardless of DOM order, so transport
+     buttons always sit on top. */
+  .hud-bar .scrubber-wrap {
+    flex: 1 1 100%;
+    order: 10;
+    min-width: 0;
+    gap: 8px;
+  }
+  .hud-bar .scrubber-wrap .time-display {
+    font-size: 11px;
+    min-width: 32px;
+    flex-shrink: 0;
+  }
+
+  .hud-bar .hud-group--transport {
+    gap: 6px;
+  }
+
+  /* Icon-only pills in the top-strip (like the export button when its
+     label is hidden) need symmetric padding so the icon actually centers
+     inside the coarse-pointer hit-target box. */
+  #top-strip .ts-record-btn {
+    padding: 0;
+    justify-content: center;
+  }
+}
+
+/* ─── Export modal: narrow viewport fixes.
+   - fps-group tabs wrap instead of overflowing
+   - res-card grid auto-fits
+   - card becomes scrollable so tall content doesn't get clipped on
+     short phones (export form is long — 5 sections plus actions). */
+@media (max-width: 640px) {
+  /* Dock to the top and cap the *card* height — scrolling happens inside
+     the card, not the backdrop, so the dimmed overlay stays fixed while
+     long forms scroll within their own surface. */
+  #export-modal {
+    align-items: flex-start;
+    padding: 16px 12px;
+  }
+  .export-card {
+    width: 100%;
+    max-width: 100%;
+    padding: 18px 16px 16px;
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .fps-group {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .export-section .fps-btn {
+    flex: 0 1 auto;
+    padding: 6px 10px;
+    font-size: 11.5px;
+  }
+  .res-grid {
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   }
 }
 
@@ -3020,14 +3246,16 @@ body.is-touch #kbd-resizer { display: none; }
 
   /* Range inputs — widen the track and thumb for reliable drags. */
   .scrubber { height: 6px; }
-  .scrubber::-webkit-slider-thumb {
+  .scrubber::-webkit-slider-thumb,
+  .scrubber::-moz-range-thumb {
     width: 22px;
     height: 22px;
   }
   .scrubber:hover { height: 6px; }
 
   .mini-slider { height: 6px; }
-  .mini-slider::-webkit-slider-thumb {
+  .mini-slider::-webkit-slider-thumb,
+  .mini-slider::-moz-range-thumb {
     width: 20px;
     height: 20px;
   }
