@@ -96,6 +96,12 @@ export class PianoRollRenderer {
   private scheduledEmitNext = new Map<number, number>()
   private liveEmitNext = new Map<number, number>()
 
+  // Practice-mode hints (pitches that should glow on the keyboard as "play
+  // these to advance"). `pending` is what's still required, `accepted` is what
+  // the user has already pressed for the current step.
+  private practiceHintPending: ReadonlySet<number> | null = null
+  private practiceHintAccepted: ReadonlySet<number> | null = null
+
   async init(canvas: HTMLCanvasElement): Promise<void> {
     this.app = new Application()
 
@@ -465,6 +471,30 @@ export class PianoRollRenderer {
 
   setLoopNoteStore(store: LiveNoteStore | null): void {
     this.loopNoteStore = store
+  }
+
+  // Pitch → track color map of every key currently lit on the on-screen
+  // keyboard. Re-populated each frame in `renderFrame`, so callers (chord
+  // overlay, MIDI exporter sidebars, etc.) can read it once per tick.
+  get currentActivePitches(): ReadonlyMap<number, number> {
+    return this.activeKeyColors
+  }
+
+  // Set of MIDI pitches a "play these next" hint should highlight on the
+  // keyboard. The renderer overlays them with a soft pulse, distinct from the
+  // press-state colour so the hint reads as guidance rather than playback.
+  setPracticeHints(pending: ReadonlySet<number> | null, accepted: ReadonlySet<number> | null): void {
+    this.practiceHintPending = pending && pending.size > 0 ? pending : null
+    this.practiceHintAccepted = accepted && accepted.size > 0 ? accepted : null
+    this.keyboardRenderer.setPracticeHints(this.practiceHintPending, this.practiceHintAccepted, this.theme)
+    if (!this.midi && !(this.liveNoteStore?.hasRenderableNotes ?? false)) {
+      // No render loop is running — paint once so the hint appears immediately.
+      this.renderStaticFrame(0)
+    }
+  }
+
+  isTrackVisible(trackId: string): boolean {
+    return this.visibleTrackIds.has(trackId)
   }
 
   pauseAutoRender(): void {

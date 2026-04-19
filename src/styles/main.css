@@ -1137,7 +1137,15 @@ body {
   display: none;
 }
 
-/* Collapse MIDI pill label when unavailable — icon-only */
+/* MIDI pill visibility is action-driven: it only appears when the user has
+   something to *do* with it (grant permission, troubleshoot a blocked
+   browser prompt). Once `connected`, it disappears and the device name
+   takes over the now-playing status pill — no permanent no-op button. */
+#top-strip[data-midi-status="connected"] .ts-pill--midi { display: none; }
+#top-strip[data-midi-status="connected"] .ts-sep         { display: none; }
+
+/* Collapse MIDI pill when the browser doesn't support Web MIDI at all —
+   nothing the user can do, so we just disable it visually. */
 #top-strip[data-midi-status="unavailable"] .ts-pill--midi {
   opacity: 0.35;
   pointer-events: none;
@@ -2195,112 +2203,223 @@ body {
 }
 
 .kh-body {
-  display: flex;
+  position: relative;
+  display: inline-flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
-  background: rgba(7, 7, 15, 0.82);
+  gap: 16px;
+  /* Symmetric padding — the close button is absolute and sits inside the
+     top-right corner without stealing space from any row. */
+  padding: 13px 16px 14px;
+  background: rgba(8, 8, 16, 0.82);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  backdrop-filter: blur(30px) saturate(150%);
-  -webkit-backdrop-filter: blur(30px) saturate(150%);
+  border-radius: 12px;
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
   box-shadow:
     0 12px 32px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  pointer-events: auto;
 }
 
-.kh-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 22px;
-}
-
+/* Stacked sections — small kicker label on top, key glyphs underneath.
+   Stacking instead of left-column alignment keeps the gap from label to
+   content uniform across every section *and* lets the panel shrink to the
+   width of its widest content row (no fixed label column padding fight). */
 .kh-section {
-  font-size: 9.5px;
-  letter-spacing: 0.14em;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* Consistent label → content gap, identical for every section. */
+  gap: 7px;
+}
+
+.kh-label {
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--text-dim);
-  font-weight: 600;
-  min-width: 48px;
+  line-height: 1;
 }
 
-.kh-section--muted {
-  color: var(--text-dim);
-  font-weight: 400;
-  letter-spacing: 0.06em;
-  text-transform: none;
-}
-
-.kh-map {
+.kh-keys {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-}
-
-.kh-map--wrap {
   flex-wrap: wrap;
-  gap: 6px 10px;
 }
 
-/* Each live-mode action chip: kbd caps + a small label. Chips are slightly
-   dim until the key-hint is hovered/focused so the row is skimmable but not
-   loud. */
+/* Subtle dot between the two key clusters in the Play row. */
+.kh-divider {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  opacity: 0.5;
+  margin: 0 4px;
+}
+
+/* Octave chip — accent-tinted pill, sized to match the kbd cap height so
+   the row aligns visually. */
+.kh-octave-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 6px;
+  margin-left: 5px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 4px;
+}
+
+/* Shortcuts: wrapped row of small chord chips, each chip = one or more
+   keycaps + a label. Stacked layout means no special divider needed —
+   the section spacing alone separates regions. */
+.kh-shortcuts {
+  /* Two-column grid keeps the chips on a stable rhythm — labels and caps
+     line up vertically across rows instead of flexing into ragged stops. */
+  display: grid;
+  grid-template-columns: max-content max-content;
+  column-gap: 14px;
+  row-gap: 6px;
+  align-items: center;
+}
+
 .kh-combo {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-size: 10.5px;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.005em;
+  white-space: nowrap;
 }
 
-.kh-row--shortcuts {
-  margin-top: 2px;
+/* Tighter inter-cap spacing inside a chord (e.g. ⇧ + L) so the chord
+   reads as one unit rather than two separate keys. */
+.kh-combo .kh-cap-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
-.kh-map kbd {
+/* Key caps — readable monospace cap with a soft 3D bottom edge. Sized
+   for inline use; consistent across the play row, octave row, and
+   shortcuts row. */
+.kh-keys kbd,
+.kh-combo kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
   font-family: var(--font-mono);
   font-size: 10.5px;
   font-weight: 500;
   color: var(--text);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-bottom-width: 2px;
   border-radius: 5px;
-  letter-spacing: 0.04em;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: background 0.18s ease, border-color 0.18s ease;
 }
 
-.kh-dots {
-  color: var(--text-dim);
-  font-size: 10px;
-  letter-spacing: 0.15em;
-  margin: 0 2px;
+/* Symbol caps (Shift glyph, arrows) read better with a slight font bump
+   and a sans-serif fallback so the glyph doesn't render as a tiny
+   monospace square. */
+.kh-keys kbd.kh-cap-sym,
+.kh-combo kbd.kh-cap-sym {
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  padding: 0 4px;
 }
 
-.kh-current {
+#key-hint:hover .kh-keys kbd,
+#key-hint:hover .kh-combo kbd {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* ─── Close + reopen affordances ─────────────────────────────── */
+/* The close button shares a flex row with the first section's "PLAY"
+   label — guaranteed alignment with the heading instead of relying on
+   fragile absolute coordinates. Right-pushed via margin-left:auto. */
+.kh-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
+.kh-close {
   display: inline-flex;
   align-items: center;
-  padding: 0 8px;
-  height: 22px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-glow);
-  border-radius: 5px;
-  margin-left: 6px;
-  letter-spacing: 0.02em;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  padding: 0;
+  border-radius: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  pointer-events: auto;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity 0.18s ease, color 0.18s ease, background 0.18s ease;
 }
+
+#key-hint:hover .kh-close { opacity: 1; }
+
+.kh-close:hover,
+.kh-close:focus-visible {
+  opacity: 1;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+.kh-reopen {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 28px;
+  height: 28px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(7, 7, 15, 0.78);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  color: var(--text-dim);
+  pointer-events: auto;
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.kh-reopen:hover {
+  color: var(--text);
+  border-color: var(--border-hi);
+  transform: translateY(-1px);
+}
+
+#key-hint.kh--collapsed .kh-body { display: none; }
+#key-hint.kh--collapsed .kh-reopen { display: inline-flex; }
+#key-hint.kh--collapsed { pointer-events: none; }
 
 @media (max-width: 640px) {
   #key-hint {
@@ -3751,6 +3870,22 @@ body.is-touch #kbd-resizer {
   }
 }
 
+/* The key-hint panel hugs the bottom-LEFT viewport corner. A centered tip
+   would extend half its width to the left of the trigger and clip past the
+   viewport edge. Anchor the tip to the left edge of the trigger and place
+   it ABOVE so it doesn't dip into the keyboard area. */
+#key-hint [data-tip]::after {
+  top: auto;
+  bottom: calc(100% + 8px);
+  left: 0;
+  transform: translateX(0) translateY(4px);
+}
+#key-hint [data-tip]:hover::after,
+#key-hint [data-tip]:focus-visible::after,
+#key-hint [data-tip]:active::after {
+  transform: translateX(0) translateY(0);
+}
+
 /* ─── Mobile landscape / short viewport: vertical space is genuinely
    scarce here, so modest compaction earns its keep. The bar shrinks a
    little, shadow softens, radius drops a notch — still recognizably the
@@ -3973,4 +4108,635 @@ body.is-touch #kbd-resizer {
        screen. */
     --hud-gap: 14px;
   }
+}
+
+
+/* ─────────────────────────────────────────
+   CHORD READOUT  (Tonal.js powered, inline in topbar)
+───────────────────────────────────────── */
+
+/* Slot host — sits inside .ts-status, after the equaliser bars. The slot
+   itself holds no styles; it only collapses to zero when the readout child
+   is hidden so the rest of the status row tightens up. */
+.ts-chord-slot {
+  display: inline-flex;
+  align-items: center;
+  /* Prevent the slot stealing flex space when there's no readout. */
+  margin-left: 0;
+  transition: margin-left 0.2s var(--ease-out);
+}
+
+.ts-chord-slot:has(.ts-chord-readout--on) {
+  margin-left: 4px;
+}
+
+.ts-chord-readout {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  height: 24px;
+  padding: 0 12px;
+  /* Clean bordered chip. Quiet by default — picks up the accent via the
+     toggle button, not by demanding attention itself. */
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-muted);
+  font-family: var(--font);
+  white-space: nowrap;
+  position: relative;
+  opacity: 0;
+  transform: translateY(1px);
+  transition:
+    opacity 0.22s var(--ease-out),
+    transform 0.22s var(--ease-out),
+    border-color 0.2s ease,
+    background 0.2s ease;
+  /* Stable width so neighbouring pills don't jitter as the chord text grows
+     or shrinks (e.g. "C" → "F♯m7♭5"). */
+  min-width: 56px;
+}
+
+.ts-chord-readout--on {
+  display: inline-flex;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.ts-chord-readout-name {
+  display: inline-flex;
+  /* Bottom-align so the suffix "m" / "maj7" sits flush on the baseline of
+     the tonic instead of riding as a superscript — reads as one symbol. */
+  align-items: baseline;
+  gap: 0.5px;
+  line-height: 1;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+
+.ts-chord-readout-tonic {
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--text);
+}
+
+.ts-chord-readout-quality {
+  font-family: var(--font);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  color: var(--text-muted);
+}
+
+.ts-chord-readout-bass {
+  color: var(--text-dim);
+  opacity: 0.85;
+  margin-left: 0;
+  font-weight: 500;
+}
+
+.ts-chord-readout--empty .ts-chord-readout-tonic {
+  color: var(--text-dim);
+  opacity: 0.55;
+}
+
+/* Soft beat on every chord change — restarted by the TS side toggling the
+   class off-and-on so each new chord registers as a moment. Kept tiny
+   (1.5% scale, ~0.3s) so it never competes with the canvas. */
+@keyframes ts-chord-readout-pulse {
+  0%   { transform: scale(0.985); filter: brightness(1.04); }
+  55%  { transform: scale(1.012); filter: brightness(1.16); }
+  100% { transform: scale(1);     filter: brightness(1); }
+}
+
+.ts-chord-readout--pulse {
+  animation: ts-chord-readout-pulse 0.32s var(--ease-spring);
+}
+
+/* Compact icon-only toggle. The chord readout is a niche, opt-in feature —
+   the button reflects that with a small footprint and dim default state, so
+   it doesn't compete with primary topbar actions for attention. */
+.ts-chord-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  border-radius: 6px;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: color 0.18s ease, opacity 0.18s ease, background 0.18s ease;
+}
+
+.ts-chord-btn:hover {
+  opacity: 1;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ts-chord-btn .ts-chord-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+}
+
+.ts-chord-btn--on {
+  opacity: 1;
+  color: var(--accent);
+  background: transparent;
+}
+
+.ts-chord-btn--on:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+/* File mode plays a MIDI — the chord chip + its toggle hide so the topbar
+   stays focused on transport and the chord readout doesn't narrate audio
+   the user is already passively listening to. */
+#top-strip[data-mode="file"] .ts-chord-btn,
+#top-strip[data-mode="file"] .ts-chord-slot { display: none; }
+
+
+/* ─────────────────────────────────────────
+   APPEARANCE  (theme · particles · chord)
+───────────────────────────────────────── */
+
+/* ── Trigger pill ─────────────────────────────────────────────────────── */
+/* Wider, label-bearing pill so the active theme name is always visible
+   and the affordance reads as "open the appearance picker", not "click
+   this mystery icon". The leading swatch is a live preview gradient of the
+   active accent + a complementary palette colour. */
+.ts-pill--customize {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px 0 7px;
+  height: 32px;
+  color: var(--text);
+  position: relative;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.15s var(--ease-spring);
+}
+
+.ts-pill--customize::before {
+  /* Soft accent halo bleeds out from the swatch to telegraph "this is the
+     theme picker". Quiet at rest, stronger on hover. */
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--accent);
+  filter: blur(10px);
+  opacity: 0.32;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 0;
+}
+
+.ts-pill--customize:hover::before,
+.ts-pill--customize.ts-pill--open::before { opacity: 0.55; }
+
+.ts-pill--customize:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  transform: translateY(-1px);
+}
+
+.ts-pill--customize.ts-pill--open {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, rgba(255, 255, 255, 0.04));
+}
+
+.ts-customize-swatch {
+  position: relative;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: var(--accent);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.18) inset,
+    0 0 12px var(--accent-glow);
+  transition: transform 0.2s var(--ease-spring), box-shadow 0.2s ease;
+}
+
+.ts-pill--customize:hover .ts-customize-swatch {
+  transform: rotate(-6deg) scale(1.04);
+}
+
+.ts-customize-label {
+  position: relative;
+  z-index: 1;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.ts-customize-chev {
+  position: relative;
+  z-index: 1;
+  color: var(--text-dim);
+  transition: transform 0.22s var(--ease-out), color 0.18s ease;
+}
+
+.ts-pill--customize:hover .ts-customize-chev { color: var(--text-muted); }
+.ts-pill--customize.ts-pill--open .ts-customize-chev {
+  transform: rotate(180deg);
+  color: var(--text);
+}
+
+/* ── Popover container ────────────────────────────────────────────────── */
+/* Aligned to the InstrumentMenu / TrackPanel idiom: shared .ts-popover
+   shell + .panel-header + horizontal-rule-divided sections. Same header
+   padding and hierarchy → consistent across the topbar. */
+.ts-customize-menu {
+  width: 300px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.customize-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.customize-section + .customize-section {
+  border-top: 1px solid var(--border);
+}
+
+.customize-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.customize-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.customize-section-value {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: 0.005em;
+}
+
+/* ── Theme tiles — flat colour dot + name label. ── */
+.customize-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  /* Belt-and-braces — the popover already clips, but constraining the grid
+     itself prevents an overflowing label from pushing siblings outward. */
+  width: 100%;
+  min-width: 0;
+}
+
+.customize-theme-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  /* Symmetric padding so the dot + label have room inside the border. */
+  padding: 9px 4px 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  /* Critical: lets the inner label shrink instead of forcing the tile to
+     grow past its grid track. */
+  min-width: 0;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s var(--ease-spring);
+}
+
+.customize-theme-tile:hover {
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-muted);
+}
+
+.customize-theme-tile--on {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  color: var(--text);
+}
+
+/* Single flat color dot — minimal, modern. The theme's accent does the
+   identifying work; no gradient, no inner shadow, no chrome. */
+.customize-theme-tile-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  transition: transform 0.18s var(--ease-spring);
+}
+
+.customize-theme-tile:hover .customize-theme-tile-dot {
+  transform: scale(1.06);
+}
+
+.customize-theme-tile--on .customize-theme-tile-dot {
+  transform: scale(1.06);
+}
+
+.customize-theme-tile-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.005em;
+  text-align: center;
+  line-height: 1;
+  width: 100%;
+  /* Truncate gracefully if a longer theme name is ever added — protects
+     the grid from being pushed past the popover boundary. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Particle chips — glyph + label. Selected = accent fill. ── */
+.customize-particle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.customize-particle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  /* line-height:1 + the label rule below collapse the inline boxes so the
+     glyph and label sit on the same optical centerline. Without it the
+     label inherits Inter's intrinsic 1.5 leading and rides ~1px low. */
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease, transform 0.15s var(--ease-spring);
+}
+
+.customize-particle-chip-label {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.customize-particle-chip:hover {
+  color: var(--text);
+  border-color: var(--border-hi);
+  transform: translateY(-1px);
+}
+
+.customize-particle-chip--on {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent) inset;
+}
+
+.customize-particle-chip-glyph {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  transition: color 0.18s ease, filter 0.18s ease;
+}
+
+.customize-particle-chip:hover .customize-particle-chip-glyph { color: var(--text-muted); }
+
+.customize-particle-chip--on .customize-particle-chip-glyph {
+  color: var(--accent);
+  filter: drop-shadow(0 0 4px var(--accent-glow));
+}
+
+/* ── Toggle row — plain row of label + switch, no card chrome. State is
+   communicated solely by the switch on the right; the row itself stays
+   visually flat so it doesn't feel like a "highlighted" feature. */
+.customize-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: opacity 0.18s ease;
+}
+
+.customize-toggle:hover { opacity: 0.92; }
+
+.customize-toggle-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.customize-toggle-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.1;
+  letter-spacing: 0.005em;
+}
+
+.customize-toggle-sub {
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.01em;
+}
+
+.customize-toggle-switch {
+  flex-shrink: 0;
+  width: 32px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  position: relative;
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.customize-toggle-knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 0.22s var(--ease-spring), background 0.22s ease;
+}
+
+.customize-toggle--on .customize-toggle-switch {
+  background: color-mix(in srgb, var(--accent) 32%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  box-shadow: 0 0 12px -3px var(--accent-glow);
+}
+
+.customize-toggle--on .customize-toggle-knob {
+  background: var(--accent);
+  transform: translateX(13px);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* ── Narrow viewports: shrink width and tighten paddings. ── */
+@media (max-width: 480px) {
+  .ts-customize-menu { width: 100%; }
+  .customize-section { padding: 12px 14px; }
+  .customize-head { padding: 12px 14px 10px; }
+  .customize-theme-grid { gap: 5px; }
+  .customize-theme-tile-preview { height: 34px; }
+}
+
+@media (max-width: 720px) {
+  .ts-chord-readout { padding: 0 9px; height: 22px; min-width: 48px; }
+  .ts-chord-readout-tonic { font-size: 12px; }
+  .ts-chord-readout-quality { font-size: 10.5px; }
+}
+
+/* On mobile (≤480px) the topbar is already crowded — hide the chord
+   readout entirely. The toggle in the dropdown / nav still lets the user
+   flip it back on if the tab gets scrolled there. */
+@media (max-width: 480px) {
+  .ts-chord-readout--on { display: none; }
+}
+
+
+/* ─────────────────────────────────────────
+   PRACTICE MODE  (Synthesia-style wait)
+───────────────────────────────────────── */
+
+.hud-practice-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted);
+  font: 500 11.5px/1 var(--font);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s var(--ease-spring);
+  position: relative;
+  white-space: nowrap;
+}
+
+.hud-practice-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-hi);
+}
+
+.hud-practice-btn:active { transform: scale(0.97); }
+
+.hud-practice-icon {
+  display: inline-flex;
+  width: 14px; height: 14px;
+  align-items: center; justify-content: center;
+  color: currentColor;
+  opacity: 0.85;
+}
+
+.hud-practice-btn--on {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--accent) 22%, transparent),
+    color-mix(in srgb, var(--accent) 8%, transparent));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent) inset,
+    0 6px 20px -10px var(--accent-glow);
+}
+
+.hud-practice-btn--on .hud-practice-icon {
+  color: var(--accent);
+  opacity: 1;
+  filter: drop-shadow(0 0 5px var(--accent-glow));
+}
+
+/* Waiting state — pulses while the engine holds the clock for a chord.
+   Keeps a halo of the accent color breathing so the user knows playback
+   is intentionally paused rather than frozen. */
+@keyframes practice-wait-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent) inset,
+      0 0 0 0 color-mix(in srgb, var(--accent) 38%, transparent),
+      0 6px 20px -10px var(--accent-glow);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent) inset,
+      0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent),
+      0 8px 26px -8px var(--accent-glow);
+  }
+}
+
+.hud-practice-btn--waiting {
+  animation: practice-wait-pulse 1.25s var(--ease-out) infinite;
+}
+
+.hud-practice-btn--waiting .hud-practice-label::after {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  vertical-align: middle;
+  animation: pulse-dot 1.1s ease-in-out infinite;
+}
+
+/* Hide the practice button outside of file mode. Mirrors the existing
+   .hud-group--file pattern used by transport controls. */
+#hud:not(.hud--file) .hud-practice-btn,
+#hud:not(.hud--file) .hud-divider.hud-group--file {
+  display: none;
 }

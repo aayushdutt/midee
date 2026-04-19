@@ -35,6 +35,8 @@ export interface ControlsOptions {
   onMetronomeBpmChange?: (bpm: number) => void
   onSessionToggle?: () => void
   onHudPinChange?: (pinned: boolean) => void
+  onChordToggle?: () => void
+  onPracticeToggle?: () => void
 }
 
 export class Controls {
@@ -63,10 +65,9 @@ export class Controls {
   // recording/playing, metronome running. While true we suppress auto-hide
   // so the user doesn't lose sight of transport controls mid-take.
   private hudActivityLock = false
-  private themeBtn!: HTMLButtonElement
-  private themeLabelEl!: HTMLElement
-  private particleBtn!: HTMLButtonElement
-  private particleLabelEl!: HTMLElement
+  // Theme/particle/chord-toggle moved into the CustomizeMenu popover; no
+  // direct topbar references remain. Public update methods on this class
+  // are wired by App to forward into that menu.
   private loopBtn!: HTMLButtonElement
   private loopLabelEl!: HTMLElement
   private loopClearBtn!: HTMLButtonElement
@@ -81,6 +82,11 @@ export class Controls {
   private metroDecBtn!: HTMLButtonElement
   private metroIncBtn!: HTMLButtonElement
   private octaveEl!: HTMLElement
+  private keyHintCloseBtn!: HTMLButtonElement
+  private keyHintReopenBtn!: HTMLButtonElement
+  private keyHintHidden = false
+  private practiceBtn!: HTMLButtonElement
+  private practiceLabelEl!: HTMLElement
   private isScrubbing = false
   private idleTimer: ReturnType<typeof setTimeout> | null = null
   private currentMidiStatus: MidiDeviceStatus = 'disconnected'
@@ -147,6 +153,7 @@ export class Controls {
         <span class="ts-bars" aria-hidden="true">
           <span></span><span></span><span></span><span></span>
         </span>
+        <span id="ts-chord-slot" class="ts-chord-slot"></span>
       </div>
 
       <div class="ts-end">
@@ -163,16 +170,7 @@ export class Controls {
           ${icons.midi()}
           <span id="ts-menu-midi-label" class="ts-midi-label">MIDI</span>
         </button>
-        <button class="ts-theme-btn ts-particle-btn" id="ts-particle" type="button"
-                aria-label="Cycle particle style" data-tip="Particle style">
-          <span class="ts-particle-icon" aria-hidden="true">${icons.sparkles()}</span>
-          <span class="theme-label" id="ts-particle-label">Sparks</span>
-        </button>
-        <button class="ts-theme-btn" id="ts-theme" type="button"
-                aria-label="Cycle theme" data-tip="Theme">
-          <span class="theme-dot" id="ts-theme-dot"></span>
-          <span class="theme-label" id="ts-theme-label">Theme</span>
-        </button>
+        <span id="ts-customize-slot"></span>
         <button class="ts-record-btn" id="ts-record" type="button" aria-label="Export MP4" data-tip="Export MP4">
           ${icons.export()}
           <span>Export</span>
@@ -234,6 +232,16 @@ export class Controls {
             min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="10" value="${ZOOM_DEFAULT}" aria-label="Zoom" />
         </div>
 
+        <div class="hud-divider hud-group--file"></div>
+
+        <button class="hud-practice-btn hud-group--file" id="hud-practice"
+                type="button" aria-label="Practice mode — wait for correct notes"
+                aria-pressed="false"
+                data-tip="Practice mode · pause at every note until you play it">
+          <span class="hud-practice-icon" aria-hidden="true">${icons.practice()}</span>
+          <span class="hud-practice-label" id="hud-practice-label">Practice</span>
+        </button>
+
         <div class="hud-divider hud-group--live"></div>
 
         <div class="hud-metro hud-group--live" id="hud-metro-group">
@@ -285,37 +293,54 @@ export class Controls {
     el.id = 'key-hint'
     el.innerHTML = `
       <div class="kh-body">
-        <div class="kh-row">
-          <span class="kh-section">Play</span>
-          <span class="kh-map">
+        <div class="kh-section kh-section--first">
+          <div class="kh-section-head">
+            <span class="kh-label">Play</span>
+            <button class="kh-close" id="kh-close" type="button"
+                    aria-label="Hide keyboard reference" data-tip="Hide">
+              ${icons.smallClose()}
+            </button>
+          </div>
+          <span class="kh-keys">
             <kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd>
-            <span class="kh-dots">· · ·</span>
+            <span class="kh-divider" aria-hidden="true"></span>
             <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd>
           </span>
-          <span class="kh-section kh-section--muted">or plug in MIDI</span>
         </div>
-        <div class="kh-row">
-          <span class="kh-section">Octave</span>
-          <span class="kh-map">
-            <kbd>↓</kbd><kbd>↑</kbd>
-            <span class="kh-current" id="kh-octave">C4</span>
+
+        <div class="kh-section">
+          <span class="kh-label">Octave</span>
+          <span class="kh-keys">
+            <kbd class="kh-cap-sym">↓</kbd><kbd class="kh-cap-sym">↑</kbd>
+            <span class="kh-octave-pill" id="kh-octave">C4</span>
           </span>
         </div>
-        <div class="kh-row kh-row--shortcuts">
-          <span class="kh-section">Live</span>
-          <span class="kh-map kh-map--wrap">
-            <span class="kh-combo"><kbd>Tab</kbd> record</span>
-            <span class="kh-combo"><kbd>⇧L</kbd> loop</span>
-            <span class="kh-combo"><kbd>⇧U</kbd> undo</span>
-            <span class="kh-combo"><kbd>⇧C</kbd> clear</span>
-            <span class="kh-combo"><kbd>\`</kbd> click</span>
-          </span>
+
+        <div class="kh-section">
+          <span class="kh-label">Shortcuts</span>
+          <div class="kh-shortcuts">
+            <span class="kh-combo"><kbd>Tab</kbd><span>Record</span></span>
+            <span class="kh-combo"><span class="kh-cap-group"><kbd class="kh-cap-sym">⇧</kbd><kbd>L</kbd></span><span>Loop</span></span>
+            <span class="kh-combo"><span class="kh-cap-group"><kbd class="kh-cap-sym">⇧</kbd><kbd>U</kbd></span><span>Undo</span></span>
+            <span class="kh-combo"><span class="kh-cap-group"><kbd class="kh-cap-sym">⇧</kbd><kbd>C</kbd></span><span>Clear</span></span>
+            <span class="kh-combo"><kbd class="kh-cap-sym">\`</kbd><span>Metronome</span></span>
+          </div>
         </div>
       </div>
+      <button class="kh-reopen" id="kh-reopen" type="button"
+              aria-label="Show keyboard reference" data-tip="Show keyboard reference">
+        ${icons.keycap()}
+      </button>
     `
     this.opts.container.appendChild(el)
     this.keyHint = el
     this.octaveEl = el.querySelector<HTMLElement>('#kh-octave')!
+    this.keyHintCloseBtn = el.querySelector<HTMLButtonElement>('#kh-close')!
+    this.keyHintReopenBtn = el.querySelector<HTMLButtonElement>('#kh-reopen')!
+    this.keyHintCloseBtn.addEventListener('click', () => this.setKeyHintHidden(true))
+    this.keyHintReopenBtn.addEventListener('click', () => this.setKeyHintHidden(false))
+    this.keyHintHidden = loadKeyHintHidden()
+    this.applyKeyHintHiddenClass()
   }
 
   private bindEvents(): void {
@@ -338,10 +363,6 @@ export class Controls {
     this.recordBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-record')!
     this.hudDragHandle = this.hud.querySelector<HTMLButtonElement>('#hud-drag')!
     this.hudPinBtn = this.hud.querySelector<HTMLButtonElement>('#hud-pin')!
-    this.themeBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-theme')!
-    this.themeLabelEl = this.topStrip.querySelector<HTMLElement>('#ts-theme-label')!
-    this.particleBtn = this.topStrip.querySelector<HTMLButtonElement>('#ts-particle')!
-    this.particleLabelEl = this.topStrip.querySelector<HTMLElement>('#ts-particle-label')!
     this.loopBtn = this.hud.querySelector<HTMLButtonElement>('#hud-loop')!
     this.loopLabelEl = this.hud.querySelector<HTMLElement>('#hud-loop-label')!
     this.loopClearBtn = this.hud.querySelector<HTMLButtonElement>('#hud-loop-clear')!
@@ -355,6 +376,8 @@ export class Controls {
     this.metroBeatEl = this.hud.querySelector<HTMLElement>('.hud-metro-beat')!
     this.metroDecBtn = this.hud.querySelector<HTMLButtonElement>('#hud-metro-dec')!
     this.metroIncBtn = this.hud.querySelector<HTMLButtonElement>('#hud-metro-inc')!
+    this.practiceBtn = this.hud.querySelector<HTMLButtonElement>('#hud-practice')!
+    this.practiceLabelEl = this.hud.querySelector<HTMLElement>('#hud-practice-label')!
 
     this.playBtn.addEventListener('click', () => {
       if (state.mode.value !== 'file') return
@@ -434,8 +457,6 @@ export class Controls {
     this.updateSliderFill(speedSlider)
     this.updateSliderFill(zoomSlider)
 
-    this.themeBtn.addEventListener('click', () => this.opts.onThemeCycle?.())
-    this.particleBtn.addEventListener('click', () => this.opts.onParticleCycle?.())
     this.recordBtn.addEventListener('click', () => this.opts.onRecord?.())
     this.homeBtn.addEventListener('click', () => this.opts.onHome?.())
     this.openBtn.addEventListener('click', () => this.opts.onOpenFile?.())
@@ -455,6 +476,7 @@ export class Controls {
     this.metroBtn.addEventListener('click', () => this.opts.onMetronomeToggle?.())
     this.metroDecBtn.addEventListener('click', () => this.bumpBpm(-1))
     this.metroIncBtn.addEventListener('click', () => this.bumpBpm(+1))
+    this.practiceBtn.addEventListener('click', () => this.opts.onPracticeToggle?.())
     this.metroGroupEl.addEventListener(
       'wheel',
       (e) => {
@@ -498,6 +520,10 @@ export class Controls {
         if (!this.hud.classList.contains('hud--exporting')) {
           this.opts.onRecord?.()
         }
+      } else if (e.code === 'KeyP' && !e.shiftKey) {
+        // P toggles practice mode in file mode (Shift+P is reserved for HUD pin).
+        e.preventDefault()
+        this.opts.onPracticeToggle?.()
       }
       return
     }
@@ -546,6 +572,17 @@ export class Controls {
     }
   }
 
+  private setKeyHintHidden(hidden: boolean): void {
+    if (this.keyHintHidden === hidden) return
+    this.keyHintHidden = hidden
+    this.applyKeyHintHiddenClass()
+    saveKeyHintHidden(hidden)
+  }
+
+  private applyKeyHintHiddenClass(): void {
+    this.keyHint.classList.toggle('kh--collapsed', this.keyHintHidden)
+  }
+
   private bindState(): void {
     const { state, clock } = this.opts
 
@@ -592,16 +629,11 @@ export class Controls {
     this.refreshUi()
   }
 
-  updateThemeDot(color: string): void {
-    const dot = this.topStrip.querySelector<HTMLElement>('#ts-theme-dot')
-    if (dot) dot.style.background = color
-  }
-
-  updateThemeLabel(name: string): void {
-    this.themeLabelEl.textContent = name
-    this.themeBtn.title = `Theme: ${name} — click to cycle`
-    this.themeBtn.setAttribute('aria-label', `Theme: ${name}. Click to cycle themes.`)
-  }
+  // Theme + particle styling now lives in the CustomizeMenu popover; the
+  // legacy methods stay as no-ops so existing call-sites in App.ts continue
+  // to compile until they're migrated to push state straight into the menu.
+  updateThemeDot(_color: string): void {}
+  updateThemeLabel(_name: string): void {}
 
   updateOctave(octave: number): void {
     this.octaveEl.textContent = `C${octave}`
@@ -618,12 +650,14 @@ export class Controls {
   get instrumentSlot(): HTMLElement {
     return this.topStrip.querySelector<HTMLElement>('#ts-instrument-slot')!
   }
-
-  updateParticleStyle(name: string): void {
-    this.particleLabelEl.textContent = name
-    this.particleBtn.title = `Particles: ${name} — click to cycle`
-    this.particleBtn.setAttribute('aria-label', `Particle style: ${name}. Click to cycle.`)
+  get chordSlot(): HTMLElement {
+    return this.topStrip.querySelector<HTMLElement>('#ts-chord-slot')!
   }
+  get customizeSlot(): HTMLElement {
+    return this.topStrip.querySelector<HTMLElement>('#ts-customize-slot')!
+  }
+
+  updateParticleStyle(_name: string): void {}
 
   updateSessionRecording(recording: boolean, elapsedSec: number): void {
     this.sessionBtn.classList.toggle('hud-session-btn--on', recording)
@@ -699,6 +733,19 @@ export class Controls {
   // clock visibly runs but audio hasn't started yet.
   setInstrumentLoading(loading: boolean): void {
     this.playBtn.classList.toggle('btn-play--loading', loading)
+  }
+
+  updateChordOverlayState(_on: boolean): void {}
+
+  // Practice mode reflects two states: enabled (button "armed") and waiting
+  // (button pulses while the engine is holding the clock). The two CSS
+  // classes are independent so a non-waiting "armed" state still reads
+  // distinctly from the inactive default.
+  updatePracticeState(enabled: boolean, waiting: boolean): void {
+    this.practiceBtn.classList.toggle('hud-practice-btn--on', enabled)
+    this.practiceBtn.classList.toggle('hud-practice-btn--waiting', waiting)
+    this.practiceBtn.setAttribute('aria-pressed', String(enabled))
+    this.practiceLabelEl.textContent = waiting ? 'Waiting…' : enabled ? 'Practice' : 'Practice'
   }
 
   updateMidiStatus(status: MidiDeviceStatus, deviceName: string): void {
@@ -953,6 +1000,16 @@ function formatSpeed(s: number): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
+}
+
+const KEY_HINT_HIDDEN_KEY = 'midee.keyHintHidden'
+
+function loadKeyHintHidden(): boolean {
+  return localStorage.getItem(KEY_HINT_HIDDEN_KEY) === 'true'
+}
+
+function saveKeyHintHidden(hidden: boolean): void {
+  localStorage.setItem(KEY_HINT_HIDDEN_KEY, String(hidden))
 }
 
 function loopLabel(state: LoopState, layerCount: number): string {

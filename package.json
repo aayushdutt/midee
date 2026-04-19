@@ -25,6 +25,7 @@
     "pixi-filters": "^6.0.1",
     "pixi.js": "^8.4.0",
     "posthog-js": "^1.369.3",
+    "tonal": "^6.4.3",
     "tone": "^14.7.77"
   },
   "devDependencies": {

@@ -188,6 +188,38 @@ export const icons = {
       size,
       `<path d="M12 3v12"/><polyline points="7 8 12 3 17 8"/><rect x="3" y="15" width="18" height="6" rx="1.5"/>`,
     ),
+
+  // Three stacked discs evoking chord-tone stacking on a staff.
+  chord: (size: Size = 13): string =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">` +
+    `<ellipse cx="9" cy="17" rx="4" ry="2.6"/>` +
+    `<ellipse cx="13" cy="12" rx="4" ry="2.6" opacity="0.72"/>` +
+    `<ellipse cx="17" cy="7" rx="4" ry="2.6" opacity="0.45"/>` +
+    `</svg>`,
+
+  // Tiny × glyph used by the keyboard-hint close button.
+  smallClose: (size: Size = 9): string =>
+    svgStroke(size, `<line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/>`, 2.4),
+
+  // Keycap glyph for the keyboard-hint reopener — reads as "keyboard help".
+  keycap: (size: Size = 13): string =>
+    svgStroke(
+      size,
+      `<rect x="3" y="6" width="18" height="12" rx="2.5"/>` +
+        `<line x1="7" y1="10" x2="7.01" y2="10"/>` +
+        `<line x1="11" y1="10" x2="11.01" y2="10"/>` +
+        `<line x1="15" y1="10" x2="15.01" y2="10"/>` +
+        `<line x1="7" y1="14" x2="17" y2="14"/>`,
+      1.8,
+    ),
+
+  // Graduation cap silhouette doubling as a "study / practice" cue.
+  practice: (size: Size = 14): string =>
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">` +
+    `<path d="M3 8.5 12 4l9 4.5-9 4.5L3 8.5z" fill="currentColor" stroke="none" opacity="0.85"/>` +
+    `<path d="M7 11v4.5c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5V11"/>` +
+    `<path d="M21 8.5V14"/>` +
+    `</svg>`,
 }
 
 export type IconName = keyof typeof icons

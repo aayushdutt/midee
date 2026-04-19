@@ -27,6 +27,10 @@ import { KeyboardResizer } from './ui/KeyboardResizer'
 import { PostSessionModal, type SessionAction } from './ui/PostSessionModal'
 import { TrackPanel } from './ui/TrackPanel'
 import { installViewportClassSync } from './ui/utils'
+import { detectChord } from './core/music/ChordDetector'
+import { PracticeEngine, type PracticeStatus } from './core/practice/PracticeEngine'
+import { ChordOverlay } from './ui/ChordOverlay'
+import { CustomizeMenu } from './ui/CustomizeMenu'
 
 export class App {
   private clock = new MasterClock()
@@ -48,8 +52,16 @@ export class App {
   private trackPanel!: TrackPanel
   private exportModal!: ExportModal
   private kbdResizer!: KeyboardResizer
+  private chordOverlay!: ChordOverlay
+  private customizeMenu!: CustomizeMenu
+  private practiceEngine!: PracticeEngine
   private loadingEl: HTMLElement | null = null
   private currentExporter: VideoExporter | null = null
+  // Throttle chord recomputation: only run when at least this many ms have
+  // passed since the last call, OR the active-pitch set materially changed.
+  private chordLastRunMs = 0
+  private chordLastSig = ''
+  private chordOverlayOn = false
 
   private themeIndex = themeIndexStore.load()
   private instrumentIndex = instrumentIndexStore.load()
@@ -143,6 +155,7 @@ export class App {
       onSeek: (t) => {
         this.synth.seek(t)
         this.liveNotes.reset()
+        this.practiceEngine?.notifySeek(t)
       },
       onZoom: (pps) => this.renderer.setZoom(pps),
       onThemeCycle: () => this.cycleTheme(),
@@ -170,6 +183,8 @@ export class App {
       },
       onSessionToggle: () => this.toggleSessionRecord(),
       onHudPinChange: (pinned) => hudPinnedStore.save(pinned),
+      onChordToggle: () => this.toggleChordOverlay(),
+      onPracticeToggle: () => this.togglePracticeMode(),
     })
 
     this.controls.setHudPinned(hudPinnedStore.load())
@@ -242,6 +257,37 @@ export class App {
     )
     this.kbdResizer.restoreSaved()
 
+    this.chordOverlay = new ChordOverlay(this.controls.chordSlot)
+    this.chordOverlayOn = chordOverlayStore.load()
+    this.applyChordOverlayVisibility()
+    // File mode actively plays a MIDI — the chord chip would just narrate
+    // what the user is already hearing without contributing to "play along"
+    // affordances. Keep it scoped to live/home where it confirms what the
+    // player is sounding.
+    appState.mode.subscribe(() => this.applyChordOverlayVisibility())
+
+    // Customization popover bundles theme / particles / chord toggle —
+    // collapses three topbar pills into a single trigger.
+    this.customizeMenu = new CustomizeMenu(
+      this.controls.customizeSlot,
+      overlay,
+      THEMES,
+      PARTICLE_STYLES,
+      {
+        onSelectTheme:    (idx) => this.setThemeByIndex(idx),
+        onSelectParticle: (idx) => this.setParticleByIndex(idx),
+        onToggleChord:    () => this.toggleChordOverlay(),
+      },
+    )
+    this.customizeMenu.setChord(this.chordOverlayOn)
+
+    this.practiceEngine = new PracticeEngine(this.clock, {
+      onWaitStart: () => this.onPracticeWaitStart(),
+      onWaitEnd:   (resumeAt) => this.onPracticeWaitEnd(resumeAt),
+    })
+    this.practiceEngine.status.subscribe((s) => this.onPracticeStatusChange(s))
+    this.controls.updatePracticeState(false, false)
+
     this.applyTheme(THEMES[this.themeIndex]!)
     this.applyInstrument()
     this.applyParticleStyle()
@@ -271,6 +317,7 @@ export class App {
           if (m === 30) trackActivation('playback_30s')
         }
       }
+      this.maybeUpdateChordOverlay(t)
     })
 
     appState.status.subscribe((status) => {
@@ -415,6 +462,13 @@ export class App {
     this.loopEngine.captureNoteOn(evt.pitch, evt.velocity, evt.clockTime)
     this.sessionRec.captureNoteOn(evt.pitch, evt.velocity, evt.clockTime)
 
+    // Practice mode (file mode only, while waiting): each correct press
+    // chips away at the pending chord; the engine releases the clock when
+    // every required pitch has landed.
+    if (this.practiceEngine?.isWaiting) {
+      this.practiceEngine.notePressed(evt.pitch)
+    }
+
     // Live mode's "tap a note to start the session" shortcut — don't hijack
     // file mode's transport, which the user drives with the play button.
     if (appState.mode.value === 'live') {
@@ -511,7 +565,19 @@ export class App {
 
   private async connectMidi(): Promise<void> {
     this.primeInteractiveAudio()
-    await this.midiInput.requestAccess()
+    // Once a user denies the prompt, browsers remember the choice and
+    // `requestMIDIAccess()` resolves silently — clicking the button again
+    // does nothing visible. Detect that case and surface a help message
+    // so the user knows they need to reset the permission via the browser
+    // (lock icon → Site settings → MIDI devices → Allow).
+    const wasBlocked = this.midiInput.status.value === 'blocked'
+    const ok = await this.midiInput.requestAccess()
+    if (!ok && this.midiInput.status.value === 'blocked') {
+      const msg = wasBlocked
+        ? 'MIDI is blocked. Click the 🔒 icon in your address bar → Site settings → allow MIDI, then reload.'
+        : 'MIDI permission denied. Click again, or enable it via the 🔒 icon in your address bar.'
+      this.showError(msg)
+    }
   }
 
   private async autoConnectMidi(): Promise<void> {
@@ -532,6 +598,7 @@ export class App {
       appState.completeFileLoad(midi)
       this.renderer.loadMidi(midi)
       this.trackPanel.render(midi)
+      this.practiceEngine?.loadMidi(midi)
       document.title = `${midi.name} · midee`
       this.dropzone.hide()
       this.resetPlaybackTelemetry()
@@ -566,9 +633,14 @@ export class App {
   }
 
   private cycleTheme(): void {
-    this.themeIndex = (this.themeIndex + 1) % THEMES.length
-    this.applyTheme(THEMES[this.themeIndex]!)
-    themeIndexStore.save(this.themeIndex)
+    this.setThemeByIndex((this.themeIndex + 1) % THEMES.length)
+  }
+
+  private setThemeByIndex(idx: number): void {
+    if (idx < 0 || idx >= THEMES.length || idx === this.themeIndex) return
+    this.themeIndex = idx
+    this.applyTheme(THEMES[idx]!)
+    themeIndexStore.save(idx)
   }
 
   private cycleInstrument(): void {
@@ -595,15 +667,20 @@ export class App {
   }
 
   private cycleParticleStyle(): void {
-    this.particleIndex = (this.particleIndex + 1) % PARTICLE_STYLES.length
+    this.setParticleByIndex((this.particleIndex + 1) % PARTICLE_STYLES.length)
+  }
+
+  private setParticleByIndex(idx: number): void {
+    if (idx < 0 || idx >= PARTICLE_STYLES.length || idx === this.particleIndex) return
+    this.particleIndex = idx
     this.applyParticleStyle()
-    particleIndexStore.save(this.particleIndex)
+    particleIndexStore.save(idx)
   }
 
   private applyParticleStyle(): void {
     const info = PARTICLE_STYLES[this.particleIndex]!
     this.renderer.setParticleStyle(info.id)
-    this.controls.updateParticleStyle(info.name)
+    this.customizeMenu?.setParticle(this.particleIndex)
   }
 
   private async startExport(settings: ExportSettings): Promise<void> {
@@ -812,6 +889,8 @@ export class App {
 
   private enterHomeMode(): void {
     this.resetInteractionState()
+    this.practiceEngine?.setEnabled(false)
+    this.practiceEngine?.loadMidi(null)
     appState.enterHome()
     this.renderer.clearMidi()
     this.trackPanel.close()
@@ -825,6 +904,7 @@ export class App {
   private enterLiveMode(primeAudio = true): void {
     const wasAlreadyLive = appState.mode.value === 'live'
     this.resetInteractionState()
+    this.practiceEngine?.setEnabled(false)
     appState.enterLive()
     this.renderer.clearMidi()
     this.trackPanel.close()
@@ -849,6 +929,7 @@ export class App {
     appState.enterFile()
     this.renderer.loadMidi(midi)
     this.trackPanel.render(midi)
+    this.practiceEngine?.loadMidi(midi)
     this.dropzone.hide()
     // Typing keyboard stays enabled — users can play along with the file.
     this.keyboardInput.enable()
@@ -937,6 +1018,7 @@ export class App {
     appState.completeFileLoad(midi)
     this.renderer.loadMidi(midi)
     this.trackPanel.render(midi)
+    this.practiceEngine?.loadMidi(midi)
     this.dropzone.hide()
     // Typing keyboard stays on — users can play along with their own session.
     this.keyboardInput.enable()
@@ -964,6 +1046,128 @@ export class App {
     return this.metronome.bpm.value
   }
 
+  // ── Chord overlay ──────────────────────────────────────────────────────
+  private toggleChordOverlay(): void {
+    this.chordOverlayOn = !this.chordOverlayOn
+    this.applyChordOverlayVisibility()
+    this.customizeMenu?.setChord(this.chordOverlayOn)
+    chordOverlayStore.save(this.chordOverlayOn)
+    track('chord_overlay_toggled', { on: this.chordOverlayOn })
+    if (this.chordOverlayOn && this.chordOverlay.isVisible) {
+      // Force a fresh reading on toggle-on so the user sees a chord (or "—")
+      // immediately, even if the clock isn't ticking right now.
+      this.chordLastSig = ''
+      this.chordLastRunMs = 0
+      this.maybeUpdateChordOverlay(this.clock.currentTime)
+    }
+  }
+
+  // Effective visibility = user's saved preference AND current mode supports it.
+  // File mode is excluded — the chord readout is a "what am I playing?" cue,
+  // not a passive playback annotation.
+  private applyChordOverlayVisibility(): void {
+    const allowedHere = appState.mode.value !== 'file'
+    this.chordOverlay.setVisible(this.chordOverlayOn && allowedHere)
+  }
+
+  // Builds the active-pitch set from the right sources for the current mode,
+  // detects a chord, and pushes it to the overlay. Throttled to ~70ms because
+  // chords don't change at 60 fps and the per-frame cost on long files is
+  // wasted otherwise.
+  private maybeUpdateChordOverlay(time: number): void {
+    if (!this.chordOverlayOn) return
+    const now = performance.now()
+    const pitches = this.collectActivePitches(time)
+    const sig = pitchSignature(pitches)
+    if (sig === this.chordLastSig && now - this.chordLastRunMs < 250) return
+    if (sig !== this.chordLastSig || now - this.chordLastRunMs >= 70) {
+      this.chordLastSig = sig
+      this.chordLastRunMs = now
+      const reading = detectChord(pitches)
+      this.chordOverlay.update(reading)
+    }
+  }
+
+  private collectActivePitches(currentTime: number): Set<number> {
+    const set = new Set<number>()
+    const mode = appState.mode.value
+
+    // Live performance — what the player and looper are pressing right now.
+    if (mode === 'live' || mode === 'home') {
+      for (const [pitch] of this.liveNotes.heldNotes) set.add(pitch)
+      for (const [pitch] of this.loopNotes.heldNotes) set.add(pitch)
+      return set
+    }
+
+    if (mode === 'file') {
+      // File mode — every visible-track note overlapping the playhead, plus
+      // any live-keyboard notes the user is playing alongside the file.
+      const midi = appState.loadedMidi.value
+      if (midi) {
+        for (const track of midi.tracks) {
+          if (!this.renderer.isTrackVisible(track.id)) continue
+          if (track.isDrum) continue
+          for (const note of track.notes) {
+            if (note.time > currentTime) break
+            if (note.time + note.duration > currentTime) set.add(note.pitch)
+          }
+        }
+      }
+      for (const [pitch] of this.liveNotes.heldNotes) set.add(pitch)
+    }
+    return set
+  }
+
+  // ── Practice (Synthesia-style wait) mode ───────────────────────────────
+  private togglePracticeMode(): void {
+    if (appState.mode.value !== 'file') {
+      this.showError('Practice mode is only available while playing a MIDI file.')
+      return
+    }
+    if (!appState.loadedMidi.value) {
+      this.openFilePicker()
+      return
+    }
+    // Re-seed visible-track filter before flipping the toggle so the very
+    // first wait already respects whatever the user has muted via the
+    // tracks panel.
+    this.practiceEngine.setVisibleTracks(this.collectVisibleTrackIds())
+    const enabled = this.practiceEngine.toggle()
+    track(enabled ? 'practice_mode_enabled' : 'practice_mode_disabled')
+  }
+
+  private collectVisibleTrackIds(): string[] | null {
+    const midi = appState.loadedMidi.value
+    if (!midi) return null
+    return midi.tracks.filter(t => this.renderer.isTrackVisible(t.id)).map(t => t.id)
+  }
+
+  private onPracticeWaitStart(): void {
+    // Mirror engine pause into appState/synth so audio releases and the
+    // status pill flips. The seek-to-onset is implicit — the engine engages
+    // at exactly step.time; we don't snap because the strike line already
+    // sits flush with the keyboard.
+    this.clock.pause()
+    appState.pausePlayback()
+  }
+
+  private onPracticeWaitEnd(resumeAt: number): void {
+    // Nudge past the chord onset so the audio scheduler doesn't re-trigger
+    // the notes the user just played. status → 'playing' triggers the synth
+    // to schedule from the new clock time downstream.
+    this.clock.seek(resumeAt)
+    this.clock.play()
+    appState.startPlaying()
+  }
+
+  private onPracticeStatusChange(s: PracticeStatus): void {
+    this.controls.updatePracticeState(s.enabled, s.waiting)
+    this.renderer.setPracticeHints(
+      s.enabled ? s.pending : null,
+      s.enabled ? s.accepted : null,
+    )
+  }
+
   private resetInteractionState(): void {
     this.clock.pause()
     this.clock.seek(0)
@@ -988,8 +1192,7 @@ export class App {
 
   private applyTheme(theme: Theme): void {
     this.renderer.setTheme(theme)
-    this.controls.updateThemeDot(theme.uiAccentCSS)
-    this.controls.updateThemeLabel(theme.name)
+    this.customizeMenu?.setTheme(this.themeIndex)
     const accent = theme.uiAccentCSS
     document.documentElement.style.setProperty('--accent', accent)
     document.documentElement.style.setProperty('--accent-soft', `${accent}2e`)
@@ -1048,6 +1251,9 @@ export class App {
     this.loopEngine.dispose()
     this.sessionRec.dispose()
     this.metronome.dispose()
+    this.practiceEngine.dispose()
+    this.chordOverlay.dispose()
+    this.customizeMenu.dispose()
     this.clock.dispose()
     this.renderer.destroy()
     this.synth.dispose()
@@ -1085,6 +1291,10 @@ const particleIndexStore = indexPersisted(
 )
 const metronomeBpmStore = numberPersisted('midee.metronomeBpm', 120, 40, 240)
 const hudPinnedStore = booleanPersisted('midee.hudPinned', false)
+// Chord readout defaults *on*: it's the headline live-mode cue. The
+// boolean store treats "no preference" as the fallback (true), and only
+// an explicit "false" turns it off.
+const chordOverlayStore = booleanPersisted('midee.chordOverlay', true)
 
 // Scans the MIDI's notes for min/max pitch and pads outward by a few keys so
 // the visible range feels natural rather than clipping right at the extremes.
@@ -1124,6 +1334,15 @@ function speedToPps(speed: 'compact' | 'standard' | 'drama'): number {
 function sanitiseFilename(name: string): string {
   const cleaned = name.replace(/[\\/:*?"<>|]+/g, ' ').trim()
   return cleaned.length > 0 ? cleaned : 'midee'
+}
+
+// Stable string for an active-pitch set so the chord overlay can short-circuit
+// recomputation when nothing changed between frames.
+function pitchSignature(pitches: Set<number>): string {
+  if (pitches.size === 0) return ''
+  return Array.from(pitches)
+    .sort((a, b) => a - b)
+    .join('.')
 }
 
 // Resolves a user-facing resolution preset to concrete pixel dimensions.

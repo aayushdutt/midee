@@ -17,6 +17,19 @@ import type { Viewport } from './viewport'
 //   3. blackSprite       — blacks + bevels + rails
 //   4. blackActiveLayer  — per-frame: tinted overlay for pressed black keys
 
+// Convert a CSS-style hex color (`#abcdef` / `#abc`) into a Pixi 0xRRGGBB
+// number. Returns null on parse failure so callers can fall back.
+function parseHexColor(s: string): number | null {
+  const m = s.trim().match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/)
+  if (!m) return null
+  let hex = m[1]!
+  if (hex.length === 3) {
+    hex = hex.split('').map(c => c + c).join('')
+  }
+  const n = parseInt(hex, 16)
+  return Number.isFinite(n) ? n : null
+}
+
 // One 96×96 greyscale noise tile is enough — it tiles imperceptibly
 // across 88 keys. Cached at module scope so theme rebuilds don't
 // re-roll the RNG (would cause visible shimmer across theme cycles).
@@ -57,6 +70,17 @@ export class KeyboardRenderer {
   private whiteActiveLayer: Graphics
   private blackActiveLayer: Graphics
 
+  // Persistent practice-mode hint layer — sits underneath the active overlay
+  // so a key the user has already pressed shows its accent over the hint
+  // glow rather than fighting with it. Redrawn only when the hint changes.
+  private practiceHintLayer: Graphics
+  private practiceSignature = ''
+  private practicePulsePhase = 0
+  private practiceTickerHandler: ((ticker: import('pixi.js').Ticker) => void) | null = null
+  private practicePending: ReadonlySet<number> | null = null
+  private practiceAccepted: ReadonlySet<number> | null = null
+  private practiceTheme: Theme | null = null
+
   // Snapshot of the last-drawn pitch→color map as a single signature string.
   // If nothing changed we skip the clear + redraw entirely (common during
   // sustained chords and idle frames).
@@ -74,11 +98,16 @@ export class KeyboardRenderer {
     this.whiteActiveLayer.label = 'keyboard-active-white'
     this.blackActiveLayer = new Graphics()
     this.blackActiveLayer.label = 'keyboard-active-black'
+    this.practiceHintLayer = new Graphics()
+    this.practiceHintLayer.label = 'keyboard-practice-hint'
     // Order matters: white active must sit above the white sprite but
     // below the black sprite. Black active sits at the top of the stack.
     // Sprites are inserted by build() at the correct indices.
     this.container.addChild(this.whiteActiveLayer)
     this.container.addChild(this.blackActiveLayer)
+    // Practice hint sits at the very top so its pulse reads on both white
+    // and black keys regardless of static-sprite layering.
+    this.container.addChild(this.practiceHintLayer)
   }
 
   // Build or rebuild the static keyboard textures.
@@ -86,6 +115,9 @@ export class KeyboardRenderer {
   build(viewport: Viewport, yOffset: number): void {
     const { keyboardHeight, canvasWidth } = viewport.config
     const positions = viewport.getAllKeyPositions()
+    // Snapshot for the practice-hint layer (which redraws on its own ticker
+    // and doesn't otherwise have a Viewport reference handy).
+    this.lastPositions = new Map(positions)
 
     // Destroy previous textures/sprites to avoid memory leaks. destroy()
     // also removes the sprite from its parent container.
@@ -225,6 +257,10 @@ export class KeyboardRenderer {
 
     this.whiteActiveLayer.y = yOffset
     this.blackActiveLayer.y = yOffset
+    this.practiceHintLayer.y = yOffset
+    // Force a redraw of the hint layer on the next setPracticeHints call —
+    // the geometry depends on the freshly-built viewport.
+    this.practiceSignature = ''
   }
 
   // Called every frame — draws only the keys that are currently pressed, each
@@ -277,7 +313,126 @@ export class KeyboardRenderer {
     this.theme = theme
     // Colors baked into the active-key fill changed — force a redraw.
     this.activeLayerDirty = true
+    // Practice hint colours follow the active theme accent.
+    this.practiceTheme = theme
+    this.practiceSignature = ''
   }
+
+  // Public hook for the parent renderer to swap in the current practice-mode
+  // hint. Pass `null` to clear. The pulse animation runs on a private ticker so
+  // the hint breathes even on frames where the main render loop is idle (file
+  // playback paused, no live notes pending).
+  setPracticeHints(
+    pending: ReadonlySet<number> | null,
+    accepted: ReadonlySet<number> | null,
+    theme: Theme,
+  ): void {
+    this.practicePending = pending
+    this.practiceAccepted = accepted
+    this.practiceTheme = theme
+    const sig = this.hintSignature(pending, accepted)
+    if (sig !== this.practiceSignature) {
+      this.practiceSignature = sig
+      this.drawPracticeHints()
+    }
+
+    const wantTicker = !!pending && pending.size > 0
+    if (wantTicker && !this.practiceTickerHandler) {
+      this.practiceTickerHandler = (ticker) => {
+        // ticker.deltaTime is Pixi units (~1 per 16.6ms). Scale to a slow
+        // pulse — about one full breath every 1.4 seconds.
+        this.practicePulsePhase += ticker.deltaTime * 0.075
+        this.drawPracticeHints()
+      }
+      this.app.ticker.add(this.practiceTickerHandler)
+    } else if (!wantTicker && this.practiceTickerHandler) {
+      this.app.ticker.remove(this.practiceTickerHandler)
+      this.practiceTickerHandler = null
+      this.practicePulsePhase = 0
+      this.practiceHintLayer.clear()
+    }
+  }
+
+  private drawPracticeHints(): void {
+    const layer = this.practiceHintLayer
+    layer.clear()
+    const pending = this.practicePending
+    if (!pending || pending.size === 0) return
+    const theme = this.practiceTheme ?? this.theme
+    // Find any cached viewport positions via the static sprite as a proxy —
+    // we need geometry, so we lazily walk the same map drawActiveKeys uses.
+    // The container hosts a sprite for whites whose width matches canvasWidth.
+    const yOffset = this.whiteSprite?.y ?? 0
+    const totalH = (this.whiteSprite?.height ?? 0)
+    if (totalH === 0) return
+
+    // Pulse: 0..1 sine, normalised so even when the user has played part of
+    // the chord the remaining keys keep a strong baseline glow.
+    const pulse = 0.55 + 0.45 * Math.abs(Math.sin(this.practicePulsePhase))
+
+    // Re-walk the keys we know about — pull positions from the saved sprite
+    // by re-deriving from MIDI bounds. We only use the same data the render
+    // pipeline already has access to (positions live in the Viewport, but
+    // they're keyed by pitch). We grab them via the locallyRetained sprite
+    // dimensions.
+    // For correctness, draw each requested pitch by querying the parent for
+    // positions through the public hint API; here we recompute approximate x
+    // by mapping pitch index to width.
+    // Pull the same key positions used at build time.
+    const positions = this.lastPositions
+    if (!positions) return
+
+    layer.y = yOffset
+    const accent = theme.uiAccentCSS
+    const tint = parseHexColor(accent) ?? (theme.trackColors[0] ?? theme.nowLine)
+    const fullKbHeight = totalH
+
+    for (const pitch of pending) {
+      const pos = positions.get(pitch)
+      if (!pos) continue
+      const isBlack = isBlackKey(pitch)
+      const w = pos.width
+      const x = pos.x
+      const h = isBlack ? fullKbHeight * 0.62 : fullKbHeight - 4
+      const y = isBlack ? 0 : 2
+      const radius = isBlack ? 2 : 3
+
+      // Halo — soft, thick, expands beyond the key footprint.
+      const halos: readonly [number, number][] = [
+        [12, 0.05 * pulse],
+        [7,  0.10 * pulse],
+        [3,  0.18 * pulse],
+      ]
+      for (const [expand, alpha] of halos) {
+        layer.roundRect(x - expand, y - expand, w + expand * 2, h + expand * 2, radius + expand)
+        layer.fill({ color: tint, alpha })
+      }
+
+      // Soft body fill — gentle, not as opaque as a press so the user can
+      // still distinguish "next up" from "playing".
+      const bodyAlpha = (isBlack ? 0.32 : 0.22) * pulse
+      layer.roundRect(x, y, w, h, radius)
+      layer.fill({ color: tint, alpha: bodyAlpha })
+
+      // Top accent strip — a thin bar of the accent so the pulse has a focal
+      // line. Sits inside the rounded corners.
+      layer.rect(x + radius, y, w - radius * 2, 2)
+      layer.fill({ color: tint, alpha: 0.55 * pulse })
+    }
+  }
+
+  private hintSignature(
+    pending: ReadonlySet<number> | null,
+    accepted: ReadonlySet<number> | null,
+  ): string {
+    const p = pending ? Array.from(pending).sort().join('.') : ''
+    const a = accepted ? Array.from(accepted).sort().join('.') : ''
+    return `${p}|${a}`
+  }
+
+  // Cached so practice-hints can render without reaching back into Viewport.
+  // Captured during `build()` from the same Viewport instance.
+  private lastPositions: Map<number, { x: number; width: number }> | null = null
 
   // Cheap change-detection: concatenate sorted pitch:color pairs. The map is
   // small (≤ ~10 active pitches at once) so this is essentially free and
