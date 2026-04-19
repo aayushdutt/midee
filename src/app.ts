@@ -346,8 +346,17 @@ export class App {
   }
 
   private releaseAllLiveNotes(): void {
-    this.liveNotes.releaseAll(this.clock.currentTime)
+    const now = this.clock.currentTime
+    this.liveNotes.releaseAll(now)
     this.synth.liveReleaseAll()
+    // Any pedal-sustained pitches have open note-ons in the loop/session
+    // streams. Close them at `now` (tab-hide / blur time) — otherwise the
+    // next time the player comes back, the next note-off closes the wrong
+    // event and the recorded phrase has an impossible duration.
+    for (const pitch of this.sustainedPitches) {
+      this.loopEngine.captureNoteOff(pitch, now)
+      this.sessionRec.captureNoteOff(pitch, now)
+    }
     this.sustainedPitches.clear()
     this.pedalDown = false
     this.midiPedalDown = false
@@ -374,10 +383,16 @@ export class App {
       trackActivation('live_note')
     }
 
-    // Re-pressing a pitch that was sustained by the pedal clears the flag —
-    // the new attack owns the sound from here, and we don't want the eventual
-    // pedal-up to fire a stale release on a note that's currently ringing.
-    this.sustainedPitches.delete(evt.pitch)
+    // Re-pressing a pitch that was pedal-sustained: the new attack takes
+    // over. Emit the sustained note's note-off into loop/session first so
+    // their streams don't end up with overlapping note-ons for one pitch,
+    // and clear the sustain flag so pedal-up later doesn't fire a stale
+    // release on a note that's currently ringing.
+    if (this.sustainedPitches.has(evt.pitch)) {
+      this.loopEngine.captureNoteOff(evt.pitch, evt.clockTime)
+      this.sessionRec.captureNoteOff(evt.pitch, evt.clockTime)
+      this.sustainedPitches.delete(evt.pitch)
+    }
     this.synth.liveNoteOn(evt.pitch, evt.velocity)
     this.liveNotes.press(evt.pitch, evt.velocity, evt.clockTime)
     this.renderer.burstParticleAt(evt.pitch)
@@ -398,16 +413,18 @@ export class App {
   private handleLiveNoteOff(evt: MidiNoteEvent): void {
     const mode = appState.mode.value
     if (mode !== 'live' && mode !== 'file') return
-    // Visual + recording paths reflect actual hand motion: key-up is key-up.
-    // The pedal only delays *audio* release so the player hears the damper
-    // semantics they expect from a real piano.
+    // The visual piano-roll reflects actual hand motion — key-up is key-up
+    // in live mode, even while the audio keeps ringing under the pedal.
     this.liveNotes.release(evt.pitch, evt.clockTime)
-    this.loopEngine.captureNoteOff(evt.pitch, evt.clockTime)
-    this.sessionRec.captureNoteOff(evt.pitch, evt.clockTime)
     if (this.pedalDown) {
+      // Pedal held: defer audio release AND the loop/session note-off so
+      // the recorded duration matches what the player actually heard.
+      // Both stream-captures fire together at pedal-up (or at a re-press).
       this.sustainedPitches.add(evt.pitch)
     } else {
       this.synth.liveNoteOff(evt.pitch)
+      this.loopEngine.captureNoteOff(evt.pitch, evt.clockTime)
+      this.sessionRec.captureNoteOff(evt.pitch, evt.clockTime)
     }
   }
 
@@ -423,8 +440,15 @@ export class App {
       return
     }
     // Pedal-up: release everything the damper was holding. Still-held keys
-    // aren't in this set, so they keep ringing as expected.
-    for (const pitch of this.sustainedPitches) this.synth.liveNoteOff(pitch)
+    // aren't in this set, so they keep ringing as expected. Fire the
+    // loop/session note-offs here too — their durations are pedal-informed,
+    // so the captured streams match what the player heard.
+    const now = this.clock.currentTime
+    for (const pitch of this.sustainedPitches) {
+      this.synth.liveNoteOff(pitch)
+      this.loopEngine.captureNoteOff(pitch, now)
+      this.sessionRec.captureNoteOff(pitch, now)
+    }
     this.sustainedPitches.clear()
   }
 
