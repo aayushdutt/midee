@@ -1141,8 +1141,12 @@ body {
    something to *do* with it (grant permission, troubleshoot a blocked
    browser prompt). Once `connected`, it disappears and the device name
    takes over the now-playing status pill — no permanent no-op button. */
-#top-strip[data-midi-status="connected"] .ts-pill--midi { display: none; }
-#top-strip[data-midi-status="connected"] .ts-sep         { display: none; }
+#top-strip[data-midi-status="connected"] .ts-pill--midi {
+  display: none;
+}
+#top-strip[data-midi-status="connected"] .ts-sep {
+  display: none;
+}
 
 /* Collapse MIDI pill when the browser doesn't support Web MIDI at all —
    nothing the user can do, so we just disable it visually. */
@@ -2330,7 +2334,9 @@ body {
   border-radius: 5px;
   letter-spacing: 0.02em;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  transition: background 0.18s ease, border-color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
 }
 
 /* Symbol caps (Shift glyph, arrows) read better with a slight font bump
@@ -2377,10 +2383,15 @@ body {
   pointer-events: auto;
   cursor: pointer;
   opacity: 0.75;
-  transition: opacity 0.18s ease, color 0.18s ease, background 0.18s ease;
+  transition:
+    opacity 0.18s ease,
+    color 0.18s ease,
+    background 0.18s ease;
 }
 
-#key-hint:hover .kh-close { opacity: 1; }
+#key-hint:hover .kh-close {
+  opacity: 1;
+}
 
 .kh-close:hover,
 .kh-close:focus-visible {
@@ -2407,7 +2418,11 @@ body {
   color: var(--text-dim);
   pointer-events: auto;
   cursor: pointer;
-  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    transform 0.18s ease;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
 }
 
@@ -2417,9 +2432,15 @@ body {
   transform: translateY(-1px);
 }
 
-#key-hint.kh--collapsed .kh-body { display: none; }
-#key-hint.kh--collapsed .kh-reopen { display: inline-flex; }
-#key-hint.kh--collapsed { pointer-events: none; }
+#key-hint.kh--collapsed .kh-body {
+  display: none;
+}
+#key-hint.kh--collapsed .kh-reopen {
+  display: inline-flex;
+}
+#key-hint.kh--collapsed {
+  pointer-events: none;
+}
 
 @media (max-width: 640px) {
   #key-hint {
@@ -2720,7 +2741,7 @@ body.is-touch #kbd-resizer {
 }
 
 .ts-popover *::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 999px;
   /* Inset border = padding around the thumb so it doesn't kiss the edges. */
   border: 2px solid transparent;
@@ -4147,7 +4168,6 @@ body.is-touch #kbd-resizer {
   }
 }
 
-
 /* ─────────────────────────────────────────
    CHORD READOUT  (Tonal.js powered, inline in topbar)
 ───────────────────────────────────────── */
@@ -4208,7 +4228,9 @@ body.is-touch #kbd-resizer {
   align-items: baseline;
   gap: 0.5px;
   line-height: 1;
-  font-feature-settings: 'tnum' 1, 'lnum' 1;
+  font-feature-settings:
+    "tnum" 1,
+    "lnum" 1;
 }
 
 .ts-chord-readout-tonic {
@@ -4243,9 +4265,18 @@ body.is-touch #kbd-resizer {
    class off-and-on so each new chord registers as a moment. Kept tiny
    (1.5% scale, ~0.3s) so it never competes with the canvas. */
 @keyframes ts-chord-readout-pulse {
-  0%   { transform: scale(0.985); filter: brightness(1.04); }
-  55%  { transform: scale(1.012); filter: brightness(1.16); }
-  100% { transform: scale(1);     filter: brightness(1); }
+  0% {
+    transform: scale(0.985);
+    filter: brightness(1.04);
+  }
+  55% {
+    transform: scale(1.012);
+    filter: brightness(1.16);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
 }
 
 .ts-chord-readout--pulse {
@@ -4268,7 +4299,10 @@ body.is-touch #kbd-resizer {
   border-radius: 6px;
   cursor: pointer;
   opacity: 0.55;
-  transition: color 0.18s ease, opacity 0.18s ease, background 0.18s ease;
+  transition:
+    color 0.18s ease,
+    opacity 0.18s ease,
+    background 0.18s ease;
 }
 
 .ts-chord-btn:hover {
@@ -4300,8 +4334,9 @@ body.is-touch #kbd-resizer {
    stays focused on transport and the chord readout doesn't narrate audio
    the user is already passively listening to. */
 #top-strip[data-mode="file"] .ts-chord-btn,
-#top-strip[data-mode="file"] .ts-chord-slot { display: none; }
-
+#top-strip[data-mode="file"] .ts-chord-slot {
+  display: none;
+}
 
 /* ─────────────────────────────────────────
    APPEARANCE  (theme · particles · chord)
@@ -4320,13 +4355,16 @@ body.is-touch #kbd-resizer {
   height: 32px;
   color: var(--text);
   position: relative;
-  transition: border-color 0.18s ease, background 0.18s ease, transform 0.15s var(--ease-spring);
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    transform 0.15s var(--ease-spring);
 }
 
 .ts-pill--customize::before {
   /* Soft accent halo bleeds out from the swatch to telegraph "this is the
      theme picker". Quiet at rest, stronger on hover. */
-  content: '';
+  content: "";
   position: absolute;
   left: 6px;
   top: 50%;
@@ -4343,7 +4381,9 @@ body.is-touch #kbd-resizer {
 }
 
 .ts-pill--customize:hover::before,
-.ts-pill--customize.ts-pill--open::before { opacity: 0.55; }
+.ts-pill--customize.ts-pill--open::before {
+  opacity: 0.55;
+}
 
 .ts-pill--customize:hover {
   border-color: rgba(255, 255, 255, 0.16);
@@ -4365,7 +4405,9 @@ body.is-touch #kbd-resizer {
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.18) inset,
     0 0 12px var(--accent-glow);
-  transition: transform 0.2s var(--ease-spring), box-shadow 0.2s ease;
+  transition:
+    transform 0.2s var(--ease-spring),
+    box-shadow 0.2s ease;
 }
 
 .ts-pill--customize:hover .ts-customize-swatch {
@@ -4386,10 +4428,14 @@ body.is-touch #kbd-resizer {
   position: relative;
   z-index: 1;
   color: var(--text-dim);
-  transition: transform 0.22s var(--ease-out), color 0.18s ease;
+  transition:
+    transform 0.22s var(--ease-out),
+    color 0.18s ease;
 }
 
-.ts-pill--customize:hover .ts-customize-chev { color: var(--text-muted); }
+.ts-pill--customize:hover .ts-customize-chev {
+  color: var(--text-muted);
+}
 .ts-pill--customize.ts-pill--open .ts-customize-chev {
   transform: rotate(180deg);
   color: var(--text);
@@ -4540,7 +4586,11 @@ body.is-touch #kbd-resizer {
      label inherits Inter's intrinsic 1.5 leading and rides ~1px low. */
   line-height: 1;
   cursor: pointer;
-  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease, transform 0.15s var(--ease-spring);
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    transform 0.15s var(--ease-spring);
 }
 
 .customize-particle-chip-label {
@@ -4569,7 +4619,10 @@ body.is-touch #kbd-resizer {
   letter-spacing: 0.01em;
   line-height: 1;
   cursor: pointer;
-  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease;
 }
 .customize-locale-chip:hover {
   color: var(--text);
@@ -4606,7 +4659,9 @@ body.is-touch #kbd-resizer {
   z-index: 90;
   opacity: 0;
   pointer-events: auto;
-  transition: opacity 0.32s var(--ease-out), transform 0.32s var(--ease-out);
+  transition:
+    opacity 0.32s var(--ease-out),
+    transform 0.32s var(--ease-out);
 }
 .locale-hint--shown {
   opacity: 1;
@@ -4621,7 +4676,9 @@ body.is-touch #kbd-resizer {
   font-size: 16px;
   line-height: 1;
 }
-.locale-hint-close:hover { color: var(--text); }
+.locale-hint-close:hover {
+  color: var(--text);
+}
 
 .customize-particle-chip:hover {
   color: var(--text);
@@ -4643,10 +4700,14 @@ body.is-touch #kbd-resizer {
   align-items: center;
   justify-content: center;
   color: var(--text-dim);
-  transition: color 0.18s ease, filter 0.18s ease;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
 }
 
-.customize-particle-chip:hover .customize-particle-chip-glyph { color: var(--text-muted); }
+.customize-particle-chip:hover .customize-particle-chip-glyph {
+  color: var(--text-muted);
+}
 
 .customize-particle-chip--on .customize-particle-chip-glyph {
   color: var(--accent);
@@ -4670,7 +4731,9 @@ body.is-touch #kbd-resizer {
   transition: opacity 0.18s ease;
 }
 
-.customize-toggle:hover { opacity: 0.92; }
+.customize-toggle:hover {
+  opacity: 0.92;
+}
 
 .customize-toggle-body {
   display: flex;
@@ -4699,9 +4762,12 @@ body.is-touch #kbd-resizer {
   height: 18px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   position: relative;
-  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .customize-toggle-knob {
@@ -4712,7 +4778,9 @@ body.is-touch #kbd-resizer {
   height: 14px;
   border-radius: 50%;
   background: var(--text-muted);
-  transition: transform 0.22s var(--ease-spring), background 0.22s ease;
+  transition:
+    transform 0.22s var(--ease-spring),
+    background 0.22s ease;
 }
 
 .customize-toggle--on .customize-toggle-switch {
@@ -4729,26 +4797,45 @@ body.is-touch #kbd-resizer {
 
 /* ── Narrow viewports: shrink width and tighten paddings. ── */
 @media (max-width: 480px) {
-  .ts-customize-menu { width: 100%; }
-  .customize-section { padding: 12px 14px; }
-  .customize-head { padding: 12px 14px 10px; }
-  .customize-theme-grid { gap: 5px; }
-  .customize-theme-tile-preview { height: 34px; }
+  .ts-customize-menu {
+    width: 100%;
+  }
+  .customize-section {
+    padding: 12px 14px;
+  }
+  .customize-head {
+    padding: 12px 14px 10px;
+  }
+  .customize-theme-grid {
+    gap: 5px;
+  }
+  .customize-theme-tile-preview {
+    height: 34px;
+  }
 }
 
 @media (max-width: 720px) {
-  .ts-chord-readout { padding: 0 9px; height: 22px; min-width: 48px; }
-  .ts-chord-readout-tonic { font-size: 12px; }
-  .ts-chord-readout-quality { font-size: 10.5px; }
+  .ts-chord-readout {
+    padding: 0 9px;
+    height: 22px;
+    min-width: 48px;
+  }
+  .ts-chord-readout-tonic {
+    font-size: 12px;
+  }
+  .ts-chord-readout-quality {
+    font-size: 10.5px;
+  }
 }
 
 /* On mobile (≤480px) the topbar is already crowded — hide the chord
    readout entirely. The toggle in the dropdown / nav still lets the user
    flip it back on if the tab gets scrolled there. */
 @media (max-width: 480px) {
-  .ts-chord-readout--on { display: none; }
+  .ts-chord-readout--on {
+    display: none;
+  }
 }
-
 
 /* ─────────────────────────────────────────
    PRACTICE MODE  (Synthesia-style wait)
@@ -4764,7 +4851,7 @@ body.is-touch #kbd-resizer {
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text-muted);
-  font: 500 11.5px/1 var(--font);
+  font: 500 11.5px / 1 var(--font);
   letter-spacing: 0.02em;
   cursor: pointer;
   transition:
@@ -4783,12 +4870,16 @@ body.is-touch #kbd-resizer {
   border-color: var(--border-hi);
 }
 
-.hud-practice-btn:active { transform: scale(0.97); }
+.hud-practice-btn:active {
+  transform: scale(0.97);
+}
 
 .hud-practice-icon {
   display: inline-flex;
-  width: 14px; height: 14px;
-  align-items: center; justify-content: center;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
   color: currentColor;
   opacity: 0.85;
 }
@@ -4796,9 +4887,11 @@ body.is-touch #kbd-resizer {
 .hud-practice-btn--on {
   color: var(--text);
   border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-  background: linear-gradient(180deg,
+  background: linear-gradient(
+    180deg,
     color-mix(in srgb, var(--accent) 22%, transparent),
-    color-mix(in srgb, var(--accent) 8%, transparent));
+    color-mix(in srgb, var(--accent) 8%, transparent)
+  );
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent) inset,
     0 6px 20px -10px var(--accent-glow);
@@ -4814,7 +4907,8 @@ body.is-touch #kbd-resizer {
    Keeps a halo of the accent color breathing so the user knows playback
    is intentionally paused rather than frozen. */
 @keyframes practice-wait-pulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow:
       0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent) inset,
       0 0 0 0 color-mix(in srgb, var(--accent) 38%, transparent),
@@ -4833,7 +4927,7 @@ body.is-touch #kbd-resizer {
 }
 
 .hud-practice-btn--waiting .hud-practice-label::after {
-  content: '';
+  content: "";
   display: inline-block;
   width: 4px;
   height: 4px;

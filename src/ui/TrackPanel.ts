@@ -1,6 +1,6 @@
 import type { MidiFile } from '../core/midi/types'
-import type { PianoRollRenderer } from '../renderer/PianoRollRenderer'
 import { t, tn } from '../i18n'
+import type { PianoRollRenderer } from '../renderer/PianoRollRenderer'
 import { icons } from './icons'
 import { escHtml, hexToCSS, isNarrowViewport } from './utils'
 

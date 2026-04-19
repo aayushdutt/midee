@@ -2,8 +2,8 @@ import './styles/main.css'
 import { inject } from '@vercel/analytics'
 import posthog from 'posthog-js'
 import { registerAnalyticsContext } from './analytics'
-import { currentLocaleNativeName, initI18n, shouldShowLocaleHint, t } from './i18n'
 import { App } from './app'
+import { currentLocaleNativeName, initI18n, shouldShowLocaleHint, t } from './i18n'
 
 // Privacy-friendly page-view + custom event tracking. Only active once the
 // script has been served with a real Vercel project id — in dev or on forks

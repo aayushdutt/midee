@@ -1,16 +1,18 @@
 import { categorizeMidiDevice, track, trackActivation } from './analytics'
-import { setLocale, t } from './i18n'
 import { Metronome } from './audio/Metronome'
 import { INSTRUMENTS, SynthEngine } from './audio/SynthEngine'
 import { MasterClock } from './core/clock/MasterClock'
 import { parseMidiFile } from './core/midi/parser'
+import { detectChord } from './core/music/ChordDetector'
 import { booleanPersisted, indexPersisted, numberPersisted } from './core/persistence'
+import { PracticeEngine, type PracticeStatus } from './core/practice/PracticeEngine'
 import { fetchSampleMidi, getSample } from './core/samples'
 // VideoExporter + OfflineAudioRenderer pull in mp4-muxer and an offline Tone
 // context (~60 KB combined). They're only reachable via the Export button, so
 // we dynamic-import them in startExport() and let Vite split them out of the
 // main chunk. Types stay as type-only imports — no runtime cost.
 import type { VideoExporter } from './export/VideoExporter'
+import { setLocale, t } from './i18n'
 import { ComputerKeyboardInput } from './midi/ComputerKeyboardInput'
 import { LiveNoteStore } from './midi/LiveNoteStore'
 import { LoopEngine } from './midi/LoopEngine'
@@ -23,7 +25,9 @@ import { PARTICLE_STYLES } from './renderer/ParticleSystem'
 import { PianoRollRenderer } from './renderer/PianoRollRenderer'
 import { THEMES, type Theme } from './renderer/theme'
 import { appState } from './store/state'
+import { ChordOverlay } from './ui/ChordOverlay'
 import { Controls } from './ui/Controls'
+import { CustomizeMenu } from './ui/CustomizeMenu'
 import { DropZone } from './ui/DropZone'
 import { ExportModal, type ExportResolution, type ExportSettings } from './ui/ExportModal'
 import { InstrumentMenu } from './ui/InstrumentMenu'
@@ -31,10 +35,6 @@ import { KeyboardResizer } from './ui/KeyboardResizer'
 import { PostSessionModal, type SessionAction } from './ui/PostSessionModal'
 import { TrackPanel } from './ui/TrackPanel'
 import { installViewportClassSync } from './ui/utils'
-import { detectChord } from './core/music/ChordDetector'
-import { PracticeEngine, type PracticeStatus } from './core/practice/PracticeEngine'
-import { ChordOverlay } from './ui/ChordOverlay'
-import { CustomizeMenu } from './ui/CustomizeMenu'
 
 export class App {
   private clock = new MasterClock()
@@ -292,15 +292,15 @@ export class App {
       THEMES,
       PARTICLE_STYLES,
       {
-        onSelectTheme:    (idx) => this.setThemeByIndex(idx),
+        onSelectTheme: (idx) => this.setThemeByIndex(idx),
         onSelectParticle: (idx) => this.setParticleByIndex(idx),
-        onToggleChord:    () => this.toggleChordOverlay(),
+        onToggleChord: () => this.toggleChordOverlay(),
         // Locale change is rare, and almost every part of the UI was built
         // with the previous locale baked in via template literals. Reload
         // is the simplest correct path: persistence happens in setLocale,
         // boot picks it up, the next paint is fully translated. No stale
         // strings, no in-place re-render machinery to maintain.
-        onSelectLocale:   (code) => {
+        onSelectLocale: (code) => {
           void setLocale(code).then(() => window.location.reload())
         },
       },
@@ -309,7 +309,7 @@ export class App {
 
     this.practiceEngine = new PracticeEngine(this.clock, {
       onWaitStart: () => this.onPracticeWaitStart(),
-      onWaitEnd:   (resumeAt) => this.onPracticeWaitEnd(resumeAt),
+      onWaitEnd: (resumeAt) => this.onPracticeWaitEnd(resumeAt),
     })
     this.unsubs.push(this.practiceEngine.status.subscribe((s) => this.onPracticeStatusChange(s)))
     this.controls.updatePracticeState(false, false)
@@ -1175,7 +1175,7 @@ export class App {
   private collectVisibleTrackIds(): string[] | null {
     const midi = appState.loadedMidi.value
     if (!midi) return null
-    return midi.tracks.filter(t => this.renderer.isTrackVisible(t.id)).map(t => t.id)
+    return midi.tracks.filter((t) => this.renderer.isTrackVisible(t.id)).map((t) => t.id)
   }
 
   private onPracticeWaitStart(): void {
@@ -1198,10 +1198,7 @@ export class App {
 
   private onPracticeStatusChange(s: PracticeStatus): void {
     this.controls.updatePracticeState(s.enabled, s.waiting)
-    this.renderer.setPracticeHints(
-      s.enabled ? s.pending : null,
-      s.enabled ? s.accepted : null,
-    )
+    this.renderer.setPracticeHints(s.enabled ? s.pending : null, s.enabled ? s.accepted : null)
   }
 
   private resetInteractionState(): void {

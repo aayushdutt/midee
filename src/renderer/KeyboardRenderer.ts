@@ -24,7 +24,10 @@ function parseHexColor(s: string): number | null {
   if (!m) return null
   let hex = m[1]!
   if (hex.length === 3) {
-    hex = hex.split('').map(c => c + c).join('')
+    hex = hex
+      .split('')
+      .map((c) => c + c)
+      .join('')
   }
   const n = parseInt(hex, 16)
   return Number.isFinite(n) ? n : null
@@ -389,7 +392,7 @@ export class KeyboardRenderer {
     // we need geometry, so we lazily walk the same map drawActiveKeys uses.
     // The container hosts a sprite for whites whose width matches canvasWidth.
     const yOffset = this.whiteSprite?.y ?? 0
-    const totalH = (this.whiteSprite?.height ?? 0)
+    const totalH = this.whiteSprite?.height ?? 0
     if (totalH === 0) return
 
     // Pulse: 0..1 sine, normalised so even when the user has played part of
@@ -410,7 +413,7 @@ export class KeyboardRenderer {
 
     layer.y = yOffset
     const accent = theme.uiAccentCSS
-    const tint = parseHexColor(accent) ?? (theme.trackColors[0] ?? theme.nowLine)
+    const tint = parseHexColor(accent) ?? theme.trackColors[0] ?? theme.nowLine
     const fullKbHeight = totalH
 
     for (const pitch of pending) {
@@ -426,8 +429,8 @@ export class KeyboardRenderer {
       // Halo — soft, thick, expands beyond the key footprint.
       const halos: readonly [number, number][] = [
         [12, 0.05 * pulse],
-        [7,  0.10 * pulse],
-        [3,  0.18 * pulse],
+        [7, 0.1 * pulse],
+        [3, 0.18 * pulse],
       ]
       for (const [expand, alpha] of halos) {
         layer.roundRect(x - expand, y - expand, w + expand * 2, h + expand * 2, radius + expand)

@@ -15,7 +15,7 @@
 //     never break the UI, they just show the key).
 
 import { Signal } from '../store/state'
-import { en, type Messages, type MessageKey } from './locales/en'
+import { en, type MessageKey, type Messages } from './locales/en'
 
 // Add a new locale here, in `LOCALES`, and create the corresponding file
 // under `locales/`. TypeScript will then enforce key parity via `Messages`.
@@ -25,9 +25,9 @@ export type LocaleCode = (typeof SUPPORTED_LOCALES)[number]
 // Native-language label used in the locale picker — users recognise their
 // own language written in it.
 export const LOCALES: Array<{ code: LocaleCode; nativeName: string }> = [
-  { code: 'en',    nativeName: 'English' },
-  { code: 'fr',    nativeName: 'Français' },
-  { code: 'es',    nativeName: 'Español' },
+  { code: 'en', nativeName: 'English' },
+  { code: 'fr', nativeName: 'Français' },
+  { code: 'es', nativeName: 'Español' },
   { code: 'pt-BR', nativeName: 'Português (BR)' },
 ]
 
@@ -37,8 +37,8 @@ const STORAGE_KEY = 'midee.locale'
 // Explicit loader map (not import.meta.glob) so Vite can code-split each
 // locale into its own async chunk and the types remain concrete.
 const LOADERS: Record<Exclude<LocaleCode, 'en'>, () => Promise<{ default: Messages }>> = {
-  'fr':    () => import('./locales/fr'),
-  'es':    () => import('./locales/es'),
+  fr: () => import('./locales/fr'),
+  es: () => import('./locales/es'),
   'pt-BR': () => import('./locales/pt-BR'),
 }
 
@@ -163,7 +163,9 @@ export async function initI18n(): Promise<void> {
 export async function setLocale(code: LocaleCode): Promise<void> {
   if (code === locale.value && current === (code === 'en' ? en : current)) return
   await loadLocale(code)
-  try { localStorage.setItem(STORAGE_KEY, code) } catch {}
+  try {
+    localStorage.setItem(STORAGE_KEY, code)
+  } catch {}
   if (typeof document !== 'undefined') {
     document.documentElement.lang = code
   }
@@ -179,7 +181,7 @@ export function shouldShowLocaleHint(): boolean {
   if (typeof window === 'undefined') return false
   if (locale.value === 'en') return false
   try {
-    if (localStorage.getItem(STORAGE_KEY)) return false   // user already picked
+    if (localStorage.getItem(STORAGE_KEY)) return false // user already picked
     if (localStorage.getItem(HINT_SHOWN_KEY)) return false // already shown once
     localStorage.setItem(HINT_SHOWN_KEY, '1')
     return true

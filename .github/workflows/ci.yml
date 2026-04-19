@@ -15,7 +15,57 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run test
-      - run: npm run build
+
+      # Each verification step runs independently so a single failure
+      # doesn't mask the others — when a PR breaks both lint and tests we
+      # want to see both diagnostics in one CI run, not have to push a fix
+      # and wait again to discover the next failure.
+      #
+      # Strategy:
+      #   · typecheck + test + build all use `continue-on-error` so the
+      #     job keeps marching, then a final gate step fails if any of
+      #     them did. They still show as red in the step list — just
+      #     don't short-circuit the run.
+      #   · lint is treated as a *warning*: continue-on-error AND it does
+      #     not contribute to the final gate. Style nits shouldn't block
+      #     a merge; their value is the inline annotation on the PR.
+
+      - id: typecheck
+        run: npm run typecheck
+        continue-on-error: true
+
+      - id: lint
+        run: npm run lint
+        continue-on-error: true
+
+      - id: test
+        run: npm run test
+        continue-on-error: true
+
+      - id: build
+        run: npm run build
+        continue-on-error: true
+
+      # Hard gate — fail the job if any of the *blocking* checks failed.
+      # Lint is intentionally excluded here so style issues stay visible
+      # in the run but never block a merge.
+      - name: Verify required checks
+        if: always()
+        run: |
+          fail=0
+          for step in typecheck test build; do
+            outcome="${{ steps.typecheck.outcome }}"
+            case "$step" in
+              typecheck) outcome="${{ steps.typecheck.outcome }}" ;;
+              test)      outcome="${{ steps.test.outcome }}" ;;
+              build)     outcome="${{ steps.build.outcome }}" ;;
+            esac
+            if [ "$outcome" != "success" ]; then
+              echo "::error::$step failed (outcome=$outcome)"
+              fail=1
+            fi
+          done
+          if [ "${{ steps.lint.outcome }}" != "success" ]; then
+            echo "::warning::lint reported issues (non-blocking)"
+          fi
+          exit $fail

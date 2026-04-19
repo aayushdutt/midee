@@ -199,7 +199,11 @@ export const icons = {
 
   // Tiny × glyph used by the keyboard-hint close button.
   smallClose: (size: Size = 9): string =>
-    svgStroke(size, `<line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/>`, 2.4),
+    svgStroke(
+      size,
+      `<line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/>`,
+      2.4,
+    ),
 
   // Keycap glyph for the keyboard-hint reopener — reads as "keyboard help".
   keycap: (size: Size = 13): string =>

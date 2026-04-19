@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { en } from './locales/en'
 import { formatNumber, locale, t, tn } from './index'
+import { en } from './locales/en'
 
 // These tests cover the pure-function surface of i18n: `t`, `tn`, and the
 // native-Intl helpers. They do not exercise `initI18n` / `setLocale` (which

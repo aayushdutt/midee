@@ -1,5 +1,5 @@
-import type { MidiDeviceStatus } from '../midi/MidiInputManager'
 import { t } from '../i18n'
+import type { MidiDeviceStatus } from '../midi/MidiInputManager'
 import { icons } from './icons'
 import { SamplesGrid } from './SamplesGrid'
 

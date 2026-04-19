@@ -1,6 +1,6 @@
+import { LOCALES, type LocaleCode, locale, t } from '../i18n'
+import type { ParticleStyle, ParticleStyleInfo } from '../renderer/ParticleSystem'
 import type { Theme } from '../renderer/theme'
-import type { ParticleStyleInfo, ParticleStyle } from '../renderer/ParticleSystem'
-import { LOCALES, locale, t, type LocaleCode } from '../i18n'
 import { isNarrowViewport } from './utils'
 
 // Aesthetics popover — collapses theme, particles, and chord overlay (three
@@ -12,10 +12,10 @@ import { isNarrowViewport } from './utils'
 // bottom sheet on narrow viewports via shared CSS).
 
 export interface CustomizeMenuCallbacks {
-  onSelectTheme:    (index: number) => void
+  onSelectTheme: (index: number) => void
   onSelectParticle: (index: number) => void
-  onToggleChord:    () => void
-  onSelectLocale:   (code: LocaleCode) => void
+  onToggleChord: () => void
+  onSelectLocale: (code: LocaleCode) => void
 }
 
 export class CustomizeMenu {
@@ -132,18 +132,22 @@ export class CustomizeMenu {
     // Native names — users recognise their own language. Active state pulled
     // from the i18n locale Signal so the active chip stays in sync if the
     // locale changes from anywhere else.
-    this.localeRowEl.innerHTML = LOCALES.map((l) => `
+    this.localeRowEl.innerHTML = LOCALES.map(
+      (l) => `
       <button class="customize-locale-chip${l.code === locale.value ? ' customize-locale-chip--on' : ''}"
               type="button" data-locale="${l.code}" aria-label="${l.nativeName}">
         <span class="customize-locale-chip-label">${l.nativeName}</span>
       </button>
-    `).join('')
-    this.localeRowEl.querySelectorAll<HTMLButtonElement>('.customize-locale-chip').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const code = btn.dataset['locale'] as LocaleCode | undefined
-        if (code) this.callbacks.onSelectLocale(code)
+    `,
+    ).join('')
+    this.localeRowEl
+      .querySelectorAll<HTMLButtonElement>('.customize-locale-chip')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const code = btn.dataset['locale'] as LocaleCode | undefined
+          if (code) this.callbacks.onSelectLocale(code)
+        })
       })
-    })
   }
 
   // ── Public state setters (App pushes the active selection in) ──────────
@@ -159,7 +163,7 @@ export class CustomizeMenu {
     this.themeDotEl.style.boxShadow = `0 0 0 1px rgba(255, 255, 255, 0.18) inset, 0 0 12px ${accent}55`
     const labelEl = this.trigger.querySelector<HTMLElement>('#ts-customize-label')
     if (labelEl) labelEl.textContent = theme.name
-    this.themeRowEl.querySelectorAll<HTMLButtonElement>('.customize-theme-tile').forEach(btn => {
+    this.themeRowEl.querySelectorAll<HTMLButtonElement>('.customize-theme-tile').forEach((btn) => {
       btn.classList.toggle('customize-theme-tile--on', Number(btn.dataset['index']) === index)
     })
   }
@@ -168,9 +172,11 @@ export class CustomizeMenu {
     this.currentParticleIndex = index
     const p = this.particles[index]
     if (!p) return
-    this.particleRowEl.querySelectorAll<HTMLButtonElement>('.customize-particle-chip').forEach(btn => {
-      btn.classList.toggle('customize-particle-chip--on', Number(btn.dataset['index']) === index)
-    })
+    this.particleRowEl
+      .querySelectorAll<HTMLButtonElement>('.customize-particle-chip')
+      .forEach((btn) => {
+        btn.classList.toggle('customize-particle-chip--on', Number(btn.dataset['index']) === index)
+      })
   }
 
   setChord(on: boolean): void {
@@ -183,14 +189,18 @@ export class CustomizeMenu {
   private buildThemeRow(): void {
     // Minimal: a single flat accent-colour dot per theme. Modern, calm, and
     // still distinct because each theme's accent is unique.
-    this.themeRowEl.innerHTML = this.themes.map((t, i) => `
+    this.themeRowEl.innerHTML = this.themes
+      .map(
+        (t, i) => `
       <button class="customize-theme-tile" type="button" data-index="${i}"
               title="${t.name}" aria-label="${t.name} theme">
         <span class="customize-theme-tile-dot" style="background:${t.uiAccentCSS};"></span>
         <span class="customize-theme-tile-label">${t.name}</span>
       </button>
-    `).join('')
-    this.themeRowEl.querySelectorAll<HTMLButtonElement>('.customize-theme-tile').forEach(btn => {
+    `,
+      )
+      .join('')
+    this.themeRowEl.querySelectorAll<HTMLButtonElement>('.customize-theme-tile').forEach((btn) => {
       btn.addEventListener('click', () => {
         const idx = Number(btn.dataset['index'])
         if (Number.isFinite(idx)) this.callbacks.onSelectTheme(idx)
@@ -202,7 +212,9 @@ export class CustomizeMenu {
     // Per-style mini-glyphs evoke the actual particle behaviour (a burst, a
     // trail, a halo). Plain dots would all look the same — these read at a
     // glance which style does what without forcing the user to A/B-toggle.
-    this.particleRowEl.innerHTML = this.particles.map((p, i) => `
+    this.particleRowEl.innerHTML = this.particles
+      .map(
+        (p, i) => `
       <button class="customize-particle-chip" type="button" data-index="${i}"
               title="${p.name}" aria-label="${p.name} particles">
         <span class="customize-particle-chip-glyph" data-style="${p.id}" aria-hidden="true">
@@ -210,13 +222,17 @@ export class CustomizeMenu {
         </span>
         <span class="customize-particle-chip-label">${p.name}</span>
       </button>
-    `).join('')
-    this.particleRowEl.querySelectorAll<HTMLButtonElement>('.customize-particle-chip').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = Number(btn.dataset['index'])
-        if (Number.isFinite(idx)) this.callbacks.onSelectParticle(idx)
+    `,
+      )
+      .join('')
+    this.particleRowEl
+      .querySelectorAll<HTMLButtonElement>('.customize-particle-chip')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = Number(btn.dataset['index'])
+          if (Number.isFinite(idx)) this.callbacks.onSelectParticle(idx)
+        })
       })
-    })
   }
 
   // ── Open / close ──────────────────────────────────────────────────────
@@ -265,13 +281,20 @@ export class CustomizeMenu {
     this.menu.style.top = `${top}px`
     this.menu.style.left = ''
     const desiredLeft = window.innerWidth - right - menuW
-    if (desiredLeft < 12) this.menu.style.right = `${Math.max(12, window.innerWidth - menuW - 12)}px`
+    if (desiredLeft < 12)
+      this.menu.style.right = `${Math.max(12, window.innerWidth - menuW - 12)}px`
   }
 
   // Public lookup so the App can preserve "previous" indices if it wants.
-  getCurrentTheme(): number { return this.currentThemeIndex }
-  getCurrentParticle(): number { return this.currentParticleIndex }
-  isChordOn(): boolean { return this.chordOn }
+  getCurrentTheme(): number {
+    return this.currentThemeIndex
+  }
+  getCurrentParticle(): number {
+    return this.currentParticleIndex
+  }
+  isChordOn(): boolean {
+    return this.chordOn
+  }
 
   dispose(): void {
     this.close()

@@ -493,10 +493,17 @@ export class PianoRollRenderer {
   // Set of MIDI pitches a "play these next" hint should highlight on the
   // keyboard. The renderer overlays them with a soft pulse, distinct from the
   // press-state colour so the hint reads as guidance rather than playback.
-  setPracticeHints(pending: ReadonlySet<number> | null, accepted: ReadonlySet<number> | null): void {
+  setPracticeHints(
+    pending: ReadonlySet<number> | null,
+    accepted: ReadonlySet<number> | null,
+  ): void {
     this.practiceHintPending = pending && pending.size > 0 ? pending : null
     this.practiceHintAccepted = accepted && accepted.size > 0 ? accepted : null
-    this.keyboardRenderer.setPracticeHints(this.practiceHintPending, this.practiceHintAccepted, this.theme)
+    this.keyboardRenderer.setPracticeHints(
+      this.practiceHintPending,
+      this.practiceHintAccepted,
+      this.theme,
+    )
     if (!this.midi && !(this.liveNoteStore?.hasRenderableNotes ?? false)) {
       // No render loop is running — paint once so the hint appears immediately.
       this.renderStaticFrame(0)

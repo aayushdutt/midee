@@ -1,8 +1,8 @@
 import type { MasterClock } from '../core/clock/MasterClock'
+import { t } from '../i18n'
 import type { LoopState } from '../midi/LoopEngine'
 import type { MidiDeviceStatus } from '../midi/MidiInputManager'
 import type { AppMode, appState } from '../store/state'
-import { t } from '../i18n'
 import { icons } from './icons'
 
 type State = typeof appState

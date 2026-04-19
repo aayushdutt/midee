@@ -1,6 +1,6 @@
 import { Signal } from '../../store/state'
-import type { MidiFile } from '../midi/types'
 import type { MasterClock } from '../clock/MasterClock'
+import type { MidiFile } from '../midi/types'
 
 // Minimum gap between two consecutive note-onsets to consider them a *new*
 // step. Notes within this window collapse into a single chord step, which is
@@ -88,7 +88,10 @@ export class PracticeEngine {
 
   private unsubClock: (() => void) | null = null
 
-  constructor(private clock: MasterClock, private callbacks: PracticeCallbacks) {
+  constructor(
+    private clock: MasterClock,
+    private callbacks: PracticeCallbacks,
+  ) {
     this.unsubClock = clock.subscribe((t) => this.onClockTick(t))
   }
 
@@ -131,8 +134,12 @@ export class PracticeEngine {
     return this.enabled
   }
 
-  get isEnabled(): boolean { return this.enabled }
-  get isWaiting(): boolean { return this.waiting }
+  get isEnabled(): boolean {
+    return this.enabled
+  }
+  get isWaiting(): boolean {
+    return this.waiting
+  }
 
   // Called from the App's live note-on handler. Returns true when the press
   // satisfies the last required pitch and the engine releases the clock.
@@ -224,7 +231,11 @@ export class PracticeEngine {
       return
     }
 
-    interface Onset { time: number; pitch: number; end: number }
+    interface Onset {
+      time: number
+      pitch: number
+      end: number
+    }
     const onsets: Onset[] = []
     for (const track of this.midi.tracks) {
       if (track.isDrum) continue
@@ -263,9 +274,8 @@ export class PracticeEngine {
 
     const total = this.waiting ? this.pending.size + this.accepted.size : 0
     const progress = total > 0 ? this.accepted.size / total : 0
-    const step = this.waiting && this.nextStepIdx >= 0
-      ? this.steps[this.nextStepIdx] ?? null
-      : null
+    const step =
+      this.waiting && this.nextStepIdx >= 0 ? (this.steps[this.nextStepIdx] ?? null) : null
     this.status.set({
       enabled: true,
       waiting: this.waiting,

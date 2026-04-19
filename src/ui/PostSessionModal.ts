@@ -70,7 +70,9 @@ export class PostSessionModal {
   open(durationSec: number, noteCount: number): void {
     // Plural via tn() — handles English one/other and any locale's CLDR
     // categories (Polish few/many, Arabic six forms, etc.) automatically.
-    this.statsEl.textContent = tn('postSession.stats', noteCount, { duration: formatMMSS(durationSec) })
+    this.statsEl.textContent = tn('postSession.stats', noteCount, {
+      duration: formatMMSS(durationSec),
+    })
     this.modal.open()
   }
 
