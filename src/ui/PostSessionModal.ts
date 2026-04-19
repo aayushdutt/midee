@@ -2,6 +2,7 @@
 // steps so users aren't forced into an immediate download — they can
 // visualize the take, save it as MIDI, or discard it.
 
+import { t, tn } from '../i18n'
 import { icons } from './icons'
 import { Modal } from './primitives/Modal'
 
@@ -19,7 +20,7 @@ export class PostSessionModal {
         <header class="export-header">
           <div class="export-card-icon">${icons.waveform()}</div>
           <div class="export-header-text">
-            <h2 class="export-card-title">Session recorded</h2>
+            <h2 class="export-card-title">${t('postSession.title')}</h2>
             <p class="export-card-sub" id="ps-stats">—</p>
           </div>
         </header>
@@ -29,16 +30,16 @@ export class PostSessionModal {
                   data-action="open-in-file" type="button">
             <span class="post-session-option-icon">${icons.timeline()}</span>
             <span class="post-session-option-body">
-              <span class="post-session-option-title">Open in file mode</span>
-              <span class="post-session-option-sub">Visualize it as a rolling piano roll — ready to export as MP4.</span>
+              <span class="post-session-option-title">${t('postSession.openInFile.title')}</span>
+              <span class="post-session-option-sub">${t('postSession.openInFile.sub')}</span>
             </span>
           </button>
 
           <button class="post-session-option" data-action="download" type="button">
             <span class="post-session-option-icon">${icons.download(18)}</span>
             <span class="post-session-option-body">
-              <span class="post-session-option-title">Download MIDI</span>
-              <span class="post-session-option-sub">Send <code>.mid</code> straight to your DAW.</span>
+              <span class="post-session-option-title">${t('postSession.download.title')}</span>
+              <span class="post-session-option-sub">${t('postSession.download.sub.html')}</span>
             </span>
           </button>
 
@@ -46,8 +47,8 @@ export class PostSessionModal {
                   data-action="discard" type="button">
             <span class="post-session-option-icon">${icons.trash()}</span>
             <span class="post-session-option-body">
-              <span class="post-session-option-title">Discard</span>
-              <span class="post-session-option-sub">Throw it away and keep jamming.</span>
+              <span class="post-session-option-title">${t('postSession.discard.title')}</span>
+              <span class="post-session-option-sub">${t('postSession.discard.sub')}</span>
             </span>
           </button>
         </div>
@@ -67,7 +68,9 @@ export class PostSessionModal {
   }
 
   open(durationSec: number, noteCount: number): void {
-    this.statsEl.textContent = `${formatMMSS(durationSec)} · ${noteCount} note${noteCount === 1 ? '' : 's'}`
+    // Plural via tn() — handles English one/other and any locale's CLDR
+    // categories (Polish few/many, Arabic six forms, etc.) automatically.
+    this.statsEl.textContent = tn('postSession.stats', noteCount, { duration: formatMMSS(durationSec) })
     this.modal.open()
   }
 

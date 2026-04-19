@@ -4549,6 +4549,80 @@ body.is-touch #kbd-resizer {
   line-height: 1;
 }
 
+/* ─── Locale chips — same shape language as particle chips so the section
+   reads as "another set of options", not a new visual pattern. */
+.customize-locale-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.customize-locale-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+.customize-locale-chip:hover {
+  color: var(--text);
+  border-color: var(--border-hi);
+  background: rgba(255, 255, 255, 0.06);
+}
+.customize-locale-chip--on {
+  color: var(--accent);
+  border-color: var(--accent-glow);
+  background: var(--accent-soft);
+}
+
+/* ─── First-visit locale hint — a subtle bottom toast that tells the user
+   we auto-detected their language and where to switch. Fades after a few
+   seconds and never returns once dismissed. */
+.locale-hint {
+  position: fixed;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(12, 12, 20, 0.92);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  z-index: 90;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 0.32s var(--ease-out), transform 0.32s var(--ease-out);
+}
+.locale-hint--shown {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.locale-hint-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0 0 0 4px;
+  font-size: 16px;
+  line-height: 1;
+}
+.locale-hint-close:hover { color: var(--text); }
+
 .customize-particle-chip:hover {
   color: var(--text);
   border-color: var(--border-hi);

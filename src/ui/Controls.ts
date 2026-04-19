@@ -2,6 +2,7 @@ import type { MasterClock } from '../core/clock/MasterClock'
 import type { LoopState } from '../midi/LoopEngine'
 import type { MidiDeviceStatus } from '../midi/MidiInputManager'
 import type { AppMode, appState } from '../store/state'
+import { t } from '../i18n'
 import { icons } from './icons'
 
 type State = typeof appState
@@ -128,19 +129,19 @@ export class Controls {
     const el = document.createElement('div')
     el.id = 'top-strip'
     el.innerHTML = `
-      <button class="ts-home" id="ts-home" type="button" aria-label="midee home" data-tip="Home">
+      <button class="ts-home" id="ts-home" type="button" aria-label="midee home" data-tip="${t('topStrip.home')}">
         ${icons.wordmark()}
         <span class="ts-home-name">midee</span>
       </button>
 
-      <div class="ts-mode-switch" role="tablist" aria-label="App mode">
+      <div class="ts-mode-switch" role="tablist" aria-label="${t('hud.aria.appMode')}">
         <button class="ts-mode-seg" id="ts-mode-file" type="button"
-                role="tab" aria-selected="false" data-tip="Play a MIDI file">
+                role="tab" aria-selected="false" data-tip="${t('topStrip.modeFile')}">
           <span class="ts-mode-icon" aria-hidden="true">${icons.modeFile()}</span>
           <span class="ts-mode-label">File</span>
         </button>
         <button class="ts-mode-seg" id="ts-mode-live" type="button"
-                role="tab" aria-selected="false" data-tip="Play live">
+                role="tab" aria-selected="false" data-tip="${t('topStrip.modeLive')}">
           <span class="ts-mode-icon" aria-hidden="true">${icons.modeLive()}</span>
           <span class="ts-mode-label">Live</span>
         </button>
@@ -160,21 +161,21 @@ export class Controls {
       </div>
 
       <div class="ts-end">
-        <button class="ts-pill" id="ts-open" type="button" aria-label="Open MIDI file" data-tip="Open MIDI file">
-          ${icons.upload()}<span>Open MIDI</span>
+        <button class="ts-pill" id="ts-open" type="button" aria-label="${t('topStrip.openMidi')}" data-tip="${t('topStrip.openMidi')}">
+          ${icons.upload()}<span>${t('home.cta.openMidi')}</span>
         </button>
-        <button class="ts-pill ts-pill--file" id="ts-tracks" type="button" aria-label="Tracks" data-tip="Tracks">
-          ${icons.tracks()}<span>Tracks</span>
+        <button class="ts-pill ts-pill--file" id="ts-tracks" type="button" aria-label="${t('topStrip.tracks')}" data-tip="${t('topStrip.tracks')}">
+          ${icons.tracks()}<span>${t('topStrip.tracks')}</span>
         </button>
         <span id="ts-instrument-slot"></span>
         <div class="ts-sep" aria-hidden="true"></div>
         <button class="ts-pill ts-pill--midi" id="ts-midi" type="button"
-                aria-label="MIDI device" data-tip="MIDI device">
+                aria-label="${t('topStrip.midi')}" data-tip="${t('topStrip.midi')}">
           ${icons.midi()}
           <span id="ts-menu-midi-label" class="ts-midi-label">MIDI</span>
         </button>
         <span id="ts-customize-slot"></span>
-        <button class="ts-record-btn" id="ts-record" type="button" aria-label="Export MP4" data-tip="Export MP4">
+        <button class="ts-record-btn" id="ts-record" type="button" aria-label="${t('topStrip.export')}" data-tip="${t('topStrip.export')}">
           ${icons.export()}
           <span>Export</span>
         </button>
@@ -190,18 +191,18 @@ export class Controls {
     el.innerHTML = `
       <div class="hud-bar">
         <button class="hud-drag-handle" id="hud-drag" type="button"
-                aria-label="Move controls" data-tip="Drag to move controls">
+                aria-label="${t('hud.aria.drag')}" data-tip="${t('hud.drag')}">
           ${icons.grip()}
         </button>
         <button class="hud-pin-btn" id="hud-pin" type="button"
-                aria-label="Pin controls" data-tip="Pin — prevents auto-hide">
+                aria-label="${t('hud.aria.pin')}" data-tip="${t('hud.pin')}">
           ${icons.pin()}
         </button>
 
         <div class="hud-group hud-group--transport">
-          <button class="btn-skip" id="hud-skip-back" aria-label="Back 10 seconds" data-tip="Back 10s">${icons.skipBack()}</button>
-          <button class="btn-play" id="hud-play" aria-label="Play" data-tip="Play / Pause">${icons.play()}</button>
-          <button class="btn-skip" id="hud-skip-fwd" aria-label="Forward 10 seconds" data-tip="Forward 10s">${icons.skipForward()}</button>
+          <button class="btn-skip" id="hud-skip-back" aria-label="${t('hud.aria.skipBack')}" data-tip="${t('hud.skipBack')}">${icons.skipBack()}</button>
+          <button class="btn-play" id="hud-play" aria-label="${t('hud.aria.play')}" data-tip="${t('hud.play')}">${icons.play()}</button>
+          <button class="btn-skip" id="hud-skip-fwd" aria-label="${t('hud.aria.skipFwd')}" data-tip="${t('hud.skipFwd')}">${icons.skipForward()}</button>
         </div>
 
         <div class="hud-divider hud-group--transport"></div>
@@ -209,38 +210,38 @@ export class Controls {
         <div class="scrubber-wrap hud-group--transport">
           <span class="time-display" id="hud-time">0:00</span>
           <input type="range" id="hud-scrubber" class="scrubber"
-            min="0" max="100" step="0.1" value="0" aria-label="Seek" />
+            min="0" max="100" step="0.1" value="0" aria-label="${t('hud.aria.seek')}" />
           <span class="time-display dim" id="hud-duration">0:00</span>
         </div>
 
         <div class="hud-divider hud-group--transport"></div>
 
-        <div class="ctrl-group" data-tip="Volume">
+        <div class="ctrl-group" data-tip="${t('hud.volume')}">
           <span class="ctrl-icon">${icons.volume()}</span>
           <input type="range" id="hud-volume" class="mini-slider"
-            min="0" max="1" step="0.02" value="0.8" aria-label="Volume" />
+            min="0" max="1" step="0.02" value="0.8" aria-label="${t('hud.aria.volume')}" />
         </div>
 
-        <div class="ctrl-group hud-group--transport" data-tip="Playback speed">
+        <div class="ctrl-group hud-group--transport" data-tip="${t('hud.speed')}">
           <span class="speed-val" id="hud-speed-val">1x</span>
           <input type="range" id="hud-speed" class="mini-slider"
-            min="0.25" max="2" step="0.05" value="1" aria-label="Speed" />
+            min="0.25" max="2" step="0.05" value="1" aria-label="${t('hud.aria.speed')}" />
         </div>
 
         <div class="hud-divider"></div>
 
-        <div class="ctrl-group" data-tip="Zoom (note height)">
+        <div class="ctrl-group" data-tip="${t('hud.zoom')}">
           <span class="ctrl-icon">${icons.zoom()}</span>
           <input type="range" id="hud-zoom" class="mini-slider mini-slider--zoom"
-            min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="10" value="${ZOOM_DEFAULT}" aria-label="Zoom" />
+            min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="10" value="${ZOOM_DEFAULT}" aria-label="${t('hud.aria.zoom')}" />
         </div>
 
         <div class="hud-divider hud-group--file"></div>
 
         <button class="hud-practice-btn hud-group--file" id="hud-practice"
-                type="button" aria-label="Practice mode — wait for correct notes"
+                type="button" aria-label="${t('hud.aria.practice')}"
                 aria-pressed="false"
-                data-tip="Practice mode · pause at every note until you play it">
+                data-tip="${t('hud.tip.practice')}">
           <span class="hud-practice-icon" aria-hidden="true">${icons.practice()}</span>
           <span class="hud-practice-label" id="hud-practice-label">Practice</span>
         </button>
@@ -249,40 +250,40 @@ export class Controls {
 
         <div class="hud-metro hud-group--live" id="hud-metro-group">
           <button class="hud-metro-toggle" id="hud-metro" type="button"
-                  aria-label="Toggle metronome" data-tip="Metronome">
+                  aria-label="${t('hud.aria.metronomeToggle')}" data-tip="${t('hud.metronome')}">
             <span class="hud-metro-icon">${icons.metronome()}</span>
             <span class="hud-metro-beat" aria-hidden="true"></span>
           </button>
           <button class="hud-metro-step" id="hud-metro-dec" type="button"
-                  aria-label="Decrease BPM">−</button>
-          <span class="hud-metro-bpm" id="hud-metro-bpm" data-tip="Scroll to change BPM" tabindex="0">120</span>
+                  aria-label="${t('hud.aria.bpmDec')}">−</button>
+          <span class="hud-metro-bpm" id="hud-metro-bpm" data-tip="${t('hud.bpm')}" tabindex="0">120</span>
           <button class="hud-metro-step" id="hud-metro-inc" type="button"
-                  aria-label="Increase BPM">+</button>
+                  aria-label="${t('hud.aria.bpmInc')}">+</button>
         </div>
 
         <button class="hud-session-btn hud-group--live" id="hud-session"
-                type="button" aria-label="Record session"
-                data-tip="Record everything you play to MIDI">
+                type="button" aria-label="${t('hud.aria.session')}"
+                data-tip="${t('hud.record')}">
           <span class="hud-session-dot" aria-hidden="true"></span>
           <span class="hud-session-label" id="hud-session-label">Record</span>
         </button>
 
         <button class="hud-loop-btn hud-group--live" id="hud-loop"
-                type="button" aria-label="Looper"
-                data-tip="Play a phrase then loop it">
+                type="button" aria-label="${t('hud.aria.loop')}"
+                data-tip="${t('hud.loop')}">
           <span class="hud-loop-icon">${icons.loop()}</span>
           <span class="hud-loop-label" id="hud-loop-label">Loop</span>
         </button>
         <button class="hud-loop-undo hud-group--live hidden" id="hud-loop-undo"
-                type="button" aria-label="Undo last layer" data-tip="Undo last layer">
+                type="button" aria-label="${t('hud.aria.loopUndo')}" data-tip="${t('hud.loopUndo')}">
           ${icons.undo()}
         </button>
         <button class="hud-loop-save hud-group--live hidden" id="hud-loop-save"
-                type="button" aria-label="Download loop as MIDI" data-tip="Download loop as MIDI">
+                type="button" aria-label="${t('hud.aria.loopSave')}" data-tip="${t('hud.loopSave')}">
           ${icons.download()}
         </button>
         <button class="hud-loop-clear hud-group--live hidden" id="hud-loop-clear"
-                type="button" aria-label="Clear loop" data-tip="Clear loop">
+                type="button" aria-label="${t('hud.aria.loopClear')}" data-tip="${t('hud.loopClear')}">
           ${icons.close()}
         </button>
       </div>
@@ -300,7 +301,7 @@ export class Controls {
           <div class="kh-section-head">
             <span class="kh-label">Play</span>
             <button class="kh-close" id="kh-close" type="button"
-                    aria-label="Hide keyboard reference" data-tip="Hide">
+                    aria-label="${t('hud.aria.kbdRefHide')}" data-tip="${t('hud.tip.kbdRefHide')}">
               ${icons.smallClose()}
             </button>
           </div>
@@ -331,7 +332,7 @@ export class Controls {
         </div>
       </div>
       <button class="kh-reopen" id="kh-reopen" type="button"
-              aria-label="Show keyboard reference" data-tip="Show keyboard reference">
+              aria-label="${t('hud.aria.kbdRefShow')}" data-tip="${t('hud.tip.kbdRefShow')}">
         ${icons.keycap()}
       </button>
     `

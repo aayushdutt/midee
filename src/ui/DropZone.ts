@@ -1,4 +1,5 @@
 import type { MidiDeviceStatus } from '../midi/MidiInputManager'
+import { t } from '../i18n'
 import { icons } from './icons'
 import { SamplesGrid } from './SamplesGrid'
 
@@ -59,38 +60,38 @@ export class DropZone {
     el.id = 'dropzone'
     el.innerHTML = `
       <div class="home-card">
-        <span class="home-kicker">midee · MIDI visualizer</span>
-        <h1 class="home-title">Play <em>notes</em>,<br/>see them bloom.</h1>
-        <p class="home-sub">Open a MIDI file to animate it, or go live and play with your keyboard, mouse, or a MIDI controller.</p>
+        <span class="home-kicker">${t('home.kicker')}</span>
+        <h1 class="home-title">${t('home.title.html')}</h1>
+        <p class="home-sub">${t('home.subtitle')}</p>
 
         <div class="home-actions">
           <button class="home-primary-btn" id="home-open" type="button">
             ${icons.upload(13)}
-            <span>Open MIDI</span>
+            <span>${t('home.cta.openMidi')}</span>
           </button>
           <button class="home-secondary-btn" id="home-live" type="button">
             ${icons.midi(13)}
-            <span>Play live</span>
+            <span>${t('home.cta.playLive')}</span>
           </button>
         </div>
 
         <div class="home-samples">
-          <div class="home-samples-label">or explore a sample</div>
+          <div class="home-samples-label">${t('home.samples.label')}</div>
           <div class="home-samples-mount" id="home-samples-mount"></div>
         </div>
 
         <div class="home-footnotes">
-          <div class="home-midi-status" id="home-midi-status">Looking for MIDI…</div>
-          <div class="home-drop-hint">Drop <code>.mid</code> anywhere · play with <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>…</div>
+          <div class="home-midi-status" id="home-midi-status">${t('home.midi.lookingFor')}</div>
+          <div class="home-drop-hint">${t('home.dropHint.html')}</div>
         </div>
         <nav class="home-meta-links" aria-label="midee links">
-          <a href="/blog/" class="home-meta-link" aria-label="Read the blog" title="Blog">
+          <a href="/blog/" class="home-meta-link" aria-label="${t('home.metaLink.blog')}" data-tip="${t('home.metaLink.blog')}">
             ${icons.blog()}
           </a>
-          <a href="https://github.com/aayushdutt/midee" class="home-meta-link" aria-label="Source on GitHub" title="GitHub" target="_blank" rel="noopener noreferrer">
+          <a href="https://github.com/aayushdutt/midee" class="home-meta-link" aria-label="${t('home.metaLink.github')}" data-tip="${t('home.metaLink.github')}" target="_blank" rel="noopener noreferrer">
             ${icons.github()}
           </a>
-          <a href="https://discord.gg/7As2NHHd" class="home-meta-link" aria-label="Join the Discord community" title="Discord" target="_blank" rel="noopener noreferrer">
+          <a href="https://discord.gg/7As2NHHd" class="home-meta-link" aria-label="${t('home.metaLink.discord')}" data-tip="${t('home.metaLink.discord')}" target="_blank" rel="noopener noreferrer">
             ${icons.discord()}
           </a>
         </nav>
@@ -169,8 +170,8 @@ function hasFiles(e: DragEvent): boolean {
 }
 
 function getHomeMidiStatus(status: MidiDeviceStatus, deviceName: string): string {
-  if (status === 'connected') return deviceName || 'MIDI device ready'
-  if (status === 'blocked') return 'Enable MIDI from the top bar'
-  if (status === 'unavailable') return 'Web MIDI unavailable in this browser'
-  return 'No MIDI device — keyboard & mouse work too'
+  if (status === 'connected') return deviceName || t('home.midi.ready')
+  if (status === 'blocked') return t('home.midi.blocked')
+  if (status === 'unavailable') return t('home.midi.unavailable')
+  return t('home.midi.disconnected')
 }

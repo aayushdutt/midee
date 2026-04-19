@@ -1,4 +1,5 @@
 import type { ExportStage } from '../export/VideoExporter'
+import { t } from '../i18n'
 import { icons } from './icons'
 import { Modal } from './primitives/Modal'
 
@@ -72,23 +73,23 @@ export class ExportModal {
           <header class="export-header">
             <div class="export-card-icon">${icons.film()}</div>
             <div class="export-header-text">
-              <h2 class="export-card-title">Export MP4</h2>
-              <p class="export-card-sub">Frame-accurate · audio baked in · fully offline</p>
+              <h2 class="export-card-title">${t('export.title')}</h2>
+              <p class="export-card-sub">${t('export.sub')}</p>
             </div>
           </header>
 
           <section class="export-section">
-            <span class="export-section-label">Output</span>
+            <span class="export-section-label">${t('export.outputLabel')}</span>
             <div class="fps-group out-group" id="out-group">
-              <button class="fps-btn fps-btn--on" data-out="av">Video + audio</button>
-              <button class="fps-btn" data-out="video-only">Video only</button>
-              <button class="fps-btn" data-out="audio-only">Audio only</button>
-              <button class="fps-btn" data-out="midi" title="Save the source .mid">MIDI</button>
+              <button class="fps-btn fps-btn--on" data-out="av">${t('export.output.av')}</button>
+              <button class="fps-btn" data-out="video-only">${t('export.output.video')}</button>
+              <button class="fps-btn" data-out="audio-only">${t('export.output.audio')}</button>
+              <button class="fps-btn" data-out="midi" title="${t('export.output.midi.tip')}">${t('export.output.midi')}</button>
             </div>
           </section>
 
           <section class="export-section" id="res-section">
-            <span class="export-section-label">Resolution</span>
+            <span class="export-section-label">${t('export.resolutionLabel')}</span>
             <div class="res-grid" id="res-group">
               ${PRESETS.map(
                 (p) => `
@@ -105,7 +106,7 @@ export class ExportModal {
           </section>
 
           <section class="export-section" id="fps-section">
-            <span class="export-section-label">Frame rate</span>
+            <span class="export-section-label">${t('export.fpsLabel')}</span>
             <div class="fps-group" id="fps-group">
               <button class="fps-btn" data-fps="24">24 fps</button>
               <button class="fps-btn fps-btn--on" data-fps="30">30 fps</button>
@@ -114,39 +115,39 @@ export class ExportModal {
           </section>
 
           <section class="export-section" id="focus-section">
-            <span class="export-section-label">Focus</span>
+            <span class="export-section-label">${t('export.focusLabel')}</span>
             <div class="fps-group" id="focus-group">
-              <button class="fps-btn fps-btn--on" data-focus="fit" title="Zoom onto the piece's actual range">Fit to piece</button>
-              <button class="fps-btn" data-focus="all" title="Show the full 88 keys">All 88 keys</button>
+              <button class="fps-btn fps-btn--on" data-focus="fit" title="${t('export.focus.fit.tip')}">${t('export.focus.fit')}</button>
+              <button class="fps-btn" data-focus="all" title="${t('export.focus.all.tip')}">${t('export.focus.all')}</button>
             </div>
           </section>
 
           <section class="export-section" id="speed-section">
-            <span class="export-section-label">Speed</span>
+            <span class="export-section-label">${t('export.speedLabel')}</span>
             <div class="fps-group" id="speed-group">
-              <button class="fps-btn" data-speed="compact" title="Tight — more notes on screen at once">Compact</button>
-              <button class="fps-btn" data-speed="standard" title="Default pace">Standard</button>
-              <button class="fps-btn fps-btn--on" data-speed="drama" title="Slower fall — cinematic">Drama</button>
+              <button class="fps-btn" data-speed="compact" title="${t('export.speed.compact.tip')}">${t('export.speed.compact')}</button>
+              <button class="fps-btn" data-speed="standard" title="${t('export.speed.standard.tip')}">${t('export.speed.standard')}</button>
+              <button class="fps-btn fps-btn--on" data-speed="drama" title="${t('export.speed.drama.tip')}">${t('export.speed.drama')}</button>
             </div>
           </section>
 
           <div class="export-actions">
-            <button class="modal-btn" id="ep-cancel-settings">Cancel</button>
+            <button class="modal-btn" id="ep-cancel-settings">${t('export.cancel')}</button>
             <button class="modal-btn modal-btn--accent" id="ep-start">
               ${icons.exportArrow()}
-              <span>Export</span>
+              <span>${t('export.action')}</span>
             </button>
           </div>
         </div>
 
         <div class="export-phase hidden" id="ep-progress">
           <div class="export-spinner"></div>
-          <div class="export-stage" id="ep-stage">Preparing…</div>
+          <div class="export-stage" id="ep-stage">${t('export.preparing')}</div>
           <div class="export-progress-wrap">
             <div class="export-progress-bar" id="ep-bar"></div>
           </div>
           <div class="export-pct" id="ep-pct">0%</div>
-          <button class="modal-btn" id="ep-cancel-progress">Cancel</button>
+          <button class="modal-btn" id="ep-cancel-progress">${t('export.cancel')}</button>
         </div>
 
       </div>

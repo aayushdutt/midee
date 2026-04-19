@@ -1,5 +1,6 @@
 import type { Theme } from '../renderer/theme'
 import type { ParticleStyleInfo, ParticleStyle } from '../renderer/ParticleSystem'
+import { LOCALES, locale, t, type LocaleCode } from '../i18n'
 import { isNarrowViewport } from './utils'
 
 // Aesthetics popover — collapses theme, particles, and chord overlay (three
@@ -14,6 +15,7 @@ export interface CustomizeMenuCallbacks {
   onSelectTheme:    (index: number) => void
   onSelectParticle: (index: number) => void
   onToggleChord:    () => void
+  onSelectLocale:   (code: LocaleCode) => void
 }
 
 export class CustomizeMenu {
@@ -22,6 +24,7 @@ export class CustomizeMenu {
   private themeRowEl: HTMLElement
   private particleRowEl: HTMLElement
   private chordToggleEl: HTMLButtonElement
+  private localeRowEl: HTMLElement
   private themeDotEl: HTMLElement
   private isOpen = false
 
@@ -58,11 +61,11 @@ export class CustomizeMenu {
     this.trigger.className = 'ts-pill ts-pill--customize'
     this.trigger.id = 'ts-customize'
     this.trigger.type = 'button'
-    this.trigger.title = 'Appearance'
-    this.trigger.setAttribute('aria-label', 'Appearance')
+    this.trigger.setAttribute('aria-label', t('customize.aria'))
+    this.trigger.setAttribute('data-tip', t('customize.aria'))
     this.trigger.innerHTML = `
       <span class="ts-customize-swatch" aria-hidden="true" id="ts-customize-swatch"></span>
-      <span class="ts-customize-label" id="ts-customize-label">Theme</span>
+      <span class="ts-customize-label" id="ts-customize-label">${t('customize.theme')}</span>
       ${ICON_CHEV}
     `
     this.themeDotEl = this.trigger.querySelector<HTMLElement>('#ts-customize-swatch')!
@@ -73,29 +76,36 @@ export class CustomizeMenu {
     this.menu.className = 'ts-popover ts-customize-menu'
     this.menu.innerHTML = `
       <div class="panel-header">
-        <span class="panel-label">Appearance</span>
+        <span class="panel-label">${t('customize.title')}</span>
       </div>
 
       <div class="customize-section">
         <div class="customize-section-head">
-          <span class="customize-section-label">Theme</span>
+          <span class="customize-section-label">${t('customize.theme')}</span>
         </div>
         <div class="customize-theme-grid" data-role="theme-row"></div>
       </div>
 
       <div class="customize-section">
         <div class="customize-section-head">
-          <span class="customize-section-label">Particles</span>
+          <span class="customize-section-label">${t('customize.particles')}</span>
         </div>
         <div class="customize-particle-row" data-role="particle-row"></div>
+      </div>
+
+      <div class="customize-section">
+        <div class="customize-section-head">
+          <span class="customize-section-label">${t('customize.language')}</span>
+        </div>
+        <div class="customize-locale-row" data-role="locale-row"></div>
       </div>
 
       <div class="customize-section customize-section--toggle">
         <button class="customize-toggle" type="button" data-role="chord-toggle"
                 aria-pressed="false">
           <span class="customize-toggle-body">
-            <span class="customize-toggle-name">Chord readout</span>
-            <span class="customize-toggle-sub">Name what's sounding · live mode</span>
+            <span class="customize-toggle-name">${t('customize.chord')}</span>
+            <span class="customize-toggle-sub">${t('customize.chord.sub')}</span>
           </span>
           <span class="customize-toggle-switch" aria-hidden="true">
             <span class="customize-toggle-knob"></span>
@@ -108,11 +118,31 @@ export class CustomizeMenu {
     this.themeRowEl = this.menu.querySelector<HTMLElement>('[data-role="theme-row"]')!
     this.particleRowEl = this.menu.querySelector<HTMLElement>('[data-role="particle-row"]')!
     this.chordToggleEl = this.menu.querySelector<HTMLButtonElement>('[data-role="chord-toggle"]')!
+    this.localeRowEl = this.menu.querySelector<HTMLElement>('[data-role="locale-row"]')!
 
     this.buildThemeRow()
     this.buildParticleRow()
+    this.buildLocaleRow()
     this.chordToggleEl.addEventListener('click', () => {
       this.callbacks.onToggleChord()
+    })
+  }
+
+  private buildLocaleRow(): void {
+    // Native names — users recognise their own language. Active state pulled
+    // from the i18n locale Signal so the active chip stays in sync if the
+    // locale changes from anywhere else.
+    this.localeRowEl.innerHTML = LOCALES.map((l) => `
+      <button class="customize-locale-chip${l.code === locale.value ? ' customize-locale-chip--on' : ''}"
+              type="button" data-locale="${l.code}" aria-label="${l.nativeName}">
+        <span class="customize-locale-chip-label">${l.nativeName}</span>
+      </button>
+    `).join('')
+    this.localeRowEl.querySelectorAll<HTMLButtonElement>('.customize-locale-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.dataset['locale'] as LocaleCode | undefined
+        if (code) this.callbacks.onSelectLocale(code)
+      })
     })
   }
 

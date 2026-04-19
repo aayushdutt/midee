@@ -1,4 +1,5 @@
 import { categorizeMidiDevice, track, trackActivation } from './analytics'
+import { setLocale, t } from './i18n'
 import { Metronome } from './audio/Metronome'
 import { INSTRUMENTS, SynthEngine } from './audio/SynthEngine'
 import { MasterClock } from './core/clock/MasterClock'
@@ -294,6 +295,14 @@ export class App {
         onSelectTheme:    (idx) => this.setThemeByIndex(idx),
         onSelectParticle: (idx) => this.setParticleByIndex(idx),
         onToggleChord:    () => this.toggleChordOverlay(),
+        // Locale change is rare, and almost every part of the UI was built
+        // with the previous locale baked in via template literals. Reload
+        // is the simplest correct path: persistence happens in setLocale,
+        // boot picks it up, the next paint is fully translated. No stale
+        // strings, no in-place re-render machinery to maintain.
+        onSelectLocale:   (code) => {
+          void setLocale(code).then(() => window.location.reload())
+        },
       },
     )
     this.customizeMenu.setChord(this.chordOverlayOn)
@@ -805,7 +814,7 @@ export class App {
           console.error('Offline audio render failed:', err)
           // Audio-only has nothing to export without it — surface the error.
           if (settings.output === 'audio-only') throw err
-          this.showError('Audio render failed — MP4 will be silent.')
+          this.showError(t('error.audio.renderFailed'))
         }
       }
 
@@ -820,7 +829,7 @@ export class App {
         onProgress: (stage, pct) => this.exportModal.updateProgress(stage, pct),
       })
       this.exportModal.close()
-      this.showSuccess(`↓ ${filename} ready`)
+      this.showSuccess(`↓ ${t('toast.export.ready', { filename })}`)
       track('export_completed', {
         output: settings.output,
         resolution: settings.resolution,
@@ -831,7 +840,7 @@ export class App {
       const isCancel = err instanceof DOMException && err.name === 'AbortError'
       if (!isCancel) {
         console.error('Export failed:', err)
-        this.showError((err as Error).message || 'Export failed — check console for details.')
+        this.showError((err as Error).message || t('error.export.generic'))
       }
       track(isCancel ? 'export_cancelled' : 'export_failed', {
         output: settings.output,
@@ -879,7 +888,7 @@ export class App {
       midi = await fetchSampleMidi(sample)
     } catch (err) {
       console.error('[loadSample] fetch failed', err)
-      this.showError('Could not load that sample — check your network and try again.')
+      this.showError(t('error.sample.fetchFailed'))
       return
     }
     this.loadSessionAsFile(midi)
@@ -925,7 +934,7 @@ export class App {
     // Keep computer keyboard live — pressing a note from the home screen
     // seamlessly dissolves into live mode.
     this.keyboardInput.enable()
-    document.title = 'midee — drop a MIDI, watch it sing'
+    document.title = t('doc.title.home')
   }
 
   private enterLiveMode(primeAudio = true): void {
@@ -937,7 +946,7 @@ export class App {
     this.trackPanel.close()
     this.dropzone.hide()
     this.keyboardInput.enable()
-    document.title = 'midee · live'
+    document.title = t('doc.title.live')
     if (primeAudio) this.primeInteractiveAudio()
     if (!wasAlreadyLive) {
       track('live_mode_entered', {
@@ -985,7 +994,7 @@ export class App {
     }
     const { events, duration } = this.sessionRec.stop()
     if (events.length === 0) {
-      this.showError('Nothing recorded — play a few notes while Record is on.')
+      this.showError(t('toast.recording.empty'))
       track('session_record_empty')
       return
     }
@@ -1017,7 +1026,7 @@ export class App {
         trackName: 'Live performance',
       })
       triggerMidiDownload(bytes, 'midee-session.mid')
-      this.showSuccess(`↓ midee-session.mid · ${Math.round(pending.duration)}s`)
+      this.showSuccess(`↓ ${t('toast.session.saved', { seconds: Math.round(pending.duration) })}`)
       this.pendingSession = null
       return
     }
@@ -1062,7 +1071,7 @@ export class App {
       trackName: 'Loop',
     })
     triggerMidiDownload(bytes, 'midee-loop.mid')
-    this.showSuccess('↓ midee-loop.mid')
+    this.showSuccess(`↓ ${t('toast.loop.saved')}`)
     track('loop_saved', {
       duration_s: Math.round(snap.duration),
       layers: this.loopEngine.layerCount.value,
@@ -1148,7 +1157,7 @@ export class App {
   // ── Practice (Synthesia-style wait) mode ───────────────────────────────
   private togglePracticeMode(): void {
     if (appState.mode.value !== 'file') {
-      this.showError('Practice mode is only available while playing a MIDI file.')
+      this.showError(t('error.practice.fileOnly'))
       return
     }
     if (!appState.loadedMidi.value) {

@@ -1,5 +1,6 @@
 import type { MidiFile } from '../core/midi/types'
 import type { PianoRollRenderer } from '../renderer/PianoRollRenderer'
+import { t, tn } from '../i18n'
 import { icons } from './icons'
 import { escHtml, hexToCSS, isNarrowViewport } from './utils'
 
@@ -43,13 +44,13 @@ export class TrackPanel {
     this.panel.className = 'ts-popover'
     this.panel.innerHTML = `
       <div class="panel-header">
-        <span class="panel-label">Tracks</span>
+        <span class="panel-label">${t('tracks.title')}</span>
       </div>
       <div class="panel-items" id="panel-items"></div>
       <div class="panel-footer">
         <button class="panel-load-btn" id="panel-load-new" type="button">
           ${icons.upload(11)}
-          Load new file
+          ${t('tracks.loadNew')}
         </button>
       </div>
     `
@@ -62,17 +63,18 @@ export class TrackPanel {
   }
 
   render(midi: MidiFile): void {
+    // Iterator name `tr` (not `t`) so it doesn't shadow the i18n helper.
     this.itemsEl.innerHTML = midi.tracks
       .map(
-        (t) => `
+        (tr) => `
       <label class="track-item">
-        <span class="track-swatch" style="background:${hexToCSS(t.color)}"></span>
+        <span class="track-swatch" style="background:${hexToCSS(tr.color)}"></span>
         <span class="track-info">
-          <span class="track-name">${escHtml(t.name)}</span>
-          <span class="track-meta">ch ${t.channel + 1} · ${t.notes.length} notes</span>
+          <span class="track-name">${escHtml(tr.name)}</span>
+          <span class="track-meta">${tn('tracks.notes', tr.notes.length, { channel: tr.channel + 1 })}</span>
         </span>
-        <span class="track-toggle-wrap" style="--track-color:${hexToCSS(t.color)}">
-          <input type="checkbox" class="track-toggle" data-id="${t.id}" checked />
+        <span class="track-toggle-wrap" style="--track-color:${hexToCSS(tr.color)}">
+          <input type="checkbox" class="track-toggle" data-id="${tr.id}" checked />
           <span class="toggle-track"></span>
         </span>
       </label>
