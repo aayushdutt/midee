@@ -25,6 +25,11 @@ export class MidiInputManager {
   readonly noteOn  = new Signal<MidiNoteEvent | null>(null)
   readonly noteOff = new Signal<MidiNoteEvent | null>(null)
 
+  // Sustain pedal (CC64) — true when the damper is engaged. Per the MIDI
+  // spec, controller value <64 = off, >=64 = on. Subscribers decide how to
+  // apply it (typically: delay note-off audio release until pedal-up).
+  readonly pedal = new Signal<boolean>(false)
+
   private access: MIDIAccess | null = null
 
   constructor(private readonly clock: MasterClock) {}
@@ -65,6 +70,10 @@ export class MidiInputManager {
 
     this.status.set(anyConnected ? 'connected' : 'disconnected')
     this.deviceName.set(names.join(', '))
+
+    // No device means no pedal source — clear any stuck state so subscribers
+    // can release sustained notes instead of leaving them ringing forever.
+    if (!anyConnected && this.pedal.value) this.pedal.set(false)
   }
 
   private handleMessage(e: MIDIMessageEvent): void {
@@ -93,8 +102,13 @@ export class MidiInputManager {
     } else if (status === 0x80 || (status === 0x90 && rawVel === 0)) {
       // Note-off (also handles velocity-0 note-on, common in hardware)
       this.noteOff.set({ pitch, velocity: 0, clockTime })
+    } else if (status === 0xb0 && pitch === 64) {
+      // CC64 — sustain pedal. `pitch` here is actually the controller number.
+      // Dedupe same-state emissions (hardware often streams redundant 127s).
+      const down = rawVel >= 64
+      if (down !== this.pedal.value) this.pedal.set(down)
     }
-    // Ignore CC, pitch-bend, aftertouch, etc. for now
+    // Ignore other CC, pitch-bend, aftertouch, etc. for now
   }
 
   dispose(): void {
@@ -106,5 +120,6 @@ export class MidiInputManager {
     this.access = null
     this.status.set('disconnected')
     this.deviceName.set('')
+    if (this.pedal.value) this.pedal.set(false)
   }
 }

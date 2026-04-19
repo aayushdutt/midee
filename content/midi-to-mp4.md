@@ -1,6 +1,6 @@
 ---
 title: How to turn a MIDI file into an MP4 video (free, in your browser)
-description: Step-by-step guide to converting a .mid into a shareable MP4 — free, without uploading, without installing anything. Piano-roll visualization, 1080p or TikTok/Reels aspect ratios.
+description: How to turn a .mid file into a shareable MP4 — free, no install, no upload. Piano-roll visualization in 1080p, TikTok/Reels, or square aspect.
 path: /midi-to-mp4/
 type: page
 ---

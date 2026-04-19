@@ -1,6 +1,6 @@
 ---
 title: A free, open-source alternative to SeeMusic
-description: Honest comparison of SeeMusic and midee — when to pick which, what's different, and why midee might be all you need for MIDI visualization and video export.
+description: Honest comparison of SeeMusic and midee — when to pick which, what's different, and why midee may be all you need for MIDI-to-video.
 path: /vs/seemusic/
 type: page
 ---

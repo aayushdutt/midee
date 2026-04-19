@@ -58,7 +58,18 @@ export class App {
   // who opens MIDI A then MIDI B gets `first_play` events for both.
   private firstPlayLogged = false
   private firstLiveNoteLogged = false
+  private firstPedalLogged = false
   private playbackMilestones = new Set<number>()
+  // Sustain pedal state. When `pedalDown`, note-offs are added to
+  // `sustainedPitches` and the audio release is deferred until pedal-up.
+  // Visual/recording paths still fire on key-up so the roll reflects
+  // what the player's hands actually did.
+  // Two independent sources (hardware CC64 + spacebar stand-in) are merged
+  // with an OR so either can engage sustain without fighting the other.
+  private pedalDown = false
+  private midiPedalDown = false
+  private keyPedalDown = false
+  private sustainedPitches = new Set<number>()
   private onVisibilityChange = (): void => { if (document.hidden) this.releaseAllLiveNotes() }
   private onWindowBlur = (): void => this.releaseAllLiveNotes()
   private onFirstPointerDown = (): void => this.primeInteractiveAudio()
@@ -286,8 +297,16 @@ export class App {
     // ── Live input wiring (MIDI device + computer keyboard) ───────────────
     this.midiInput.noteOn.subscribe((evt) => { if (evt) this.handleLiveNoteOn(evt, 'midi') })
     this.midiInput.noteOff.subscribe((evt) => { if (evt) this.handleLiveNoteOff(evt) })
+    this.midiInput.pedal.subscribe((down) => {
+      this.midiPedalDown = down
+      this.applyPedalState('midi')
+    })
     this.keyboardInput.noteOn.subscribe((evt) => { if (evt) this.handleLiveNoteOn(evt, 'keyboard') })
     this.keyboardInput.noteOff.subscribe((evt) => { if (evt) this.handleLiveNoteOff(evt) })
+    this.keyboardInput.pedal.subscribe((down) => {
+      this.keyPedalDown = down
+      this.applyPedalState('keyboard')
+    })
     this.keyboardInput.octave.subscribe((o) => this.controls.updateOctave(o))
 
     // Mouse/touch on the on-screen keyboard — down to press, move to slide
@@ -329,6 +348,18 @@ export class App {
   private releaseAllLiveNotes(): void {
     this.liveNotes.releaseAll(this.clock.currentTime)
     this.synth.liveReleaseAll()
+    this.sustainedPitches.clear()
+    this.pedalDown = false
+    this.midiPedalDown = false
+    this.keyPedalDown = false
+  }
+
+  // Called whenever a new MIDI is loaded so the telemetry flags scoped to
+  // "this piece" fire for the next one too. `first_play` re-arms, playback
+  // milestones reset so 30/60/120s fire again for the new file.
+  private resetPlaybackTelemetry(): void {
+    this.firstPlayLogged = false
+    this.playbackMilestones.clear()
   }
 
   private handleLiveNoteOn(evt: MidiNoteEvent, source: 'midi' | 'keyboard' | 'touch' = 'midi'): void {
@@ -343,6 +374,10 @@ export class App {
       trackActivation('live_note')
     }
 
+    // Re-pressing a pitch that was sustained by the pedal clears the flag —
+    // the new attack owns the sound from here, and we don't want the eventual
+    // pedal-up to fire a stale release on a note that's currently ringing.
+    this.sustainedPitches.delete(evt.pitch)
     this.synth.liveNoteOn(evt.pitch, evt.velocity)
     this.liveNotes.press(evt.pitch, evt.velocity, evt.clockTime)
     this.renderer.burstParticleAt(evt.pitch)
@@ -363,10 +398,34 @@ export class App {
   private handleLiveNoteOff(evt: MidiNoteEvent): void {
     const mode = appState.mode.value
     if (mode !== 'live' && mode !== 'file') return
-    this.synth.liveNoteOff(evt.pitch)
+    // Visual + recording paths reflect actual hand motion: key-up is key-up.
+    // The pedal only delays *audio* release so the player hears the damper
+    // semantics they expect from a real piano.
     this.liveNotes.release(evt.pitch, evt.clockTime)
     this.loopEngine.captureNoteOff(evt.pitch, evt.clockTime)
     this.sessionRec.captureNoteOff(evt.pitch, evt.clockTime)
+    if (this.pedalDown) {
+      this.sustainedPitches.add(evt.pitch)
+    } else {
+      this.synth.liveNoteOff(evt.pitch)
+    }
+  }
+
+  private applyPedalState(source: 'midi' | 'keyboard'): void {
+    const down = this.midiPedalDown || this.keyPedalDown
+    if (down === this.pedalDown) return
+    this.pedalDown = down
+    if (down) {
+      if (!this.firstPedalLogged) {
+        this.firstPedalLogged = true
+        track('pedal_used', { source })
+      }
+      return
+    }
+    // Pedal-up: release everything the damper was holding. Still-held keys
+    // aren't in this set, so they keep ringing as expected.
+    for (const pitch of this.sustainedPitches) this.synth.liveNoteOff(pitch)
+    this.sustainedPitches.clear()
   }
 
   private onCanvasPointerDown = (e: PointerEvent): void => {
@@ -431,8 +490,7 @@ export class App {
       this.trackPanel.render(midi)
       document.title = `${midi.name} · midee`
       this.dropzone.hide()
-      this.firstPlayLogged = false
-      this.playbackMilestones.clear()
+      this.resetPlaybackTelemetry()
       track('midi_loaded', {
         source: 'file_picker',
         track_count: midi.tracks.length,
@@ -674,8 +732,7 @@ export class App {
       return
     }
     this.loadSessionAsFile(midi)
-    this.firstPlayLogged = false
-    this.playbackMilestones.clear()
+    this.resetPlaybackTelemetry()
     track('midi_loaded', {
       source: 'sample',
       sample_id: sampleId,

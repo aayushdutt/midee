@@ -1,6 +1,6 @@
 ---
 title: A free, open-source alternative to Synthesia
-description: Honest comparison of Synthesia and midee — a free, open-source, browser-based piano-roll visualizer. When to use each, what's different, and why midee exists.
+description: Honest comparison of Synthesia and midee — a free, open-source, browser-based piano-roll visualizer. When to use each, and what's different.
 path: /vs/synthesia/
 type: page
 ---
