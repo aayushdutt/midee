@@ -1,6 +1,6 @@
 ---
 title: Why I replaced ffmpeg.wasm with WebCodecs for video export
-description: How switching a browser-based MIDI visualizer's video export pipeline from MediaRecorder + ffmpeg.wasm to the native WebCodecs API cut export time by 10×, dropped peak memory by 40%, and removed a runtime dependency on a 30MB WASM blob.
+description: How ditching MediaRecorder + ffmpeg.wasm for WebCodecs cut browser video export time by 10×, dropped peak memory 40%, and removed 30 MB of WASM.
 path: /blog/why-i-replaced-ffmpeg-wasm-with-webcodecs/
 type: post
 date: 2026-04-18

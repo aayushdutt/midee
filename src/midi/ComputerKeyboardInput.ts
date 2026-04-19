@@ -25,9 +25,14 @@ export class ComputerKeyboardInput {
   readonly noteOn  = new Signal<MidiNoteEvent | null>(null)
   readonly noteOff = new Signal<MidiNoteEvent | null>(null)
   readonly octave  = new Signal<number>(DEFAULT_OCTAVE)
+  // Software stand-in for a sustain pedal: Space-bar hold mirrors a damper.
+  // Useful for users without hardware pedals; merged with the MIDI-device
+  // pedal upstream in App so either source can engage sustain.
+  readonly pedal   = new Signal<boolean>(false)
 
   private active = false
   private held = new Map<string, number>() // code → pitch (for correct release after octave change)
+  private pedalHeld = false
 
   constructor(private readonly clock: MasterClock) {}
 
@@ -44,6 +49,10 @@ export class ComputerKeyboardInput {
     window.removeEventListener('keydown', this.onKeyDown)
     window.removeEventListener('keyup', this.onKeyUp)
     this.releaseAllHeld()
+    if (this.pedalHeld) {
+      this.pedalHeld = false
+      this.pedal.set(false)
+    }
   }
 
   shiftOctaveUp(): void {
@@ -66,6 +75,17 @@ export class ComputerKeyboardInput {
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (this.shouldIgnore(e)) return
+
+    // Spacebar = software sustain pedal (hold to engage, release to lift).
+    // Placed before arrow-key handling so auto-repeat doesn't re-emit.
+    if (e.code === 'Space') {
+      e.preventDefault()
+      if (!this.pedalHeld) {
+        this.pedalHeld = true
+        this.pedal.set(true)
+      }
+      return
+    }
 
     if (e.code === 'ArrowDown') {
       e.preventDefault()
@@ -93,6 +113,11 @@ export class ComputerKeyboardInput {
   }
 
   private onKeyUp = (e: KeyboardEvent): void => {
+    if (e.code === 'Space' && this.pedalHeld) {
+      this.pedalHeld = false
+      this.pedal.set(false)
+      return
+    }
     const pitch = this.held.get(e.code)
     if (pitch === undefined) return
     this.held.delete(e.code)

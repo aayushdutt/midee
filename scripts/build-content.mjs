@@ -12,7 +12,6 @@ const distDir = resolve(root, 'dist')
 const layout = readFileSync(resolve(contentDir, '_layout.html'), 'utf8')
 
 const SITE = 'https://midee.app'
-const LOGO = `${SITE}/og.png` // TODO: swap for a dedicated logo PNG when made
 
 marked.setOptions({ gfm: true, breaks: false })
 
@@ -75,7 +74,6 @@ function buildJsonLd({ data, html }) {
       '@type': 'Organization',
       name: 'midee',
       url: SITE,
-      logo: { '@type': 'ImageObject', url: LOGO },
     },
   }
   if (isPost) {
@@ -172,11 +170,12 @@ function render(mdPath) {
   }
 
   // Inline CTAs in markdown — `[midee](/)`, `[Open it](/)`, etc. — all
-  // render as href="/". Rewrite them here so authors don't have to hand-
-  // attach UTMs in every new post. utm_content=inline distinguishes these
-  // from the template-level brand/nav/cta_end positions.
+  // render as <a href="/">. Rewrite them so authors don't have to hand-
+  // attach UTMs in every post. Scoped to <a …> so future markdown features
+  // that emit other href="/" values (e.g. canonical <link>) aren't caught.
+  // utm_content=inline distinguishes these from brand/nav/cta_end positions.
   const html = marked.parse(content)
-    .replaceAll('href="/"', `href="${appHref(data.path, 'inline')}"`)
+    .replace(/<a href="\/"/g, `<a href="${appHref(data.path, 'inline')}"`)
   const jsonLd = buildJsonLd({ data, html })
   const breadcrumbJsonLd = buildBreadcrumbJsonLd({ data })
   const ogType = data.type === 'post' ? 'article' : 'website'
@@ -243,7 +242,6 @@ function writeBlogIndex(results) {
         '@type': 'Organization',
         name: 'midee',
         url: SITE,
-        logo: { '@type': 'ImageObject', url: LOGO },
       },
     }, null, 2))
     .replaceAll('{{breadcrumbJsonLd}}', breadcrumb)
@@ -303,10 +301,9 @@ ${items}
 const files = walkMd(contentDir)
 const results = []
 for (const f of files) {
-  results.push(render(f))
-  const raw = readFileSync(f, 'utf8')
-  const { data } = parseFrontmatter(raw)
-  console.log(`[build-content] rendered ${data.path}`)
+  const result = render(f)
+  results.push(result)
+  console.log(`[build-content] rendered ${result.path}`)
 }
 const posts = writeBlogIndex(results)
 writeRssFeed(posts)
