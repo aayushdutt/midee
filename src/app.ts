@@ -15,7 +15,7 @@ import type { VideoExporter } from './export/VideoExporter'
 import { setLocale, t } from './i18n'
 import { ComputerKeyboardInput } from './midi/ComputerKeyboardInput'
 import { LiveNoteStore } from './midi/LiveNoteStore'
-import { LoopEngine } from './midi/LoopEngine'
+import { LoopEngine, type LoopState } from './midi/LoopEngine'
 import type { CapturedEvent } from './midi/MidiEncoding'
 import { encodeCapturedEvents, midiFileToBytes, triggerMidiDownload } from './midi/MidiEncoding'
 import { MidiInputManager, type MidiNoteEvent } from './midi/MidiInputManager'
@@ -77,6 +77,16 @@ export class App {
   private firstLiveNoteLogged = false
   private firstPedalLogged = false
   private playbackMilestones = new Set<number>()
+  // Loop station one-shots, scoped to the page session. We want to know
+  // whether users ever reach each step in the loop funnel, not count every
+  // state flip — the state machine toggles rapidly during overdub.
+  private loopArmedLogged = false
+  private loopRecordedLogged = false
+  private prevLoopState: LoopState = 'idle'
+  // Practice mode per-enable counters — flushed as props on disable so we
+  // can tell engaged practice from "clicked the button and left".
+  private practiceHits = 0
+  private practiceEnabledAt = 0
   // Sustain pedal state. When `pedalDown`, note-offs are added to
   // `sustainedPitches` and the audio release is deferred until pedal-up.
   // Visual/recording paths still fire on key-up so the roll reflects
@@ -151,7 +161,7 @@ export class App {
 
     this.dropzone = new DropZone(
       overlay,
-      (file) => void this.loadMidi(file),
+      (file, source) => void this.loadMidi(file, source),
       () => this.enterLiveMode(),
       (sampleId) => this.loadSample(sampleId),
     )
@@ -181,9 +191,17 @@ export class App {
       onInstrumentCycle: () => this.cycleInstrument(),
       onParticleCycle: () => this.cycleParticleStyle(),
       onLoopToggle: () => this.loopEngine.toggle(),
-      onLoopClear: () => this.loopEngine.clear(),
+      onLoopClear: () => {
+        const layers = this.loopEngine.layerCount.value
+        this.loopEngine.clear()
+        if (layers > 0) track('loop_cleared', { layers })
+      },
       onLoopSave: () => this.saveLoopAsMidi(),
-      onLoopUndo: () => this.loopEngine.undo(),
+      onLoopUndo: () => {
+        const before = this.loopEngine.layerCount.value
+        this.loopEngine.undo()
+        if (before > 0) track('loop_undone', { layers_before: before })
+      },
       onMetronomeToggle: () => this.metronome.toggle(),
       onMetronomeBpmChange: (bpm) => {
         this.metronome.setBpm(bpm)
@@ -204,7 +222,10 @@ export class App {
     const pushLoop = (): void =>
       this.controls.updateLoopState(this.loopEngine.state.value, this.loopEngine.layerCount.value)
     this.unsubs.push(
-      this.loopEngine.state.subscribe(pushLoop),
+      this.loopEngine.state.subscribe((s) => {
+        this.trackLoopTransition(s)
+        pushLoop()
+      }),
       this.loopEngine.layerCount.subscribe(pushLoop),
     )
     pushLoop()
@@ -465,6 +486,26 @@ export class App {
     this.playbackMilestones.clear()
   }
 
+  // Loop funnel: fire once-per-session on `armed` and first `playing`, and
+  // fire `loop_layer_added` every time an overdub passes commits as a new
+  // layer (overdubbing → playing). Skipping transitions that just return to
+  // `idle` keeps the event stream tied to user intent, not UI housekeeping.
+  private trackLoopTransition(next: LoopState): void {
+    const prev = this.prevLoopState
+    this.prevLoopState = next
+    if (!this.loopArmedLogged && (next === 'armed' || next === 'recording')) {
+      this.loopArmedLogged = true
+      track('loop_armed')
+    }
+    if (!this.loopRecordedLogged && next === 'playing' && prev === 'recording') {
+      this.loopRecordedLogged = true
+      track('loop_recorded', { layers: this.loopEngine.layerCount.value })
+    }
+    if (next === 'playing' && prev === 'overdubbing') {
+      track('loop_layer_added', { layers: this.loopEngine.layerCount.value })
+    }
+  }
+
   private handleLiveNoteOn(
     evt: MidiNoteEvent,
     source: 'midi' | 'keyboard' | 'touch' = 'midi',
@@ -501,6 +542,8 @@ export class App {
     // every required pitch has landed.
     if (this.practiceEngine?.isWaiting) {
       this.practiceEngine.notePressed(evt.pitch)
+      if (this.practiceHits === 0) track('practice_first_hit')
+      this.practiceHits++
     }
 
     // Live mode's "tap a note to start the session" shortcut — don't hijack
@@ -605,8 +648,14 @@ export class App {
     // so the user knows they need to reset the permission via the browser
     // (lock icon → Site settings → MIDI devices → Allow).
     const wasBlocked = this.midiInput.status.value === 'blocked'
+    track('midi_permission_requested', { was_blocked: wasBlocked })
     const ok = await this.midiInput.requestAccess()
-    if (!ok && this.midiInput.status.value === 'blocked') {
+    if (ok) {
+      track('midi_permission_granted')
+      return
+    }
+    if (this.midiInput.status.value === 'blocked') {
+      track('midi_permission_denied', { was_blocked: wasBlocked })
       const msg = wasBlocked
         ? 'MIDI is blocked. Click the 🔒 icon in your address bar → Site settings → allow MIDI, then reload.'
         : 'MIDI permission denied. Click again, or enable it via the 🔒 icon in your address bar.'
@@ -618,7 +667,7 @@ export class App {
     await this.midiInput.requestAccess({ silent: true })
   }
 
-  private async loadMidi(file: File): Promise<void> {
+  private async loadMidi(file: File, source: 'drag' | 'picker' = 'picker'): Promise<void> {
     const previousMode = appState.mode.value
     const previousMidi = appState.loadedMidi.value
     this.resetInteractionState()
@@ -637,7 +686,7 @@ export class App {
       this.dropzone.hide()
       this.resetPlaybackTelemetry()
       track('midi_loaded', {
-        source: 'file_picker',
+        source,
         track_count: midi.tracks.length,
         duration_s: Math.round(midi.duration),
         file_size_kb: Math.round(file.size / 1024),
@@ -646,7 +695,7 @@ export class App {
       console.error('Failed to load MIDI:', err)
       // Only failure path for loadMidi is parsing — bucket as such so we
       // avoid sending free-text error messages (high cardinality + PII risk).
-      track('midi_load_failed', { source: 'file_picker', error_type: 'parse' })
+      track('midi_load_failed', { source, error_type: 'parse' })
       if (previousMode === 'file' && previousMidi) {
         appState.enterFile()
         this.renderer.loadMidi(previousMidi)
@@ -965,6 +1014,7 @@ export class App {
       this.openFilePicker()
       return
     }
+    const wasAlreadyFile = appState.mode.value === 'file'
     this.resetInteractionState()
     appState.enterFile()
     this.renderer.loadMidi(midi)
@@ -974,6 +1024,9 @@ export class App {
     // Typing keyboard stays enabled — users can play along with the file.
     this.keyboardInput.enable()
     document.title = `${midi.name} · midee`
+    if (!wasAlreadyFile) {
+      track('file_mode_entered', { duration_s: Math.round(midi.duration) })
+    }
   }
 
   // Schedules a UI side-effect to run at (roughly) the AudioContext time
@@ -1173,7 +1226,16 @@ export class App {
     // tracks panel.
     this.practiceEngine.setVisibleTracks(this.collectVisibleTrackIds())
     const enabled = this.practiceEngine.toggle()
-    track(enabled ? 'practice_mode_enabled' : 'practice_mode_disabled')
+    if (enabled) {
+      this.practiceHits = 0
+      this.practiceEnabledAt = Date.now()
+      track('practice_mode_enabled')
+    } else {
+      track('practice_mode_disabled', {
+        hits: this.practiceHits,
+        duration_s: Math.round((Date.now() - this.practiceEnabledAt) / 1000),
+      })
+    }
   }
 
   private collectVisibleTrackIds(): string[] | null {

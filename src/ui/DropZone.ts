@@ -3,7 +3,8 @@ import type { MidiDeviceStatus } from '../midi/MidiInputManager'
 import { icons } from './icons'
 import { SamplesGrid } from './SamplesGrid'
 
-type DropHandler = (file: File) => void
+export type LoadSource = 'drag' | 'picker'
+type DropHandler = (file: File, source: LoadSource) => void
 type SampleHandler = (sampleId: string) => void
 
 function isMidiFile(name: string): boolean {
@@ -37,7 +38,7 @@ export class DropZone {
     this.dragDepth = 0
     this.el.classList.remove('drag-over')
     const file = e.dataTransfer?.files[0]
-    if (file && isMidiFile(file.name)) this.onDrop(file)
+    if (file && isMidiFile(file.name)) this.onDrop(file, 'drag')
   }
 
   private samples: SamplesGrid
@@ -107,7 +108,7 @@ export class DropZone {
   private bindEvents(): void {
     this.input.addEventListener('change', () => {
       const file = this.input.files?.[0]
-      if (file && isMidiFile(file.name)) this.onDrop(file)
+      if (file && isMidiFile(file.name)) this.onDrop(file, 'picker')
       this.input.value = ''
     })
 
