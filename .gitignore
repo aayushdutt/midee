@@ -27,3 +27,4 @@ pnpm-debug.log*
 TODO.md
 docs/
 .internal/
+public/local/

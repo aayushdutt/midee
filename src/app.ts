@@ -876,6 +876,7 @@ export class App {
         duration: midi.duration,
         mode: settings.output,
         filename,
+        bitrate: resolveExportBitrate(settings.resolution),
         ...(audioBuffer ? { audio: audioBuffer } : {}),
         onSeek: (t) => this.clock.seek(t),
         onRenderFrame: (t, dt) => this.renderer.renderManualFrame(t, dt),
@@ -1455,11 +1456,37 @@ function resolveExportDims(preset: ExportResolution): { width: number; height: n
       return { width: 1280, height: 720 }
     case '1080p':
       return { width: 1920, height: 1080 }
+    case '2k':
+      return { width: 2560, height: 1440 }
+    case '4k':
+      return { width: 3840, height: 2160 }
     case 'vertical':
       return { width: 1080, height: 1920 }
     case 'square':
       return { width: 1080, height: 1080 }
     case 'match':
       return null
+  }
+}
+
+// H.264 bitrate per preset. Lower than YouTube's recommendations but tuned
+// for visual fidelity of a piano-roll (mostly dark background, few gradients)
+// — the encoder doesn't need YouTube's overhead for live-action footage.
+function resolveExportBitrate(preset: ExportResolution): number {
+  switch (preset) {
+    case '720p':
+      return 5_000_000
+    case '1080p':
+      return 8_000_000
+    case '2k':
+      return 16_000_000
+    case '4k':
+      return 35_000_000
+    case 'vertical':
+      return 8_000_000
+    case 'square':
+      return 5_000_000
+    case 'match':
+      return 8_000_000
   }
 }

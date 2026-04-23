@@ -338,6 +338,12 @@ async function pickCodec(
   bitrate: number,
 ): Promise<CodecPlan> {
   const candidates: CodecPlan[] = [
+    // Highest level first so the browser's first accept gives us the broadest
+    // frame-size + MB/s budget. 5.2 is required for 4K@60 (4K@30 fits in 5.1);
+    // 5.1 covers 4K@30 and 2K@60; 5.0 covers 2K@30 and 1080p@60.
+    { codecString: 'avc1.640034', muxerCodec: 'avc', label: 'H.264 High 5.2 (4K@60)' },
+    { codecString: 'avc1.640033', muxerCodec: 'avc', label: 'H.264 High 5.1 (4K@30)' },
+    { codecString: 'avc1.640032', muxerCodec: 'avc', label: 'H.264 High 5.0 (2K)' },
     { codecString: 'avc1.640028', muxerCodec: 'avc', label: 'H.264 High 4.0' },
     { codecString: 'avc1.4D001F', muxerCodec: 'avc', label: 'H.264 Main 3.1' },
     { codecString: 'avc1.42E01F', muxerCodec: 'avc', label: 'H.264 Baseline 3.1' },

@@ -8,7 +8,7 @@ import { Modal } from './primitives/Modal'
 // for users who've tuned the window to look exactly how they want. `vertical`
 // (1080×1920) and `square` (1080×1080) target TikTok/Reels/Shorts and
 // Instagram feed respectively.
-export type ExportResolution = 'match' | '720p' | '1080p' | 'vertical' | 'square'
+export type ExportResolution = 'match' | '720p' | '1080p' | '2k' | '4k' | 'vertical' | 'square'
 export type ExportOutput = 'av' | 'video-only' | 'audio-only' | 'midi'
 export type ExportFocus = 'fit' | 'all'
 export type ExportSpeed = 'compact' | 'standard' | 'drama'
@@ -34,6 +34,8 @@ interface PresetCard {
 const PRESETS: readonly PresetCard[] = [
   { id: '1080p', label: '1080p', dim: '1920 × 1080', aspect: 'landscape' },
   { id: '720p', label: '720p', dim: '1280 × 720', aspect: 'landscape' },
+  { id: '2k', label: '2K', dim: '2560 × 1440', aspect: 'landscape', hint: 'YouTube QHD' },
+  { id: '4k', label: '4K', dim: '3840 × 2160', aspect: 'landscape', hint: 'slow · big file' },
   {
     id: 'vertical',
     label: 'Vertical',
