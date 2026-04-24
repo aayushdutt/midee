@@ -113,8 +113,8 @@ export class PlayAlongEngine {
     services.clock.pause()
     learnState.setState('status', 'paused')
 
-    // Seed from the clock — `learnState.currentTime` used to mirror this but
-    // the 60 Hz mirror was pure overhead (nobody else reads it reactively).
+    // One-shot seek seed from the live clock (we do not mirror playhead time
+    // into `learnState` / engine store at 60 Hz — HUD uses `clock.subscribe`).
     const seed = services.clock.currentTime
     const initial = midi && seed <= midi.duration ? seed : 0
     services.clock.seek(initial)
@@ -127,8 +127,9 @@ export class PlayAlongEngine {
       this.setState({ duration: midi?.duration ?? 0, currentTime: initial })
     })
 
-    // Clock tick drives loop-wrap + currentTime mirror; status watch keeps
-    // isPlaying in sync with Learn's transport.
+    // Clock tick drives loop-wrap at region boundaries only (`onTick` does not
+    // write `currentTime` into the store — see docs/done/SOLID_MIGRATION_PLAN.md §2). Status watch
+    // keeps `isPlaying` aligned with Learn's transport.
     this.unsubs.push(
       services.clock.subscribe((t) => this.onTick(t)),
       watch(

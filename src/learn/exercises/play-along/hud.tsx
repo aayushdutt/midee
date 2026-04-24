@@ -149,7 +149,7 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
   // NOT through `engine.state.currentTime` (§2 rule 4). Reading a store field
   // that's written at 60 Hz re-fires every `createEffect` tracking it, which
   // is pure scheduler overhead since the DOM writes here are imperative.
-  // @reactive-scrubber-forbidden — see SOLID_MIGRATION_PLAN.md §2 rule 4
+  // @reactive-scrubber-forbidden — see docs/done/SOLID_MIGRATION_PLAN.md §2 rule 4
   const tickUnsub = engine.services.clock.subscribe((t) => {
     if (!scrubbing && scrubberEl) {
       scrubberEl.value = String(t)

@@ -1,4 +1,4 @@
-import { createEffect, For, onCleanup, onMount, Show } from 'solid-js'
+import { createEffect, For, on, onCleanup, onMount, Show } from 'solid-js'
 import { render } from 'solid-js/web'
 import { icons } from '../../../ui/icons'
 import type { IntervalsEngine } from './engine'
@@ -36,10 +36,17 @@ function IntervalsCard(props: IntervalsUiOptions) {
   const idx = () => engine.state.index
   const pct = () => (total() > 0 ? (idx() / total()) * 100 : 0)
 
-  // Fire onFinished exactly once when the engine flips to 'done'.
-  createEffect(() => {
-    if (engine.state.phase === 'done') props.onFinished?.()
-  })
+  // Fire onFinished when `phase` transitions to `done` only (not on unrelated
+  // store fields — `on` tracks a single accessor).
+  createEffect(
+    on(
+      () => engine.state.phase,
+      (phase) => {
+        if (phase === 'done') props.onFinished?.()
+      },
+      { defer: true },
+    ),
+  )
 
   onMount(() => {
     // First question kicks off immediately — users expect audio on launch.

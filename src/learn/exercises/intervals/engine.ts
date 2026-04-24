@@ -1,5 +1,5 @@
 import { batch } from 'solid-js'
-import { createStore } from 'solid-js/store'
+import { createStore, type SetStoreFunction } from 'solid-js/store'
 import type { AppServices } from '../../../core/services'
 import { makeQuestions, type Question } from './theory'
 
@@ -52,9 +52,7 @@ export interface IntervalsState {
 
 export class IntervalsEngine {
   readonly state: IntervalsState
-  // biome-ignore lint/suspicious/noExplicitAny: SetStoreFunction signature
-  // noise isn't worth the import here; internal writes are narrow.
-  private readonly write: (update: Partial<IntervalsState>) => void
+  private readonly write: SetStoreFunction<IntervalsState>
 
   private opts: {
     services: AppServices
@@ -79,7 +77,7 @@ export class IntervalsEngine {
       feedback: null,
     })
     this.state = state
-    this.write = (update) => setState(update)
+    this.write = setState
     this.opts = {
       services: opts.services,
       questionCount: opts.questionCount ?? 10,

@@ -81,7 +81,6 @@ export class KeyboardRenderer {
   private practicePulsePhase = 0
   private practiceTickerHandler: ((ticker: import('pixi.js').Ticker) => void) | null = null
   private practicePending: ReadonlySet<number> | null = null
-  private practiceAccepted: ReadonlySet<number> | null = null
   private practiceTheme: Theme | null = null
 
   // Snapshot of the last-drawn pitch→color map as a single signature string.
@@ -357,7 +356,6 @@ export class KeyboardRenderer {
     theme: Theme,
   ): void {
     this.practicePending = pending
-    this.practiceAccepted = accepted
     this.practiceTheme = theme
     const sig = this.hintSignature(pending, accepted)
     if (sig !== this.practiceSignature) {

@@ -355,11 +355,11 @@ function HudView(props: HudProps) {
         <div class="hud-divider hud-group--transport" />
 
         <div class="scrubber-wrap hud-group--transport">
-          {/* @reactive-scrubber-forbidden — see SOLID_MIGRATION_PLAN.md §2 rule 4 */}
+          {/* @reactive-scrubber-forbidden — see docs/done/SOLID_MIGRATION_PLAN.md §2 rule 4 */}
           <span class="time-display" id="hud-time" ref={(el) => props.registerTime(el)}>
             0:00
           </span>
-          {/* @reactive-scrubber-forbidden — see SOLID_MIGRATION_PLAN.md §2 rule 4 */}
+          {/* @reactive-scrubber-forbidden — see docs/done/SOLID_MIGRATION_PLAN.md §2 rule 4 */}
           <input
             ref={(el) => props.registerScrubber(el)}
             type="range"
@@ -1012,19 +1012,19 @@ export class Controls {
         if (store.state.status === 'exporting') return
         const dur = store.state.duration
 
-        // @reactive-scrubber-forbidden — see SOLID_MIGRATION_PLAN.md §2 rule 4
+        // @reactive-scrubber-forbidden — see docs/done/SOLID_MIGRATION_PLAN.md §2 rule 4
         this.scrubber.value = String(t)
 
         const sec = Math.floor(t)
         if (sec !== this.lastDisplaySec) {
-          // @reactive-scrubber-forbidden — see SOLID_MIGRATION_PLAN.md §2 rule 4
+          // @reactive-scrubber-forbidden — see docs/done/SOLID_MIGRATION_PLAN.md §2 rule 4
           this.timeDisplay.textContent = formatTime(t)
           this.lastDisplaySec = sec
         }
 
         const pct = dur > 0 ? Math.min((t / dur) * 100, 100) : 0
         if (Math.abs(pct - this.lastFillPct) >= 0.1) {
-          // @reactive-scrubber-forbidden — see SOLID_MIGRATION_PLAN.md §2 rule 4
+          // @reactive-scrubber-forbidden — see docs/done/SOLID_MIGRATION_PLAN.md §2 rule 4
           this.scrubber.style.setProperty('--pct', `${pct.toFixed(1)}%`)
           this.lastFillPct = pct
         }

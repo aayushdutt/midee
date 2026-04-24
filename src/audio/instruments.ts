@@ -52,8 +52,18 @@ export interface InstrumentRuntime {
   dispose(): void
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type PianoModule = { Piano: any }
+/** Minimal `@tonejs/piano` instance (the package ships without TS types). */
+type TonePianoInstance = {
+  toDestination(): TonePianoInstance
+  load(): Promise<void>
+  keyDown(params: { note: string; velocity: number; time: number }): void
+  keyUp(params: { note: string; time: number }): void
+  stopAll(): void
+  dispose(): void
+}
+
+type PianoConstructor = new (opts: { velocities: number }) => TonePianoInstance
+type PianoModule = { Piano: PianoConstructor }
 let pianoModule: PianoModule | null = null
 
 async function getPianoModule(): Promise<PianoModule> {
@@ -97,8 +107,7 @@ export async function createInstrument(id: InstrumentId): Promise<InstrumentRunt
 async function createPiano(): Promise<InstrumentRuntime> {
   try {
     const { Piano } = await getPianoModule()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const inst: any = new Piano({ velocities: 4 })
+    const inst = new Piano({ velocities: 4 })
     inst.toDestination()
     await inst.load()
     return {
@@ -304,8 +313,7 @@ async function loadFolderBuffers(spec: SampleSpec): Promise<Map<string, AudioBuf
 
 async function createSampled(
   spec: SampleSpec,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  chain?: (sampler: any) => void,
+  chain?: (sampler: Tone.Sampler) => void,
 ): Promise<InstrumentRuntime> {
   const buffers = await loadFolderBuffers(spec)
 
@@ -316,8 +324,7 @@ async function createSampled(
     urls[filenameToNote(file)] = buf
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sampler: any = new Tone.Sampler({
+  const sampler = new Tone.Sampler({
     urls,
     release: spec.release ?? 1,
     attack: spec.attack ?? 0,
@@ -518,8 +525,16 @@ async function createGuitar(): Promise<InstrumentRuntime> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function wrapPolySynth(synth: any): InstrumentRuntime {
+/** PolySynth voice used by non-sampled patches — narrow to what we invoke. */
+type PolyToneSource = {
+  triggerAttack(note: string, time: number, velocity: number): void
+  triggerRelease(note: string, time: number): void
+  triggerAttackRelease(note: string, duration: number, time: number, velocity: number): void
+  releaseAll(): void
+  dispose(): void
+}
+
+function wrapPolySynth(synth: PolyToneSource): InstrumentRuntime {
   return {
     triggerAttack: (note, time, velocity) => synth.triggerAttack(note, time, velocity),
     triggerRelease: (note, time) => synth.triggerRelease(note, time),
