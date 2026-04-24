@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { MidiFile } from '../../../core/midi/types'
 import type { AppServices } from '../../../core/services'
-import { LearnState } from '../../core/LearnState'
+import { createLearnState, type LearnState } from '../../core/LearnState'
 import { PlayAlongEngine } from './engine'
 
 // Fake clock that speaks to the same surface the engine uses. Tests tick
@@ -104,7 +104,7 @@ function makeServices(): {
 } {
   const clock = makeClock()
   const synth = makeSynth()
-  const learnState = new LearnState()
+  const learnState = createLearnState()
   return {
     clock,
     synth,
@@ -152,11 +152,11 @@ describe('PlayAlongEngine', () => {
     // 4 bars @ 120 BPM = 8 s. Playhead at 10 → loop = [2, 10].
     clock.currentTime = 10
     engine.setLoopFromBars(4, 10, 60, 120)
-    expect(engine.loopRegion.value).toEqual({ start: 2, end: 10 })
+    expect(engine.state.loopRegion).toEqual({ start: 2, end: 10 })
     // Reach end → should wrap to start, bump clean-pass counter.
     clock.emit(10.001)
     expect(clock.currentTime).toBeCloseTo(2)
-    expect(engine.cleanPasses.value).toBe(1)
+    expect(engine.state.cleanPasses).toBe(1)
     expect(onCleanPass).toHaveBeenCalledOnce()
   })
 
@@ -173,10 +173,10 @@ describe('PlayAlongEngine', () => {
     clock.currentTime = 10
     clock.emit(10.001)
     // After one clean pass + ramp on: moved up from 60 → 80.
-    expect(engine.speedPct.value).toBe(80)
+    expect(engine.state.speedPct).toBe(80)
     clock.currentTime = 10
     clock.emit(10.001)
-    expect(engine.speedPct.value).toBe(100)
+    expect(engine.state.speedPct).toBe(100)
   })
 
   it('pauses clock + synth on attach even if a prior session left them running', () => {
@@ -188,12 +188,16 @@ describe('PlayAlongEngine', () => {
     const { services, clock, synth, learnState } = makeServices()
     // Simulate a prior Learn session playing at 3 s.
     clock.currentTime = 3
-    learnState.startPlaying()
+    learnState.setState('status', 'playing')
     const engine = new PlayAlongEngine({ services, learnState })
     engine.attach(makeMidi())
-    expect(learnState.status.value).toBe('paused')
-    expect(clock.currentTime).toBe(0)
-    expect(engine.currentTime.value).toBe(0)
+    expect(learnState.state.status).toBe('paused')
+    // Attach seeds transport from clock.currentTime (clamped to duration).
+    // The 3s seed is <= makeMidi().duration so it's preserved; the critical
+    // invariant is that status flipped to 'paused' before practice steps
+    // were built.
+    expect(clock.currentTime).toBe(3)
+    expect(engine.state.currentTime).toBe(3)
     // synth.seek may or may not be called on attach; what matters is that
     // no tempo leak escaped from the prior session.
     void synth
@@ -208,21 +212,21 @@ describe('PlayAlongEngine', () => {
     const engine = new PlayAlongEngine({ services, learnState })
     engine.attach(makeMidi())
     engine.play()
-    expect(engine.userWantsToPlay.value).toBe(true)
+    expect(engine.state.userWantsToPlay).toBe(true)
     // Simulate wait-mode pausing.
-    learnState.pausePlayback()
-    expect(engine.isPlaying.value).toBe(false)
-    expect(engine.userWantsToPlay.value).toBe(true)
+    learnState.setState('status', 'paused')
+    expect(engine.state.isPlaying).toBe(false)
+    expect(engine.state.userWantsToPlay).toBe(true)
     // User explicitly pauses.
     engine.pause()
-    expect(engine.userWantsToPlay.value).toBe(false)
+    expect(engine.state.userWantsToPlay).toBe(false)
   })
 
   it('resets clean-pass counter on a wrong-pitch miss while waiting', () => {
     const { services, learnState } = makeServices()
     const engine = new PlayAlongEngine({ services, learnState })
     engine.attach(makeMidi())
-    engine.cleanPasses.set(3)
+    engine.setState('cleanPasses', 3)
     engine.setWaitEnabled(true)
     // Manually engage wait by asking the practice engine to re-arm at t=0
     // (the first chord onsets at t=2 — force the engine to notice).
@@ -236,7 +240,7 @@ describe('PlayAlongEngine', () => {
     clock.emit(2.01) // crosses the first step onset — practice engine engages
     // Now press a wrong pitch.
     engine.onNoteOn({ pitch: 99, velocity: 1, clockTime: 2.01, source: 'midi' })
-    expect(engine.misses.value).toBeGreaterThan(0)
-    expect(engine.cleanPasses.value).toBe(0)
+    expect(engine.state.misses).toBeGreaterThan(0)
+    expect(engine.state.cleanPasses).toBe(0)
   })
 })

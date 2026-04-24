@@ -1,9 +1,11 @@
+import { batch } from 'solid-js'
+import { createStore } from 'solid-js/store'
 import type { AppServices } from '../../../core/services'
-import { Signal } from '../../../store/state'
 import { makeQuestions, type Question } from './theory'
 
 // Runtime state for the Intervals quiz. DOM-free so it can be reasoned about
-// independently — the UI subscribes to signals, not the engine's internals.
+// independently — the UI reads from `engine.state.*` (reactive in JSX) and
+// writes only through intent methods here.
 //
 // Lifecycle:
 //   `start()` generates the question plan, publishes question 0.
@@ -38,18 +40,21 @@ export interface Feedback {
   answer: string
 }
 
+export interface IntervalsState {
+  phase: IntervalsPhase
+  index: number
+  questions: readonly Question[]
+  hits: number
+  misses: number
+  streak: number
+  feedback: Feedback | null
+}
+
 export class IntervalsEngine {
-  readonly phase = new Signal<IntervalsPhase>('ready')
-  // 0-based question index. UI displays `index + 1` to the user so the first
-  // question reads "1 of 10".
-  readonly index = new Signal<number>(0)
-  readonly questions = new Signal<readonly Question[]>([])
-  readonly hits = new Signal<number>(0)
-  readonly misses = new Signal<number>(0)
-  // Current streak of consecutive first-try hits. Resets on miss. Surfaces
-  // "3 in a row" micro-celebrations.
-  readonly streak = new Signal<number>(0)
-  readonly feedback = new Signal<Feedback | null>(null)
+  readonly state: IntervalsState
+  // biome-ignore lint/suspicious/noExplicitAny: SetStoreFunction signature
+  // noise isn't worth the import here; internal writes are narrow.
+  private readonly write: (update: Partial<IntervalsState>) => void
 
   private opts: {
     services: AppServices
@@ -64,6 +69,17 @@ export class IntervalsEngine {
   private answered = false
 
   constructor(opts: IntervalsEngineOptions) {
+    const [state, setState] = createStore<IntervalsState>({
+      phase: 'ready',
+      index: 0,
+      questions: [],
+      hits: 0,
+      misses: 0,
+      streak: 0,
+      feedback: null,
+    })
+    this.state = state
+    this.write = (update) => setState(update)
     this.opts = {
       services: opts.services,
       questionCount: opts.questionCount ?? 10,
@@ -75,18 +91,18 @@ export class IntervalsEngine {
 
   start(): void {
     const questions = makeQuestions(this.opts.questionCount, this.opts.set, this.opts.rand)
-    this.questions.set(questions)
-    this.index.set(0)
-    this.hits.set(0)
-    this.misses.set(0)
-    this.streak.set(0)
-    this.feedback.set(null)
     this.answered = false
-    if (questions.length === 0) {
-      this.phase.set('done')
-      return
-    }
-    this.phase.set('question')
+    batch(() => {
+      this.write({
+        questions,
+        index: 0,
+        hits: 0,
+        misses: 0,
+        streak: 0,
+        feedback: null,
+        phase: questions.length === 0 ? 'done' : 'question',
+      })
+    })
   }
 
   // Stream the current question to the audio layer. Called by the UI on
@@ -99,46 +115,56 @@ export class IntervalsEngine {
   }
 
   get currentQuestion(): Question | null {
-    const q = this.questions.value[this.index.value]
+    const q = this.state.questions[this.state.index]
     return q ?? null
   }
 
   answer(intervalId: string): Feedback | null {
-    if (this.phase.value !== 'question' || this.answered) return null
+    if (this.state.phase !== 'question' || this.answered) return null
     const q = this.currentQuestion
     if (!q) return null
     this.answered = true
     const correct = intervalId === q.intervalId
-    if (correct) {
-      this.hits.set(this.hits.value + 1)
-      this.streak.set(this.streak.value + 1)
-    } else {
-      this.misses.set(this.misses.value + 1)
-      this.streak.set(0)
-    }
     const fb: Feedback = { correct, picked: intervalId, answer: q.intervalId }
-    this.feedback.set(fb)
-    this.phase.set('feedback')
+    batch(() => {
+      if (correct) {
+        this.write({
+          hits: this.state.hits + 1,
+          streak: this.state.streak + 1,
+          feedback: fb,
+          phase: 'feedback',
+        })
+      } else {
+        this.write({
+          misses: this.state.misses + 1,
+          streak: 0,
+          feedback: fb,
+          phase: 'feedback',
+        })
+      }
+    })
     return fb
   }
 
   // Advance to the next question, or flip to 'done' after the last one.
   next(): void {
-    if (this.phase.value !== 'feedback') return
-    const nextIdx = this.index.value + 1
+    if (this.state.phase !== 'feedback') return
+    const nextIdx = this.state.index + 1
     this.answered = false
-    this.feedback.set(null)
-    if (nextIdx >= this.questions.value.length) {
-      this.phase.set('done')
+    if (nextIdx >= this.state.questions.length) {
+      batch(() => {
+        this.write({ feedback: null, phase: 'done' })
+      })
       return
     }
-    this.index.set(nextIdx)
-    this.phase.set('question')
+    batch(() => {
+      this.write({ feedback: null, index: nextIdx, phase: 'question' })
+    })
   }
 
   get accuracy(): number {
-    const total = this.hits.value + this.misses.value
-    return total > 0 ? this.hits.value / total : 0
+    const total = this.state.hits + this.state.misses
+    return total > 0 ? this.state.hits / total : 0
   }
 
   // Schedule two notes sequentially on the live synth: root at ctxNow, then

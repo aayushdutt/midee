@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { formatNumber, locale, t, tn } from './index'
+import { watch } from '../store/watch'
+import { formatNumber, locale, setLocale, t, tn } from './index'
 import { en } from './locales/en'
 
 // These tests cover the pure-function surface of i18n: `t`, `tn`, and the
@@ -68,5 +69,24 @@ describe('formatNumber()', () => {
   it('formats numbers using the current locale', () => {
     // English uses "." as decimal separator; testing in default (en) locale.
     expect(formatNumber(1234.5)).toBe('1,234.5')
+  })
+})
+
+describe('reactivity', () => {
+  it('t() re-runs inside a tracking scope when setLocale flips the messages', async () => {
+    // Every JSX surface calling t() depends on this — without it, locale
+    // changes would leave stale strings on screen until a remount.
+    const seen: string[] = []
+    const stop = watch(
+      () => t('home.cta.openMidi'),
+      (v) => seen.push(v),
+    )
+    await setLocale('fr')
+    stop()
+    // watch() defers the initial read — only the locale flip fires.
+    expect(seen.length).toBe(1)
+    expect(seen[0]).not.toBe(en['home.cta.openMidi'])
+    // Reset for subsequent tests.
+    await setLocale('en')
   })
 })

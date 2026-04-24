@@ -1,5 +1,5 @@
 import type { MidiNoteEvent } from '../../midi/MidiInputManager'
-import { Signal } from '../../store/state'
+import { createEventSignal } from '../../store/eventSignal'
 
 // Where a note/pedal event entered the app. Subscribers use this for telemetry
 // (per-source first-note counting) and occasionally to gate behavior — but the
@@ -25,9 +25,9 @@ export interface BusPedalEvent {
 // per-source flags and OR them (see App.applyPedalState). Keeping the bus
 // dumb means exercises can observe each source independently if they want.
 export class InputBus {
-  readonly noteOn = new Signal<BusNoteEvent | null>(null)
-  readonly noteOff = new Signal<BusNoteEvent | null>(null)
-  readonly pedal = new Signal<BusPedalEvent | null>(null)
+  readonly noteOn = createEventSignal<BusNoteEvent | null>(null)
+  readonly noteOff = createEventSignal<BusNoteEvent | null>(null)
+  readonly pedal = createEventSignal<BusPedalEvent | null>(null)
 
   emitNoteOn(evt: MidiNoteEvent, source: InputSource): void {
     this.noteOn.set({ ...evt, source })

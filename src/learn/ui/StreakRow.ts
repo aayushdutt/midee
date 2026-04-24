@@ -1,3 +1,4 @@
+import { watch } from '../../store/watch'
 import type { LearnProgressStore } from '../core/progress'
 import { isoDay } from '../core/progress-actions'
 
@@ -37,10 +38,12 @@ export class StreakRow {
     this.daysLabel = el.querySelector<HTMLElement>('[data-streak-count]')!
     this.dotsEl = el.querySelector<HTMLElement>('[data-streak-dots]')!
     this.render()
-    // Rerender on any progress change — the store publishes a single signal
-    // for every write, so streak bumps / XP commits / settings flips all
-    // land here. Cheap enough to redraw the whole row.
-    this.unsub = this.progress.state.subscribe(() => this.render())
+    // Track the streak sub-state so the dots + count rerender on a bump
+    // without re-firing on unrelated XP/settings writes.
+    this.unsub = watch(
+      () => this.progress.state.streak,
+      () => this.render(),
+    )
   }
 
   unmount(): void {
@@ -54,7 +57,7 @@ export class StreakRow {
 
   private render(): void {
     if (!this.daysLabel || !this.dotsEl) return
-    const { days, lastDay } = this.progress.state.value.streak
+    const { days, lastDay } = this.progress.state.streak
     this.daysLabel.textContent = String(days)
     // Build the 14-day window ending today so "today" is always the last
     // dot — makes the row read like a timeline rather than a scoreboard.

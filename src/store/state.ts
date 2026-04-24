@@ -1,117 +1,94 @@
+import { batch } from 'solid-js'
+import { createStore } from 'solid-js/store'
 import type { MidiFile } from '../core/midi/types'
 
-export class Signal<T> {
-  private _value: T
-  private subs = new Set<(v: T) => void>()
-
-  constructor(initial: T) {
-    this._value = initial
-  }
-
-  get value(): T {
-    return this._value
-  }
-
-  set(v: T): void {
-    this._value = v
-    for (const sub of this.subs) sub(v)
-  }
-
-  subscribe(fn: (v: T) => void): () => void {
-    this.subs.add(fn)
-    return () => this.subs.delete(fn)
-  }
-}
-
-export type PlaybackStatus = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'exporting'
 export type AppMode = 'home' | 'play' | 'live' | 'learn'
+export type PlaybackStatus = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'exporting'
 
-export class AppStore {
-  readonly mode = new Signal<AppMode>('home')
-  readonly status = new Signal<PlaybackStatus>('idle')
-  readonly loadedMidi = new Signal<MidiFile | null>(null)
-  readonly currentTime = new Signal<number>(0)
-  readonly duration = new Signal<number>(0)
-  readonly volume = new Signal<number>(0.8)
-  readonly speed = new Signal<number>(1)
+export interface AppStoreState {
+  mode: AppMode
+  status: PlaybackStatus
+  loadedMidi: MidiFile | null
+  currentTime: number
+  duration: number
+  volume: number
+  speed: number
+}
 
-  get hasLoadedFile(): boolean {
-    return this.loadedMidi.value !== null
-  }
+// The AppStore is the single source of truth for mode transitions, playback
+// status, and the loaded MIDI. Consumers read `store.state.foo` (reactive
+// inside a tracking scope, raw value outside) and write either through an
+// intent method (multi-field, batched) or directly via `store.setState`.
+export function createAppStore() {
+  const [state, setState] = createStore<AppStoreState>({
+    mode: 'home',
+    status: 'idle',
+    loadedMidi: null,
+    currentTime: 0,
+    duration: 0,
+    volume: 0.8,
+    speed: 1,
+  })
 
-  enterHome(): void {
-    this.clearLoadedFile()
-    this.mode.set('home')
-    this.status.set('idle')
-  }
-
-  beginPlayLoad(): void {
-    this.currentTime.set(0)
-    this.mode.set('play')
-    this.status.set('loading')
-  }
-
-  completePlayLoad(midi: MidiFile): void {
-    this.loadedMidi.set(midi)
-    this.duration.set(midi.duration)
-    this.currentTime.set(0)
-    this.mode.set('play')
-    this.status.set('ready')
-  }
-
-  enterPlay(resetTime = true): boolean {
-    const midi = this.loadedMidi.value
-    if (!midi) return false
-    this.duration.set(midi.duration)
-    if (resetTime) this.currentTime.set(0)
-    this.mode.set('play')
-    this.status.set('ready')
-    return true
-  }
-
-  enterLive(resetTime = true): void {
-    if (resetTime) this.currentTime.set(0)
-    this.mode.set('live')
-    this.status.set('ready')
-  }
-
-  clearLoadedFile(): void {
-    this.loadedMidi.set(null)
-    this.duration.set(0)
-    this.currentTime.set(0)
-  }
-
-  setCurrentTime(time: number): void {
-    this.currentTime.set(time)
-  }
-
-  setStatus(status: PlaybackStatus): void {
-    this.status.set(status)
-  }
-
-  setReady(): void {
-    this.status.set('ready')
-  }
-
-  startPlaying(): void {
-    this.status.set('playing')
-  }
-
-  pausePlayback(): void {
-    this.status.set('paused')
-  }
-
-  beginExport(): void {
-    this.status.set('exporting')
-  }
-
-  setVolume(volume: number): void {
-    this.volume.set(volume)
-  }
-
-  setSpeed(speed: number): void {
-    this.speed.set(speed)
+  return {
+    state,
+    setState,
+    // Multi-field transitions only — single-field writes go through setState.
+    enterHome() {
+      batch(() => {
+        setState({
+          mode: 'home',
+          status: 'idle',
+          loadedMidi: null,
+          duration: 0,
+          currentTime: 0,
+        })
+      })
+    },
+    beginPlayLoad() {
+      batch(() => {
+        setState({ mode: 'play', status: 'loading', currentTime: 0 })
+      })
+    },
+    completePlayLoad(m: MidiFile) {
+      batch(() => {
+        setState({
+          loadedMidi: m,
+          duration: m.duration,
+          currentTime: 0,
+          mode: 'play',
+          status: 'ready',
+        })
+      })
+    },
+    // Re-entry into Play mode without reloading MIDI — e.g. switching back
+    // from Live or recovering from a failed load. Returns false when no MIDI
+    // is loaded so the caller can fall back to the file picker.
+    enterPlay(resetTime = true): boolean {
+      if (state.loadedMidi === null) return false
+      batch(() => {
+        setState({
+          mode: 'play',
+          status: 'ready',
+          duration: state.loadedMidi!.duration,
+          ...(resetTime ? { currentTime: 0 } : {}),
+        })
+      })
+      return true
+    },
+    enterLive(resetTime = true) {
+      batch(() => {
+        setState({
+          mode: 'live',
+          status: 'ready',
+          ...(resetTime ? { currentTime: 0 } : {}),
+        })
+      })
+    },
+    get hasLoadedFile(): boolean {
+      return state.loadedMidi !== null
+    },
   }
 }
 
-export const appState = new AppStore()
+export type AppStore = ReturnType<typeof createAppStore>

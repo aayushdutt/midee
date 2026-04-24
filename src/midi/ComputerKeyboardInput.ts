@@ -1,5 +1,5 @@
 import type { MasterClock } from '../core/clock/MasterClock'
-import { Signal } from '../store/state'
+import { createEventSignal } from '../store/eventSignal'
 import type { MidiNoteEvent } from './MidiInputManager'
 
 // FL Studio / DAW-style typing-keyboard layout.
@@ -50,13 +50,13 @@ const DEFAULT_VELOCITY = 0.75
 // Reads the browser keydown/keyup stream and translates it into synthetic
 // MIDI note events. Only active while live mode is enabled.
 export class ComputerKeyboardInput {
-  readonly noteOn = new Signal<MidiNoteEvent | null>(null)
-  readonly noteOff = new Signal<MidiNoteEvent | null>(null)
-  readonly octave = new Signal<number>(DEFAULT_OCTAVE)
+  readonly noteOn = createEventSignal<MidiNoteEvent | null>(null)
+  readonly noteOff = createEventSignal<MidiNoteEvent | null>(null)
+  readonly octave = createEventSignal<number>(DEFAULT_OCTAVE)
   // Software stand-in for a sustain pedal: Space-bar hold mirrors a damper.
   // Useful for users without hardware pedals; merged with the MIDI-device
   // pedal upstream in App so either source can engage sustain.
-  readonly pedal = new Signal<boolean>(false)
+  readonly pedal = createEventSignal<boolean>(false)
 
   private active = false
   private held = new Map<string, number>() // code → pitch (for correct release after octave change)

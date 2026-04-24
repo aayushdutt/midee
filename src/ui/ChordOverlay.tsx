@@ -1,39 +1,94 @@
+import { createSignal, Show } from 'solid-js'
+import { render } from 'solid-js/web'
 import type { ChordReading } from '../core/music/ChordDetector'
 
 // Inline chord readout — lives in the top strip rather than as a floating
 // card, so it sits as a quiet supplementary cue beside the now-playing
 // status pill instead of grabbing focus from the canvas. Toggled visible
 // via the topbar Chord button.
+
+interface ViewProps {
+  visible: () => boolean
+  tonic: () => string
+  qualityHtml: () => string
+  empty: () => boolean
+  registerEl: (el: HTMLElement) => void
+}
+
+function ChordReadoutView(props: ViewProps) {
+  return (
+    <span
+      ref={(el) => props.registerEl(el)}
+      id="ts-chord-readout"
+      class="ts-chord-readout"
+      classList={{
+        'ts-chord-readout--on': props.visible(),
+        'ts-chord-readout--empty': props.empty(),
+      }}
+      role="status"
+      aria-live="polite"
+      aria-label="Currently sounding chord"
+    >
+      <span class="ts-chord-readout-name">
+        <span class="ts-chord-readout-tonic">{props.tonic()}</span>
+        <Show when={props.qualityHtml()} fallback={<span class="ts-chord-readout-quality" />}>
+          <span class="ts-chord-readout-quality" innerHTML={props.qualityHtml()} />
+        </Show>
+      </span>
+    </span>
+  )
+}
+
 export class ChordOverlay {
-  private root: HTMLElement
-  private tonicEl: HTMLElement
-  private qualityEl: HTMLElement
+  private rootEl!: HTMLElement
+  private disposeRoot: (() => void) | null = null
+  private wrapper: HTMLDivElement | null = null
   private visible = false
   private lastSignature = ''
   // Hold-over timer so a momentary gap (legato release between chords)
   // doesn't collapse the readout to "—" for a single frame and flash.
   private clearTimer: ReturnType<typeof setTimeout> | null = null
 
+  private readonly setVisibleSig: (v: boolean) => void
+  private readonly setTonic: (v: string) => void
+  private readonly setQualityHtml: (v: string) => void
+  private readonly setEmpty: (v: boolean) => void
+
   constructor(slot: HTMLElement) {
-    this.root = document.createElement('span')
-    this.root.id = 'ts-chord-readout'
-    this.root.className = 'ts-chord-readout'
-    this.root.setAttribute('role', 'status')
-    this.root.setAttribute('aria-live', 'polite')
-    this.root.setAttribute('aria-label', 'Currently sounding chord')
-    this.root.innerHTML = `
-      <span class="ts-chord-readout-name">
-        <span class="ts-chord-readout-tonic" data-role="tonic">—</span><span class="ts-chord-readout-quality" data-role="quality"></span>
-      </span>
-    `
-    slot.appendChild(this.root)
-    this.tonicEl = this.root.querySelector<HTMLElement>('[data-role="tonic"]')!
-    this.qualityEl = this.root.querySelector<HTMLElement>('[data-role="quality"]')!
+    const [visible, setVisible] = createSignal(false)
+    const [tonic, setTonic] = createSignal('—')
+    const [qualityHtml, setQualityHtml] = createSignal('')
+    const [empty, setEmpty] = createSignal(true)
+
+    this.setVisibleSig = setVisible
+    this.setTonic = setTonic
+    this.setQualityHtml = setQualityHtml
+    this.setEmpty = setEmpty
+
+    const wrapper = document.createElement('div')
+    wrapper.style.display = 'contents'
+    slot.appendChild(wrapper)
+    this.wrapper = wrapper
+
+    this.disposeRoot = render(
+      () => (
+        <ChordReadoutView
+          visible={visible}
+          tonic={tonic}
+          qualityHtml={qualityHtml}
+          empty={empty}
+          registerEl={(el) => {
+            this.rootEl = el
+          }}
+        />
+      ),
+      wrapper,
+    )
   }
 
   setVisible(visible: boolean): void {
     this.visible = visible
-    this.root.classList.toggle('ts-chord-readout--on', visible)
+    this.setVisibleSig(visible)
     if (!visible) {
       this.lastSignature = ''
       this.cancelClearTimer()
@@ -70,29 +125,29 @@ export class ChordOverlay {
   }
 
   private applyReading(r: ChordReading): void {
-    const empty = !r.name && r.pitchClasses.length === 0
-    this.root.classList.toggle('ts-chord-readout--empty', empty)
-    // Force-restart the entry animation so each chord change reads as a
-    // small beat. Toggle the class off first, then re-add.
-    this.root.classList.remove('ts-chord-readout--pulse')
-    void this.root.offsetWidth
-    this.root.classList.add('ts-chord-readout--pulse')
+    const isEmpty = !r.name && r.pitchClasses.length === 0
+    this.setEmpty(isEmpty)
+    // Force-restart the entry animation so each chord change reads as a small
+    // beat. Toggle the class off first, then re-add after a forced reflow.
+    this.rootEl.classList.remove('ts-chord-readout--pulse')
+    void this.rootEl.offsetWidth
+    this.rootEl.classList.add('ts-chord-readout--pulse')
 
-    if (empty) {
-      this.tonicEl.textContent = '—'
-      this.qualityEl.textContent = ''
+    if (isEmpty) {
+      this.setTonic('—')
+      this.setQualityHtml('')
       return
     }
 
     if (r.name) {
-      this.tonicEl.textContent = formatTonic(r.tonic ?? r.name)
-      this.qualityEl.innerHTML = formatQualityHtml(r.quality ?? '')
+      this.setTonic(formatTonic(r.tonic ?? r.name))
+      this.setQualityHtml(formatQualityHtml(r.quality ?? ''))
       return
     }
 
     // No chord matched — show the pitch classes joined as a fallback.
-    this.tonicEl.textContent = r.pitchClasses.map(formatTonic).join('·')
-    this.qualityEl.textContent = ''
+    this.setTonic(r.pitchClasses.map(formatTonic).join('·'))
+    this.setQualityHtml('')
   }
 
   private cancelClearTimer(): void {
@@ -104,7 +159,16 @@ export class ChordOverlay {
 
   dispose(): void {
     this.cancelClearTimer()
-    this.root.remove()
+    this.disposeRoot?.()
+    this.disposeRoot = null
+    this.wrapper?.remove()
+    this.wrapper = null
+  }
+
+  // Used by Controls to reach into the DOM for layout measuring — kept for
+  // parity with the pre-port class.
+  get root(): HTMLElement {
+    return this.rootEl
   }
 }
 

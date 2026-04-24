@@ -1,13 +1,16 @@
+import { batch } from 'solid-js'
+import { createStore, type SetStoreFunction } from 'solid-js/store'
 import type { BusNoteEvent } from '../../../core/input/InputBus'
 import type { AppServices } from '../../../core/services'
-import { Signal } from '../../../store/state'
+import { watch } from '../../../store/watch'
 import type { LearnState } from '../../core/LearnState'
 import { type LoopRegion, makeRegionFromBars, ramp, wrapIfAtEnd } from '../../engines/LoopRegion'
 import { PracticeEngine } from '../../engines/PracticeEngine'
 
-// Runtime state for the Play-Along exercise. Composes wait-mode (PracticeEngine)
-// with a loop-region + tempo-ramp layer on top. Kept separate from the UI so
-// the state machine can be reasoned about (and tested) without touching DOM.
+// Runtime state for the Play-Along exercise. Composes wait-mode
+// (PracticeEngine) with a loop-region + tempo-ramp layer on top. Kept
+// separate from the UI so the state machine can be reasoned about (and
+// tested) without touching DOM.
 //
 // Lifecycle: `attach(midi)` loads the piece, `setEnabled(true)` turns wait
 // mode on, and the engine drives the clock from that point forward.
@@ -28,37 +31,57 @@ export interface EngineOptions {
   onCleanPass?: () => void
 }
 
+export interface PlayAlongState {
+  loopRegion: LoopRegion | null
+  speedPct: number
+  hand: HandFilter
+  tempoRampEnabled: boolean
+  cleanPasses: number
+  hits: number
+  misses: number
+  // `userWantsToPlay` is the source of truth for the play/pause icon — it
+  // stays true across wait-mode pauses so the button doesn't flicker. The
+  // lower-level `isPlaying` (clock actually advancing) is exposed in case a
+  // future UI wants a finer-grained "waiting…" state.
+  userWantsToPlay: boolean
+  isPlaying: boolean
+  currentTime: number
+  duration: number
+}
+
 export class PlayAlongEngine {
   readonly practice: PracticeEngine
-  readonly loopRegion = new Signal<LoopRegion | null>(null)
-  readonly speedPct = new Signal<number>(100)
-  readonly hand = new Signal<HandFilter>('both')
-  readonly tempoRampEnabled = new Signal<boolean>(false)
-  // Consecutive clean passes at the current preset — reset on a miss. Drives
-  // the ramp() picker when tempo-ramp is enabled.
-  readonly cleanPasses = new Signal<number>(0)
-  // Human-visible counters for the HUD; also the source the Result pulls
-  // from on exit.
-  readonly hits = new Signal<number>(0)
-  readonly misses = new Signal<number>(0)
-  // Transport mirrors for the HUD. `userWantsToPlay` is the source of truth
-  // for the play/pause icon — it stays true across wait-mode pauses so the
-  // button doesn't flicker between play and pause glyphs every chord. The
-  // lower-level `isPlaying` (clock actually advancing) is still exposed in
-  // case a future UI wants to show a finer-grained "waiting…" state.
-  readonly userWantsToPlay = new Signal<boolean>(false)
-  readonly isPlaying = new Signal<boolean>(false)
-  readonly currentTime = new Signal<number>(0)
-  readonly duration = new Signal<number>(0)
+  readonly state: PlayAlongState
+  readonly setState: SetStoreFunction<PlayAlongState>
+  // Exposed so the HUD can subscribe to `services.clock` directly for its
+  // 60 Hz imperative scrubber updates — avoids routing the tick through
+  // a Solid store, which would re-fire every effect reading `currentTime`.
+  readonly services: EngineOptions['services']
 
   private unsubs: Array<() => void> = []
   private active = false
   // Cached MIDI so `setHand` can re-run `applyHand` without reaching into
-  // `PracticeEngine`'s internals. Cleared on `detach` to avoid leaking a
-  // reference after the exercise unmounts.
+  // `PracticeEngine`'s internals. Cleared on `detach`.
   private currentMidi: import('../../../core/midi/types').MidiFile | null = null
 
   constructor(private opts: EngineOptions) {
+    this.services = opts.services
+    const [state, setState] = createStore<PlayAlongState>({
+      loopRegion: null,
+      speedPct: 100,
+      hand: 'both',
+      tempoRampEnabled: false,
+      cleanPasses: 0,
+      hits: 0,
+      misses: 0,
+      userWantsToPlay: false,
+      isPlaying: false,
+      currentTime: 0,
+      duration: 0,
+    })
+    this.state = state
+    this.setState = setState
+
     this.practice = new PracticeEngine(opts.services.clock, {
       onWaitStart: () => {
         // Wait-mode is a transport-level pause: halt the clock AND flip
@@ -66,19 +89,15 @@ export class PlayAlongEngine {
         // releases the synth. Without the status flip, the synth keeps
         // scheduling notes past a paused clock and drifts out of sync.
         this.opts.services.clock.pause()
-        this.opts.learnState.pausePlayback()
+        this.opts.learnState.setState('status', 'paused')
       },
-      onWaitEnd: (resumeAt) => {
+      onWaitEnd: (resumeAt: number) => {
         // Always seek so internal state + scheduler align, but only resume
-        // transport if the user actually wants playback. This path fires in
-        // two cases: (a) the user completed a chord — userWantsToPlay is
-        // true, we resume; (b) the user disabled wait mode while we were
-        // holding the clock — they may also have hit pause, and restarting
-        // playback without their intent would surprise them.
+        // transport if the user actually wants playback.
         this.opts.services.clock.seek(resumeAt)
-        if (this.userWantsToPlay.value) {
+        if (this.state.userWantsToPlay) {
           this.opts.services.clock.play()
-          this.opts.learnState.startPlaying()
+          this.opts.learnState.setState('status', 'playing')
         }
       },
     })
@@ -90,126 +109,104 @@ export class PlayAlongEngine {
     const { services, learnState } = this.opts
 
     // Start from a known-still transport: pause clock + flip status so the
-    // synth listener releases audio, then seek. Doing this BEFORE
-    // `practice.loadMidi` means `practice.recomputeNextStep` computes against
-    // the seeded time rather than a stale clock. On first entry this is what
-    // makes wait-mode engage at the first chord instead of skipping past it.
+    // synth listener releases audio, then seek.
     services.clock.pause()
-    learnState.pausePlayback()
+    learnState.setState('status', 'paused')
 
-    const seed = learnState.currentTime.value
+    // Seed from the clock — `learnState.currentTime` used to mirror this but
+    // the 60 Hz mirror was pure overhead (nobody else reads it reactively).
+    const seed = services.clock.currentTime
     const initial = midi && seed <= midi.duration ? seed : 0
     services.clock.seek(initial)
-    learnState.setCurrentTime(initial)
 
     // Now build practice steps + apply filters against the correct time.
     this.practice.loadMidi(midi)
     this.applyHand(midi)
     this.applySpeed()
-    this.duration.set(midi?.duration ?? 0)
-    this.currentTime.set(initial)
+    batch(() => {
+      this.setState({ duration: midi?.duration ?? 0, currentTime: initial })
+    })
 
-    // Subscribe to the clock so loop-wrap + currentTime + isPlaying mirror
-    // stay live. Kept internal so the exercise doesn't have to re-subscribe.
+    // Clock tick drives loop-wrap + currentTime mirror; status watch keeps
+    // isPlaying in sync with Learn's transport.
     this.unsubs.push(
       services.clock.subscribe((t) => this.onTick(t)),
-      learnState.status.subscribe((s) => {
-        this.isPlaying.set(s === 'playing')
-      }),
+      watch(
+        () => learnState.state.status,
+        (s) => this.setState('isPlaying', s === 'playing'),
+      ),
     )
   }
 
   detach(): void {
     this.active = false
     this.currentMidi = null
-    this.userWantsToPlay.set(false)
+    this.setState('userWantsToPlay', false)
     for (const off of this.unsubs) off()
     this.unsubs = []
-    // Stop the transport so leaving Play-Along doesn't leave scheduled MIDI
-    // playing in the background.
     this.opts.services.clock.pause()
-    this.opts.learnState.pausePlayback()
+    this.opts.learnState.setState('status', 'paused')
     this.practice.setEnabled(false)
     this.practice.dispose()
-    // Restore the clock speed we potentially scaled down.
     this.opts.services.clock.speed = 1
     this.opts.services.synth.setSpeed(1)
   }
 
-  // ── Transport controls exposed to the HUD ─────────────────────────────
+  // ── Transport controls exposed to the HUD ────────────────────────────
 
   play(): void {
     if (!this.active) return
-    this.userWantsToPlay.set(true)
+    this.setState('userWantsToPlay', true)
     const { services, learnState } = this.opts
-    // Reset any stale wait state from a prior session of this same exercise
-    // (pause → play cycle). Without this, `practice.waiting=true` survives
-    // the pause and the first clock tick after play early-returns on the
-    // `if (waiting) return` guard — clock runs past every chord without
-    // engaging wait again. `notifySeek` releases internal wait state and
-    // recomputes `nextStepIdx` at the current clock position.
     this.practice.notifySeek(services.clock.currentTime)
-    // Status BEFORE clock. `clock.play()` fires its first tick synchronously;
-    // that tick can engage wait-mode (which pauses the clock and flips
-    // status back to paused). Doing `startPlaying` *first* means synth.play
-    // is already in flight when that flip hits — the SynthEngine generation
-    // guard then aborts synth.play cleanly. Reversing this order leaves
-    // synth.play firing after the wait engages, playing audio while the
-    // clock sits frozen.
-    learnState.startPlaying()
+    // Status BEFORE clock: clock.play()'s synchronous first tick may engage
+    // wait-mode, which flips status back to paused. Set playing first so
+    // synth.play is already in flight; SynthEngine's generation guard
+    // aborts cleanly on the flip.
+    learnState.setState('status', 'playing')
     services.clock.play()
   }
 
   pause(): void {
-    this.userWantsToPlay.set(false)
+    this.setState('userWantsToPlay', false)
     this.opts.services.clock.pause()
-    this.opts.learnState.pausePlayback()
+    this.opts.learnState.setState('status', 'paused')
   }
 
   togglePlay(): void {
-    if (this.userWantsToPlay.value) this.pause()
+    if (this.state.userWantsToPlay) this.pause()
     else this.play()
   }
 
-  // Seek to an absolute time. Wraps synth + practice re-arm so downstream
-  // consumers see a consistent "we're now at T" transition instead of
-  // having to chase each component separately.
   seek(time: number): void {
-    const clamped = Math.max(0, Math.min(this.duration.value || time, time))
-    const wasPlaying = this.userWantsToPlay.value
+    const clamped = Math.max(0, Math.min(this.state.duration || time, time))
+    const wasPlaying = this.state.userWantsToPlay
     const { services, learnState } = this.opts
-    // Always pause first — synth.seek repositions the schedule cleanly from
-    // a paused state and avoids a flurry of "notes played twice" glitches.
     services.clock.pause()
-    learnState.pausePlayback()
+    learnState.setState('status', 'paused')
     services.clock.seek(clamped)
     services.synth.seek(clamped)
-    learnState.setCurrentTime(clamped)
+    learnState.setState('currentTime', clamped)
     this.practice.notifySeek(clamped)
-    this.currentTime.set(clamped)
+    this.setState('currentTime', clamped)
     if (wasPlaying) {
       services.clock.play()
-      learnState.startPlaying()
+      learnState.setState('status', 'playing')
     }
   }
 
-  // Input coming from the shared InputBus. Feeds the practice engine which
-  // handles its own "is this the right pitch?" gate.
   onNoteOn(evt: BusNoteEvent): void {
     if (!this.active) return
     const result = this.practice.notePressed(evt.pitch)
     if (result === 'advanced') {
-      // Only the final chord-completing press bumps hits — partial-correct
-      // presses are 'accepted' and stay silent. Otherwise a 3-note chord
-      // would tick hits 3× while a wrong note would tick misses 1×, and the
-      // score would look generous even for a sloppy performance.
-      this.hits.set(this.hits.value + 1)
+      this.setState('hits', this.state.hits + 1)
     } else if (result === 'rejected' && this.practice.isWaiting) {
-      // Waiting + pitch rejected = wrong press while waiting. Counts as a
-      // miss against the step but doesn't block the user from trying again.
-      this.misses.set(this.misses.value + 1)
-      // A miss breaks the current clean-pass streak.
-      this.cleanPasses.set(0)
+      batch(() => {
+        this.setState({
+          misses: this.state.misses + 1,
+          cleanPasses: 0,
+        })
+      })
     }
   }
 
@@ -218,22 +215,20 @@ export class PlayAlongEngine {
   }
 
   setSpeedPreset(pct: number): void {
-    this.speedPct.set(pct)
+    this.setState('speedPct', pct)
     this.applySpeed()
   }
 
   setHand(filter: HandFilter): void {
-    this.hand.set(filter)
+    this.setState('hand', filter)
     this.applyHand(this.currentMidi)
   }
 
   setTempoRamp(enabled: boolean): void {
-    this.tempoRampEnabled.set(enabled)
+    this.setState('tempoRampEnabled', enabled)
     if (enabled) this.applyRampedSpeed()
   }
 
-  // Set or clear the loop region. Exercise HUD calls this on `L` press or
-  // explicit clear. `null` disables looping.
   setLoopFromBars(
     bars: number | null,
     playhead: number,
@@ -241,48 +236,37 @@ export class PlayAlongEngine {
     bpm: number,
   ): LoopRegion | null {
     const region = bars === null ? null : makeRegionFromBars(playhead, bars, bpm, pieceDuration)
-    this.loopRegion.set(region)
+    this.setState('loopRegion', region)
     return region
   }
 
   clearLoop(): void {
-    this.loopRegion.set(null)
+    this.setState('loopRegion', null)
   }
 
-  // ── Internal ───────────────────────────────────────────────────────────
+  // ── Internal ──────────────────────────────────────────────────────────
 
   private applySpeed(): void {
-    const base = this.speedPct.value / 100
+    const base = this.state.speedPct / 100
     this.opts.services.clock.speed = base
     this.opts.services.synth.setSpeed(base)
   }
 
-  // With tempo ramp enabled, cleanPasses bumps the preset index; we mirror
-  // that into the `speedPct` signal so the HUD re-renders consistently.
   private applyRampedSpeed(): void {
-    const next = ramp(this.cleanPasses.value, [...DEFAULT_SPEED_PRESETS])
-    if (next !== this.speedPct.value) {
-      this.speedPct.set(next)
+    const next = ramp(this.state.cleanPasses, [...DEFAULT_SPEED_PRESETS])
+    if (next !== this.state.speedPct) {
+      this.setState('speedPct', next)
       this.applySpeed()
     }
   }
 
-  // Hand split helper. Uses MIDI C4 (60) as the divider when the hand filter
-  // is 'left' or 'right' — matches the pitch-split default from the plan.
-  // For MIDIs with clean left/right track separation, a future pass will
-  // read the per-track metadata; pitch-split is the conservative default.
   private applyHand(midi: import('../../../core/midi/types').MidiFile | null): void {
     if (!midi) return
-    const filter = this.hand.value
+    const filter = this.state.hand
     if (filter === 'both') {
       this.practice.setVisibleTracks(null)
       return
     }
-    // We don't mute tracks wholesale (the full roll still plays); instead we
-    // ask the practice engine to only wait on notes that fall in the chosen
-    // hand. The rest keep playing from the MIDI but don't gate the clock.
-    // Done via `setVisibleTracks` passing a filtered track list — the
-    // engine's `rebuildSteps` then only builds wait-points from those tracks.
     const visible = midi.tracks
       .filter((track) => {
         if (track.isDrum) return false
@@ -294,29 +278,26 @@ export class PlayAlongEngine {
   }
 
   private onTick(time: number): void {
-    // Mirror currentTime so the HUD scrubber tracks playback without
-    // subscribing to the low-level clock directly.
-    this.currentTime.set(time)
-    // Auto-stop at the end of the piece. Without this the clock just keeps
-    // advancing forever, the scrubber pins to 100%, and the exercise looks
-    // hung.
-    const dur = this.duration.value
-    if (dur > 0 && time >= dur && this.isPlaying.value) {
+    // NOTE: we deliberately do NOT write `currentTime` into the store here.
+    // Writing at 60 Hz would re-fire any `createEffect` reading it. The HUD
+    // subscribes to `services.clock` directly for its imperative scrubber
+    // update (§2 rule 4), so the store copy earned nothing and cost a
+    // reactive re-run per frame. Seek() still writes once to reposition.
+    const dur = this.state.duration
+    if (dur > 0 && time >= dur && this.state.isPlaying) {
       this.pause()
       this.opts.services.clock.seek(dur)
       return
     }
-    const region = this.loopRegion.value
+    const region = this.state.loopRegion
     if (!region) return
     const wrapTo = wrapIfAtEnd(time, region)
     if (wrapTo !== null) {
       this.opts.services.clock.seek(wrapTo)
       this.opts.services.synth.seek(wrapTo)
-      // Reaching end of loop with no mid-pass miss = clean pass. Bump the
-      // counter + celebrate; ramp-speed picks it up if enabled.
-      this.cleanPasses.set(this.cleanPasses.value + 1)
+      this.setState('cleanPasses', this.state.cleanPasses + 1)
       this.opts.onCleanPass?.()
-      if (this.tempoRampEnabled.value) this.applyRampedSpeed()
+      if (this.state.tempoRampEnabled) this.applyRampedSpeed()
     }
   }
 }

@@ -1,55 +1,60 @@
 import { describe, expect, it } from 'vitest'
 import type { MidiFile } from '../../core/midi/types'
-import { LearnState } from './LearnState'
+import { watch } from '../../store/watch'
+import { createLearnState } from './LearnState'
 
 function fakeMidi(name = 'etude.mid', duration = 15): MidiFile {
   return { name, duration, bpm: 120, timeSignature: [4, 4], tracks: [] }
 }
 
-describe('LearnState', () => {
+describe('createLearnState', () => {
   it('starts empty', () => {
-    const s = new LearnState()
-    expect(s.loadedMidi.value).toBeNull()
-    expect(s.currentTime.value).toBe(0)
-    expect(s.duration.value).toBe(0)
-    expect(s.status.value).toBe('idle')
+    const s = createLearnState()
+    expect(s.state.loadedMidi).toBeNull()
+    expect(s.state.currentTime).toBe(0)
+    expect(s.state.duration).toBe(0)
+    expect(s.state.status).toBe('idle')
     expect(s.hasLoadedMidi).toBe(false)
   })
 
   it('beginLoad → completeLoad walks through loading → ready', () => {
-    const s = new LearnState()
+    const s = createLearnState()
     const seen: string[] = []
-    s.status.subscribe((v) => seen.push(v))
+    const stop = watch(
+      () => s.state.status,
+      (v) => seen.push(v),
+    )
     s.beginLoad()
     s.completeLoad(fakeMidi('ode.mid', 30))
+    stop()
+    // watch() defers the initial read — only transitions fire.
     expect(seen).toEqual(['loading', 'ready'])
-    expect(s.duration.value).toBe(30)
-    expect(s.loadedMidi.value?.name).toBe('ode.mid')
-    expect(s.currentTime.value).toBe(0)
+    expect(s.state.duration).toBe(30)
+    expect(s.state.loadedMidi?.name).toBe('ode.mid')
+    expect(s.state.currentTime).toBe(0)
   })
 
   it('clearMidi resets everything back to idle', () => {
-    const s = new LearnState()
+    const s = createLearnState()
     s.completeLoad(fakeMidi())
-    s.setCurrentTime(8)
-    s.startPlaying()
+    s.setState('currentTime', 8)
+    s.setState('status', 'playing')
     s.clearMidi()
-    expect(s.loadedMidi.value).toBeNull()
-    expect(s.duration.value).toBe(0)
-    expect(s.currentTime.value).toBe(0)
-    expect(s.status.value).toBe('idle')
+    expect(s.state.loadedMidi).toBeNull()
+    expect(s.state.duration).toBe(0)
+    expect(s.state.currentTime).toBe(0)
+    expect(s.state.status).toBe('idle')
   })
 
-  it('startPlaying / pausePlayback / setReady flip status only', () => {
-    const s = new LearnState()
+  it('status flips preserve loadedMidi and duration', () => {
+    const s = createLearnState()
     s.completeLoad(fakeMidi())
-    s.startPlaying()
-    expect(s.status.value).toBe('playing')
-    s.pausePlayback()
-    expect(s.status.value).toBe('paused')
-    s.setReady()
-    expect(s.status.value).toBe('ready')
-    // MIDI and duration should survive status flips.
-    expect(s.loadedMidi.value).not.toBeNull()
+    s.setState('status', 'playing')
+    expect(s.state.status).toBe('playing')
+    s.setState('status', 'paused')
+    expect(s.state.status).toBe('paused')
+    s.setState('status', 'ready')
+    expect(s.state.status).toBe('ready')
+    expect(s.state.loadedMidi).not.toBeNull()
   })
 })

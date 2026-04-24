@@ -1,5 +1,5 @@
 import * as Tone from 'tone'
-import { Signal } from '../store/state'
+import { createEventSignal } from '../store/eventSignal'
 
 // Simple click-track metronome. Look-ahead scheduling keeps timing tight
 // (< ~5ms jitter) regardless of page repaints or garbage collection.
@@ -17,12 +17,12 @@ const BEAT_FREQ = 900
 const CLICK_DURATION = 0.035
 
 export class Metronome {
-  readonly running = new Signal<boolean>(false)
-  readonly bpm = new Signal<number>(120)
+  readonly running = createEventSignal<boolean>(false)
+  readonly bpm = createEventSignal<number>(120)
   // Increments once per audible click; subscribers use `count % 4 === 0` to
   // detect the downbeat. Visual consumers stay tightly synced to audio because
   // we fire this via setTimeout aligned to the scheduled AudioContext time.
-  readonly beatCount = new Signal<number>(0)
+  readonly beatCount = createEventSignal<number>(0)
 
   private synth: Tone.Synth | null = null
   private nextBeatTime = 0

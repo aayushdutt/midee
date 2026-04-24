@@ -72,8 +72,8 @@ class IntervalsExercise implements Exercise {
   }
 
   result(): ExerciseResult | null {
-    const hits = this.engine.hits.value
-    const misses = this.engine.misses.value
+    const hits = this.engine.state.hits
+    const misses = this.engine.state.misses
     const attempts = hits + misses
     if (attempts === 0) return null
     const accuracy = hits / attempts
@@ -87,7 +87,7 @@ class IntervalsExercise implements Exercise {
       // exercise; a future per-interval weakness layer can land alongside
       // C2/C3 when we have more than one ear-training surface to coordinate.
       weakSpots: [],
-      completed: this.engine.phase.value === 'done',
+      completed: this.engine.state.phase === 'done',
     }
   }
 
@@ -119,7 +119,7 @@ class IntervalsExercise implements Exercise {
       this.engine.playCurrent()
       return
     }
-    if (e.code === 'Enter' && this.engine.phase.value === 'feedback') {
+    if (e.code === 'Enter' && this.engine.state.phase === 'feedback') {
       e.preventDefault()
       this.engine.next()
       return
@@ -127,7 +127,7 @@ class IntervalsExercise implements Exercise {
     // Number keys 1..N pick the nth answer from the current set. Keeps the
     // quiz entirely keyboard-driven so power users don't have to reach for
     // the mouse between questions.
-    if (this.engine.phase.value !== 'question') return
+    if (this.engine.state.phase !== 'question') return
     const digit = /^Digit([1-9])$/.exec(e.code)
     if (!digit) return
     const idx = Number(digit[1]) - 1

@@ -1,6 +1,6 @@
 import type { MasterClock } from '../../core/clock/MasterClock'
 import type { MidiFile } from '../../core/midi/types'
-import { Signal } from '../../store/state'
+import { createEventSignal } from '../../store/eventSignal'
 
 // Minimum gap between two consecutive note-onsets to consider them a *new*
 // step. Notes within this window collapse into a single chord step, which is
@@ -77,7 +77,7 @@ export interface PracticeCallbacks {
 // the host (App) owns the actual clock/appState orchestration so audio,
 // visuals, and analytics stay coherent.
 export class PracticeEngine {
-  readonly status = new Signal<PracticeStatus>(EMPTY_STATUS)
+  readonly status = createEventSignal<PracticeStatus>(EMPTY_STATUS)
 
   private midi: MidiFile | null = null
   private steps: PracticeStep[] = []

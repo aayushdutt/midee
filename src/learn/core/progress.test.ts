@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { LearnProgressStore } from './progress'
+import { watch } from '../../store/watch'
+import { createLearnProgressStore } from './progress'
 import type { ExerciseResult } from './Result'
 
 // Node test env has no DOM; give just enough Storage for jsonPersisted to land.
@@ -52,7 +53,7 @@ describe('LearnProgressStore', () => {
   })
 
   it('exposes sensible defaults on a fresh install', () => {
-    const store = new LearnProgressStore(() => '2026-04-23')
+    const store = createLearnProgressStore(() => '2026-04-23')
     expect(store.streakDays).toBe(0)
     expect(store.xp).toBe(0)
     expect(store.settings.handColor).toBe('pitch-split')
@@ -60,29 +61,33 @@ describe('LearnProgressStore', () => {
   })
 
   it('persists commits across a fresh store instance', () => {
-    const a = new LearnProgressStore(() => '2026-04-23')
+    const a = createLearnProgressStore(() => '2026-04-23')
     a.commit(result({ xp: 50 }))
-    const b = new LearnProgressStore(() => '2026-04-23')
+    const b = createLearnProgressStore(() => '2026-04-23')
     expect(b.xp).toBe(50)
     expect(b.streakDays).toBe(1)
   })
 
   it('notifies subscribers on commit', () => {
-    // UI components (streak row, hub card) subscribe to `state` so they
-    // re-render after an exercise ends. Verifying the publish keeps that
-    // contract from drifting as we add more write paths.
-    const store = new LearnProgressStore(() => '2026-04-23')
+    // UI components (streak row, hub card) read specific fields off
+    // `progress.state` and rerender when those fields change. Verify the
+    // publish contract for the xp path — xp increments on every commit.
+    const store = createLearnProgressStore(() => '2026-04-23')
     let notifications = 0
-    store.state.subscribe(() => {
-      notifications++
-    })
+    const stop = watch(
+      () => store.state.xp.total,
+      () => {
+        notifications++
+      },
+    )
     store.commit(result({ xp: 10 }))
+    stop()
     expect(notifications).toBe(1)
   })
 
   it('increments the streak when advancing into the next day', () => {
     let today = '2026-04-22'
-    const store = new LearnProgressStore(() => today)
+    const store = createLearnProgressStore(() => today)
     store.commit(result())
     expect(store.streakDays).toBe(1)
     today = '2026-04-23'
@@ -94,7 +99,7 @@ describe('LearnProgressStore', () => {
   it('touchStreak marks attendance without a full commit', () => {
     // Opening the Learn tab counts toward the day even before an exercise
     // ends — the hub calls touchStreak so a quick peek still contributes.
-    const store = new LearnProgressStore(() => '2026-04-23')
+    const store = createLearnProgressStore(() => '2026-04-23')
     const first = store.touchStreak()
     expect(first.extended).toBe(true)
     expect(store.streakDays).toBe(1)
@@ -104,7 +109,7 @@ describe('LearnProgressStore', () => {
   })
 
   it('updateSettings merges partial updates without losing other fields', () => {
-    const store = new LearnProgressStore(() => '2026-04-23')
+    const store = createLearnProgressStore(() => '2026-04-23')
     store.updateSettings({ showScoreCounter: true })
     expect(store.settings.showScoreCounter).toBe(true)
     expect(store.settings.handColor).toBe('pitch-split')
@@ -112,7 +117,7 @@ describe('LearnProgressStore', () => {
   })
 
   it('returns streakExtended=false for same-day repeat commits', () => {
-    const store = new LearnProgressStore(() => '2026-04-23')
+    const store = createLearnProgressStore(() => '2026-04-23')
     store.commit(result())
     const again = store.commit(result({ xp: 5 }))
     expect(again.streakExtended).toBe(false)
@@ -133,7 +138,7 @@ describe('LearnProgressStore', () => {
         settings: { handColor: 'tracks' },
       }),
     )
-    const store = new LearnProgressStore(() => '2026-04-23')
+    const store = createLearnProgressStore(() => '2026-04-23')
     expect(store.streakDays).toBe(3)
     expect(store.xp).toBe(120)
     expect(store.settings.handColor).toBe('tracks')

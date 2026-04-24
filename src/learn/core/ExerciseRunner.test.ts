@@ -5,8 +5,8 @@ import type { LearnOverlay } from '../overlays/LearnOverlay'
 import type { Exercise, ExerciseDescriptor } from './Exercise'
 import type { ExerciseContext } from './ExerciseContext'
 import { ExerciseRunner } from './ExerciseRunner'
-import { LearnState } from './LearnState'
-import { LearnProgressStore } from './progress'
+import { createLearnState } from './LearnState'
+import { createLearnProgressStore, type LearnProgressStore } from './progress'
 import type { ExerciseResult } from './Result'
 
 // Stub — the runner only stores the overlay reference; no method is invoked
@@ -71,7 +71,7 @@ function makeRunner(
 ): ExerciseRunner {
   return new ExerciseRunner({
     services: makeServices(bus),
-    learnState: new LearnState(),
+    learnState: createLearnState(),
     progress,
     overlay: fakeOverlay,
     host,
@@ -131,7 +131,7 @@ describe('ExerciseRunner', () => {
 
   it('runs the full lifecycle and commits the result on completion', async () => {
     const bus = new InputBus()
-    const progress = new LearnProgressStore(() => '2026-04-24')
+    const progress = createLearnProgressStore(() => '2026-04-24')
     const host = {} as HTMLElement
     const runner = makeRunner(bus, progress, host)
 
@@ -174,12 +174,12 @@ describe('ExerciseRunner', () => {
     expect(runner.isActive).toBe(false)
     expect(result?.xp).toBe(12)
     expect(progress.xp).toBe(12)
-    expect(progress.state.value.exercises['test.play-along']?.completions).toBe(1)
+    expect(progress.state.exercises['test.play-along']?.completions).toBe(1)
   })
 
   it('forwards InputBus note-ons to the active exercise only', async () => {
     const bus = new InputBus()
-    const progress = new LearnProgressStore(() => '2026-04-24')
+    const progress = createLearnProgressStore(() => '2026-04-24')
     const runner = makeRunner(bus, progress)
 
     let captured: TestExercise | null = null
@@ -211,7 +211,7 @@ describe('ExerciseRunner', () => {
 
   it('marks abandoned closes as incomplete regardless of exercise result', async () => {
     const bus = new InputBus()
-    const progress = new LearnProgressStore(() => '2026-04-24')
+    const progress = createLearnProgressStore(() => '2026-04-24')
     const runner = makeRunner(bus, progress)
 
     const descriptor: ExerciseDescriptor = {
@@ -237,15 +237,15 @@ describe('ExerciseRunner', () => {
     const result = runner.close('abandoned')
     expect(result?.completed).toBe(false)
     // Abandoned runs don't increment completions.
-    expect(progress.state.value.exercises['test.abandon']?.completions).toBe(0)
+    expect(progress.state.exercises['test.abandon']?.completions).toBe(0)
     // But the time spent still accrues — so a half-finished 5-s attempt
     // shows up in practice totals.
-    expect(progress.state.value.exercises['test.abandon']?.totalTime_s).toBeGreaterThanOrEqual(0)
+    expect(progress.state.exercises['test.abandon']?.totalTime_s).toBeGreaterThanOrEqual(0)
   })
 
   it('closes any previous exercise when launching a new one', async () => {
     const bus = new InputBus()
-    const progress = new LearnProgressStore(() => '2026-04-24')
+    const progress = createLearnProgressStore(() => '2026-04-24')
     const runner = makeRunner(bus, progress)
 
     const firstExercises: TestExercise[] = []

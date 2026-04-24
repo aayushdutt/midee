@@ -1,13 +1,13 @@
 import type { MasterClock } from '../core/clock/MasterClock'
-import { Signal } from '../store/state'
+import { createEventSignal } from '../store/eventSignal'
 import type { CapturedEvent } from './MidiEncoding'
 
 // Captures every live note played during a session, independently of the
 // looper. Unlike LiveLooper this recorder never plays back — it just hoards
 // events until the user stops, then hands them over for MIDI encoding.
 export class SessionRecorder {
-  readonly recording = new Signal<boolean>(false)
-  readonly elapsed = new Signal<number>(0)
+  readonly recording = createEventSignal<boolean>(false)
+  readonly elapsed = createEventSignal<number>(0)
 
   private events: CapturedEvent[] = []
   private startClockTime = 0

@@ -1,4 +1,5 @@
 import type { BusNoteEvent } from '../../../core/input/InputBus'
+import { watch } from '../../../store/watch'
 import type { Exercise, ExerciseDescriptor } from '../../core/Exercise'
 import type { ExerciseContext } from '../../core/ExerciseContext'
 import type { ExerciseResult } from '../../core/Result'
@@ -48,7 +49,7 @@ class PlayAlongExercise implements Exercise {
 
   mount(host: HTMLElement): void {
     this.hud.mount(host)
-    const midi = this.ctx.learnState.loadedMidi.value
+    const midi = this.ctx.learnState.state.loadedMidi
     if (midi) {
       // Re-render the loaded MIDI on the roll — LearnController's `enter`
       // cleared it, so Play-Along restores it on launch.
@@ -60,7 +61,7 @@ class PlayAlongExercise implements Exercise {
   }
 
   start(): void {
-    const midi = this.ctx.learnState.loadedMidi.value
+    const midi = this.ctx.learnState.state.loadedMidi
     this.engine.attach(midi)
     // Wait mode is default-on for Play-Along.
     this.engine.setWaitEnabled(true)
@@ -77,17 +78,20 @@ class PlayAlongExercise implements Exercise {
     // torn-down overlay.
     this.ctx.overlay.drawLoopBand(null)
     this.unsubs.push(
-      this.engine.loopRegion.subscribe((region) => {
-        if (!region) {
-          this.ctx.overlay.drawLoopBand(null)
-        } else {
-          this.ctx.overlay.drawLoopBand({
-            startTime: region.start,
-            endTime: region.end,
-            color: 0xf3c36c, // amber
-          })
-        }
-      }),
+      watch(
+        () => this.engine.state.loopRegion,
+        (region) => {
+          if (!region) {
+            this.ctx.overlay.drawLoopBand(null)
+          } else {
+            this.ctx.overlay.drawLoopBand({
+              startTime: region.start,
+              endTime: region.end,
+              color: 0xf3c36c, // amber
+            })
+          }
+        },
+      ),
     )
     // Keyboard shortcuts. Kept local to the exercise — removed on stop so
     // they don't bleed into the hub or other modes.
@@ -116,8 +120,8 @@ class PlayAlongExercise implements Exercise {
   }
 
   result(): ExerciseResult | null {
-    const hits = this.engine.hits.value
-    const misses = this.engine.misses.value
+    const hits = this.engine.state.hits
+    const misses = this.engine.state.misses
     const attempts = hits + misses
     // No meaningful session without attempts — runner will still count the
     // time against abandonment analytics but won't commit progress.
@@ -156,7 +160,7 @@ class PlayAlongExercise implements Exercise {
   }
 
   private cycleLoop(): void {
-    const midi = this.ctx.learnState.loadedMidi.value
+    const midi = this.ctx.learnState.state.loadedMidi
     if (!midi) return
     // Advance through presets; one past the end disables.
     this.loopPresetIdx = (this.loopPresetIdx + 1) % (DEFAULT_LOOP_PRESETS.length + 1)
@@ -183,7 +187,7 @@ class PlayAlongExercise implements Exercise {
     // here — `indexOf` on a mutable-looking copy is the clean path even though
     // the values are readonly in the source.
     const presets: number[] = [...DEFAULT_SPEED_PRESETS]
-    const idx = presets.indexOf(this.engine.speedPct.value)
+    const idx = presets.indexOf(this.engine.state.speedPct)
     const next = presets[Math.max(0, Math.min(presets.length - 1, idx + delta))]
     if (next !== undefined) this.engine.setSpeedPreset(next)
   }

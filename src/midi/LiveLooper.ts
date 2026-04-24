@@ -1,6 +1,6 @@
 import * as Tone from 'tone'
 import type { MasterClock } from '../core/clock/MasterClock'
-import { Signal } from '../store/state'
+import { createEventSignal } from '../store/eventSignal'
 import type { CapturedEvent } from './MidiEncoding'
 
 export type LiveLooperState = 'idle' | 'armed' | 'recording' | 'playing' | 'overdubbing'
@@ -27,9 +27,9 @@ const LOOKAHEAD_SEC = 0.15
 const POLL_INTERVAL_MS = 25
 
 export class LiveLooper {
-  readonly state = new Signal<LiveLooperState>('idle')
-  readonly progress = new Signal<number>(0)
-  readonly layerCount = new Signal<number>(0)
+  readonly state = createEventSignal<LiveLooperState>('idle')
+  readonly progress = createEventSignal<number>(0)
+  readonly layerCount = createEventSignal<number>(0)
 
   // Every committed layer, times relative to loop start (0..loopDuration).
   private layers: LoopEvent[][] = []

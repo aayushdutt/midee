@@ -14,7 +14,8 @@
 //   · Fallback chain: current → en → the key itself (so missing translations
 //     never break the UI, they just show the key).
 
-import { Signal } from '../store/state'
+import { batch, createSignal } from 'solid-js'
+import { createEventSignal } from '../store/eventSignal'
 import { en, type MessageKey, type Messages } from './locales/en'
 
 // Add a new locale here, in `LOCALES`, and create the corresponding file
@@ -42,8 +43,13 @@ const LOADERS: Record<Exclude<LocaleCode, 'en'>, () => Promise<{ default: Messag
   'pt-BR': () => import('./locales/pt-BR'),
 }
 
-let current: Messages = en
-export const locale = new Signal<LocaleCode>('en')
+// Messages are the reactive dependency for `t()`. Any JSX (or effect) that
+// reads `t(...)` re-runs on locale flip because it reads `messages()`.
+// `locale` is a plain event signal — its value is the *identity* of the locale,
+// while `messages()` is what drives UI reactivity (flips after the async load
+// resolves, so the whole app swaps to the new strings in one paint).
+const [messages, setMessages] = createSignal<Messages>(en)
+export const locale = createEventSignal<LocaleCode>('en')
 
 // ── Core formatters ──────────────────────────────────────────────
 
@@ -55,9 +61,11 @@ function interpolate(raw: string, params?: Record<string, string | number>): str
   })
 }
 
-// Type-safe lookup. Invalid keys are a compile error.
+// Type-safe lookup. Invalid keys are a compile error. Reactive: inside a
+// tracking scope (JSX body, createEffect, createMemo) `t()` re-runs on
+// locale flip because it reads the messages signal.
 export function t(key: MessageKey, params?: Record<string, string | number>): string {
-  const raw = current[key] ?? en[key] ?? key
+  const raw = messages()[key] ?? en[key] ?? key
   return interpolate(raw, params)
 }
 
@@ -128,23 +136,29 @@ function detectInitialLocale(): LocaleCode {
 
 async function loadLocale(code: LocaleCode): Promise<void> {
   if (code === 'en') {
-    current = en
-    locale.set('en')
+    batch(() => {
+      setMessages(en)
+      locale.set('en')
+    })
     return
   }
   try {
     const mod = await LOADERS[code]()
-    current = mod.default
-    locale.set(code)
+    batch(() => {
+      setMessages(mod.default)
+      locale.set(code)
+    })
     if (import.meta.env.DEV) {
       for (const k of Object.keys(en) as MessageKey[]) {
-        if (!(k in current)) console.warn(`[i18n] ${code} missing key: ${k}`)
+        if (!(k in mod.default)) console.warn(`[i18n] ${code} missing key: ${k}`)
       }
     }
   } catch (err) {
     console.warn(`[i18n] locale ${code} failed to load; staying on en`, err)
-    current = en
-    locale.set('en')
+    batch(() => {
+      setMessages(en)
+      locale.set('en')
+    })
   }
 }
 
@@ -161,7 +175,7 @@ export async function initI18n(): Promise<void> {
 // Explicit user choice — persists to localStorage and updates <html lang>
 // for CSS `:lang()` / screen readers / SEO hreflang consistency.
 export async function setLocale(code: LocaleCode): Promise<void> {
-  if (code === locale.value && current === (code === 'en' ? en : current)) return
+  if (code === locale.value) return
   await loadLocale(code)
   try {
     localStorage.setItem(STORAGE_KEY, code)

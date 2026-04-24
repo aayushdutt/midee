@@ -22,11 +22,11 @@ describe('IntervalsEngine', () => {
       set: BEGINNER_SET,
       scheduleInterval: () => {},
     })
-    expect(engine.phase.value).toBe('ready')
+    expect(engine.state.phase).toBe('ready')
     engine.start()
-    expect(engine.phase.value).toBe('question')
-    expect(engine.questions.value.length).toBe(3)
-    expect(engine.index.value).toBe(0)
+    expect(engine.state.phase).toBe('question')
+    expect(engine.state.questions.length).toBe(3)
+    expect(engine.state.index).toBe(0)
   })
 
   it('playCurrent delegates to the injected scheduler with the current root + semitones', () => {
@@ -55,10 +55,10 @@ describe('IntervalsEngine', () => {
     engine.start()
     const fb = engine.answer('M3')
     expect(fb?.correct).toBe(true)
-    expect(engine.hits.value).toBe(1)
-    expect(engine.misses.value).toBe(0)
-    expect(engine.streak.value).toBe(1)
-    expect(engine.phase.value).toBe('feedback')
+    expect(engine.state.hits).toBe(1)
+    expect(engine.state.misses).toBe(0)
+    expect(engine.state.streak).toBe(1)
+    expect(engine.state.phase).toBe('feedback')
   })
 
   it('wrong answer bumps misses and resets streak', () => {
@@ -74,12 +74,12 @@ describe('IntervalsEngine', () => {
     engine.start()
     // Two M3 questions expected with rand=0 (first interval, first root).
     engine.answer('M3') // hit, streak=1
-    expect(engine.streak.value).toBe(1)
+    expect(engine.state.streak).toBe(1)
     engine.next()
     engine.answer('P5') // miss, streak back to 0
-    expect(engine.hits.value).toBe(1)
-    expect(engine.misses.value).toBe(1)
-    expect(engine.streak.value).toBe(0)
+    expect(engine.state.hits).toBe(1)
+    expect(engine.state.misses).toBe(1)
+    expect(engine.state.streak).toBe(0)
   })
 
   it('ignores repeated answers on the same question', () => {
@@ -95,7 +95,7 @@ describe('IntervalsEngine', () => {
     // hammering two buttons before the UI repaints could inflate misses.
     const second = engine.answer('P5')
     expect(second).toBeNull()
-    expect(engine.misses.value).toBe(1)
+    expect(engine.state.misses).toBe(1)
   })
 
   it('next() advances to the next question until the last, then flips to done', () => {
@@ -108,11 +108,11 @@ describe('IntervalsEngine', () => {
     engine.start()
     engine.answer('P4')
     engine.next()
-    expect(engine.index.value).toBe(1)
-    expect(engine.phase.value).toBe('question')
+    expect(engine.state.index).toBe(1)
+    expect(engine.state.phase).toBe('question')
     engine.answer('P4')
     engine.next()
-    expect(engine.phase.value).toBe('done')
+    expect(engine.state.phase).toBe('done')
   })
 
   it('accuracy reflects hits / attempts', () => {
@@ -143,6 +143,6 @@ describe('IntervalsEngine', () => {
     // Before start — phase is 'ready'.
     expect(engine.answer('P5')).toBeNull()
     engine.start()
-    expect(engine.phase.value).toBe('question')
+    expect(engine.state.phase).toBe('question')
   })
 })

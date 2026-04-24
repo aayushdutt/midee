@@ -1,6 +1,6 @@
 import * as Tone from 'tone'
 import type { MidiFile, MidiNote } from '../core/midi/types'
-import { Signal } from '../store/state'
+import { createEventSignal } from '../store/eventSignal'
 import type { AudioEngine } from './AudioEngine'
 import {
   createInstrument,
@@ -24,7 +24,7 @@ export class SynthEngine implements AudioEngine {
   // Emits the currently-active instrument id while its samples/patch are
   // loading, null otherwise. Only tracks the *current* instrument — background
   // preloads of other voices don't flicker the signal.
-  readonly loadingInstrument = new Signal<InstrumentId | null>(null)
+  readonly loadingInstrument = createEventSignal<InstrumentId | null>(null)
   private midi: MidiFile | null = null
   private scheduledIds: number[] = []
   private _speed = 1

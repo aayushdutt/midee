@@ -7,6 +7,7 @@ import { detectChord } from './core/music/ChordDetector'
 import { booleanPersisted, indexPersisted, numberPersisted } from './core/persistence'
 import { fetchSampleMidi, getSample } from './core/samples'
 import type { AppServices } from './core/services'
+import { ENABLE_LEARN_MODE } from './env'
 // VideoExporter + OfflineAudioRenderer pull in mp4-muxer and an offline Tone
 // context (~60 KB combined). They're only reachable via the Export button, so
 // we dynamic-import them in startExport() and let Vite split them out of the
@@ -21,15 +22,14 @@ import { encodeCapturedEvents, midiFileToBytes, triggerMidiDownload } from './mi
 import { MidiInputManager } from './midi/MidiInputManager'
 import { SessionRecorder } from './midi/SessionRecorder'
 import { sessionToMidiFile } from './midi/SessionToMidi'
-import { HomeController } from './modes/HomeController'
 import { LearnController } from './modes/LearnController'
-import { LiveController } from './modes/LiveController'
-import type { EnterOptions, ModeContext, ModeController } from './modes/ModeController'
-import { PlayController } from './modes/PlayController'
+import { setNextLiveOpts } from './modes/LiveMode'
+import { MODE_CAPTURES_LIVE, type ModeContext } from './modes/ModeController'
 import { PARTICLE_STYLES } from './renderer/ParticleSystem'
 import { PianoRollRenderer } from './renderer/PianoRollRenderer'
 import { THEMES, type Theme } from './renderer/theme'
-import { type AppMode, appState } from './store/state'
+import type { AppMode, AppStore } from './store/state'
+import { watch } from './store/watch'
 import { categorizeMidiDevice, track, trackActivation } from './telemetry'
 import { ChordOverlay } from './ui/ChordOverlay'
 import { Controls } from './ui/Controls'
@@ -39,6 +39,7 @@ import { ExportModal, type ExportResolution, type ExportSettings } from './ui/Ex
 import { InstrumentMenu } from './ui/InstrumentMenu'
 import { KeyboardResizer } from './ui/KeyboardResizer'
 import { PostSessionModal, type SessionAction } from './ui/PostSessionModal'
+import { showError, showSuccess } from './ui/Toast'
 import { TrackPanel } from './ui/TrackPanel'
 import { installViewportClassSync } from './ui/utils'
 
@@ -47,8 +48,8 @@ export class App {
   private renderer = new PianoRollRenderer()
   private synth = new SynthEngine()
   private inputBus = new InputBus()
-  private midiInput!: MidiInputManager
-  private keyboardInput!: ComputerKeyboardInput
+  midiInput!: MidiInputManager
+  keyboardInput!: ComputerKeyboardInput
   private liveNotes = new LiveNoteStore()
   private loopNotes = new LiveNoteStore()
   private liveLooper!: LiveLooper
@@ -58,9 +59,9 @@ export class App {
   private pendingSession: { events: CapturedEvent[]; duration: number } | null = null
   private instrumentMenu!: InstrumentMenu
   private activeMouseNote: number | null = null
-  private dropzone!: DropZone
+  dropzone!: DropZone
   private controls!: Controls
-  private trackPanel!: TrackPanel
+  trackPanel!: TrackPanel
   private exportModal!: ExportModal
   private kbdResizer!: KeyboardResizer
   private chordOverlay!: ChordOverlay
@@ -68,8 +69,18 @@ export class App {
   // Shared handles passed into subsystems (Controls today, mode controllers and
   // exercises in follow-up tasks). Assembled once in init() from this.clock,
   // this.synth, etc. so the constructor list stays authoritative.
-  private services!: AppServices
-  private modeControllers!: Record<AppMode, ModeController>
+  // Public so `createApp()` can thread `services`/`store` into AppCtx.
+  services!: AppServices
+  readonly store: AppStore
+
+  constructor(store: AppStore) {
+    this.store = store
+  }
+  // Learn owns enough lifecycle state (hub, runner, overlay layer) that a
+  // long-lived instance is cheapest. Exposed publicly so <LearnMode/> can
+  // call enter/exit from onMount/onCleanup, and App's DropZone callbacks
+  // can reach loadMidiFromFile/loadSample.
+  learnController!: LearnController
   private loadingEl: HTMLElement | null = null
   private currentExporter: VideoExporter | null = null
   // Throttle chord recomputation: only run when at least this many ms have
@@ -167,7 +178,7 @@ export class App {
     this.sessionRec = new SessionRecorder(this.clock)
 
     this.services = {
-      store: appState,
+      store: this.store,
       clock: this.clock,
       synth: this.synth,
       metronome: this.metronome,
@@ -180,16 +191,16 @@ export class App {
     this.dropzone = new DropZone(
       overlay,
       (file, source) => {
-        if (appState.mode.value === 'learn') {
-          void (this.modeControllers.learn as LearnController).loadMidiFromFile(file, source)
+        if (this.store.state.mode === 'learn') {
+          void this.learnController.loadMidiFromFile(file, source)
         } else {
           void this.loadMidi(file, source)
         }
       },
       () => this.enterLiveMode(),
       (sampleId) => {
-        if (appState.mode.value === 'learn') {
-          void (this.modeControllers.learn as LearnController).loadSample(sampleId)
+        if (this.store.state.mode === 'learn') {
+          void this.learnController.loadSample(sampleId)
         } else {
           void this.loadSample(sampleId)
         }
@@ -210,7 +221,7 @@ export class App {
       onRecord: () => {
         // First-time vs repeat opens are derivable in PostHog funnels via
         // "first occurrence per user" — no need for a duplicate event.
-        track('export_opened', { has_midi: appState.loadedMidi.value !== null })
+        track('export_opened', { has_midi: this.store.state.loadedMidi !== null })
         this.exportModal.open()
       },
       onOpenFile: () => this.openFilePicker(),
@@ -334,7 +345,12 @@ export class App {
     // what the user is already hearing without contributing to "play along"
     // affordances. Keep it scoped to live/home where it confirms what the
     // player is sounding.
-    this.unsubs.push(appState.mode.subscribe(() => this.applyChordOverlayVisibility()))
+    this.unsubs.push(
+      watch(
+        () => this.store.state.mode,
+        () => this.applyChordOverlayVisibility(),
+      ),
+    )
 
     // Customization popover bundles theme / particles / chord toggle —
     // collapses three topbar pills into a single trigger.
@@ -379,50 +395,56 @@ export class App {
 
     this.unsubs.push(
       this.clock.subscribe((t) => {
-        // `appState.currentTime` is Play's transport mirror. Learn has its
-        // own — `LearnState.currentTime`, wired inside `LearnController`
-        // while Learn is active — so don't let Learn ticks disturb Play's
-        // scrubber.
-        if (appState.mode.value !== 'learn') appState.setCurrentTime(t)
         // Engagement milestones are mode-agnostic (watched ≥30s counts as
         // a real user regardless of where the clock was ticking).
         for (const m of [30, 60, 120]) {
           if (t >= m && !this.playbackMilestones.has(m)) {
             this.playbackMilestones.add(m)
-            track('playback_milestone', { seconds: m, mode: appState.mode.value })
+            track('playback_milestone', { seconds: m, mode: this.store.state.mode })
             if (m === 30) trackActivation('playback_30s')
           }
         }
         this.maybeUpdateChordOverlay(t)
       }),
-      appState.status.subscribe((status) => {
-        // Drives the synth for Play/Live only. Learn runs its own status
-        // signal on `LearnState` and drives the synth from `LearnController`
-        // so the two modes never race for control of the scheduler.
-        const mode = appState.mode.value
-        if (mode === 'play' && status === 'playing') {
-          void this.synth.play(this.clock.currentTime)
-          if (!this.firstPlayLogged) {
-            this.firstPlayLogged = true
-            const midi = appState.loadedMidi.value
-            track('first_play', {
-              mode,
-              duration_s: midi ? Math.round(midi.duration) : null,
-            })
+    )
+    this.unsubs.push(
+      watch(
+        () => this.store.state.status,
+        (status) => {
+          // Drives the synth for Play/Live only. Learn runs its own status
+          // signal on `LearnState` and drives the synth from `LearnController`
+          // so the two modes never race for control of the scheduler.
+          const mode = this.store.state.mode
+          if (mode === 'play' && status === 'playing') {
+            void this.synth.play(this.clock.currentTime)
+            if (!this.firstPlayLogged) {
+              this.firstPlayLogged = true
+              const midi = this.store.state.loadedMidi
+              track('first_play', {
+                mode,
+                duration_s: midi ? Math.round(midi.duration) : null,
+              })
+            }
+          } else if (status === 'paused') {
+            this.synth.pause()
+            if (mode === 'live') {
+              this.liveNotes.releaseAll(this.clock.currentTime)
+              this.synth.liveReleaseAll()
+            }
           }
-        } else if (status === 'paused') {
-          this.synth.pause()
-          if (mode === 'live') {
-            this.liveNotes.releaseAll(this.clock.currentTime)
-            this.synth.liveReleaseAll()
-          }
-        }
-      }),
-      appState.volume.subscribe((v) => this.synth.setVolume(v)),
-      appState.speed.subscribe((s) => {
-        this.clock.speed = s
-        this.synth.setSpeed(s)
-      }),
+        },
+      ),
+      watch(
+        () => this.store.state.volume,
+        (v) => this.synth.setVolume(v),
+      ),
+      watch(
+        () => this.store.state.speed,
+        (s) => {
+          this.clock.speed = s
+          this.synth.setSpeed(s)
+        },
+      ),
     )
 
     // ── Live input wiring (MIDI device + computer keyboard) ───────────────
@@ -507,28 +529,11 @@ export class App {
       openFilePicker: () => this.openFilePicker(),
       primeInteractiveAudio: () => this.primeInteractiveAudio(),
     }
-    this.modeControllers = {
-      home: new HomeController(modeContext),
-      play: new PlayController(modeContext),
-      live: new LiveController(modeContext),
-      learn: new LearnController(modeContext),
-    }
+    this.learnController = new LearnController(modeContext)
 
-    this.setMode('home')
+    // Start in home. <HomeMode/>'s onMount handles the side effects.
+    this.services.store.enterHome()
     void this.autoConnectMidi()
-  }
-
-  // Single entry point for mode transitions. Calls the outgoing controller's
-  // `exit` (if any) before dispatching `enter` on the next — keeps the swap
-  // atomic and gives modes a hook for releasing mode-specific resources.
-  // Current mode is read from the store so there's no redundant copy to keep
-  // in sync; controllers' own `enter` writes the new mode into the store.
-  private setMode(next: AppMode, opts?: EnterOptions): void {
-    const prev = this.services.store.mode.value
-    if (prev !== next) {
-      this.modeControllers[prev].exit?.()
-    }
-    this.modeControllers[next].enter(opts)
   }
 
   private releaseAllLiveNotes(): void {
@@ -578,9 +583,9 @@ export class App {
   }
 
   private handleLiveNoteOn(evt: BusNoteEvent): void {
-    if (appState.status.value === 'exporting') return
-    const mode = appState.mode.value
-    const captures = this.modeControllers[mode].capturesLivePerformance
+    if (this.store.state.status === 'exporting') return
+    const mode = this.store.state.mode
+    const captures = MODE_CAPTURES_LIVE[mode]
     // Home → first note dissolves into live mode. Play mode plays-along alongside
     // whatever scheduled MIDI is running (or paused), which is the point.
     if (mode === 'home') this.enterLiveMode(false)
@@ -628,10 +633,10 @@ export class App {
     // Live mode's "tap a note to start the session" shortcut — don't hijack
     // play-mode or learn-mode transport, which the user drives explicitly.
     if (mode === 'live') {
-      const s = appState.status.value
+      const s = this.store.state.status
       if (s === 'idle' || s === 'ready' || s === 'paused') {
         this.clock.play()
-        appState.startPlaying()
+        this.store.setState('status', 'playing')
       }
     }
   }
@@ -639,9 +644,9 @@ export class App {
   private handleLiveNoteOff(evt: BusNoteEvent): void {
     // Gate matches `handleLiveNoteOn`: we never emit live audio in home mode
     // (the first press dissolves home → live before any off event fires).
-    const mode = appState.mode.value
+    const mode = this.store.state.mode
     if (mode === 'home') return
-    const captures = this.modeControllers[mode].capturesLivePerformance
+    const captures = MODE_CAPTURES_LIVE[mode]
 
     // The visual piano-roll reflects actual hand motion — key-up is key-up,
     // even while the audio keeps ringing under the pedal.
@@ -677,7 +682,7 @@ export class App {
     // so the captured streams match what the player heard. Modes that don't
     // capture live performance (Learn) skip those captures.
     const now = this.clock.currentTime
-    const captures = this.modeControllers[appState.mode.value].capturesLivePerformance
+    const captures = MODE_CAPTURES_LIVE[this.store.state.mode]
     for (const pitch of this.sustainedPitches) {
       this.synth.liveNoteOff(pitch)
       if (captures) {
@@ -689,12 +694,12 @@ export class App {
   }
 
   private onCanvasPointerDown = (e: PointerEvent): void => {
-    if (appState.status.value === 'exporting') return
+    if (this.store.state.status === 'exporting') return
     const pitch = this.renderer.pitchAtClientPoint(e.clientX, e.clientY)
     if (pitch === null) return
 
     this.primeInteractiveAudio()
-    if (appState.mode.value === 'home') this.enterLiveMode(false)
+    if (this.store.state.mode === 'home') this.enterLiveMode(false)
     ;(e.target as Element).setPointerCapture?.(e.pointerId)
     e.preventDefault()
 
@@ -712,7 +717,7 @@ export class App {
     // Only react while the user is actively pressing — this is the glissando
     // path, not a hover state.
     if (this.activeMouseNote === null) return
-    if (appState.status.value === 'exporting') return
+    if (this.store.state.status === 'exporting') return
     const pitch = this.renderer.pitchAtClientPoint(e.clientX, e.clientY)
     if (pitch === null || pitch === this.activeMouseNote) return
     const prev = this.activeMouseNote
@@ -761,21 +766,20 @@ export class App {
   // Play-mode MIDI loader. Learn has its own loader on LearnController that
   // never touches AppState — see the mode dispatch at the DropZone callback.
   private async loadMidi(file: File, source: 'drag' | 'picker' = 'picker'): Promise<void> {
-    const previousMode = appState.mode.value
-    const previousMidi = appState.loadedMidi.value
+    const previousMode = this.store.state.mode
+    const previousMidi = this.store.state.loadedMidi
     this.resetInteractionState()
-    appState.beginPlayLoad()
+    this.store.beginPlayLoad()
     this.renderer.clearMidi()
     this.showLoading()
 
     try {
       const midi = await parseMidiFile(file)
       this.synth.load(midi).catch((err) => console.error('SynthEngine.load failed:', err))
-      appState.completePlayLoad(midi)
-      this.renderer.loadMidi(midi)
-      this.trackPanel.render(midi)
-      document.title = `${midi.name} · midee`
-      this.dropzone.hide()
+      // completePlayLoad flips mode to 'play'; <PlayMode/>'s effect then
+      // drives renderer.loadMidi, trackPanel.render, document.title, and
+      // dropzone.hide off the new loadedMidi.
+      this.store.completePlayLoad(midi)
       this.resetPlaybackTelemetry()
       track('midi_loaded', {
         source,
@@ -789,14 +793,14 @@ export class App {
       // avoid sending free-text error messages (high cardinality + PII risk).
       track('midi_load_failed', { source, error_type: 'parse' })
       if (previousMode === 'play' && previousMidi) {
-        appState.enterPlay()
+        this.store.enterPlay()
         this.renderer.loadMidi(previousMidi)
         this.trackPanel.render(previousMidi)
         this.dropzone.hide()
       } else if (previousMode === 'live') {
         this.enterLiveMode(false)
       } else if (previousMode === 'home') this.enterHomeMode()
-      else appState.setReady()
+      else this.store.setState('status', 'ready')
       const msg =
         err instanceof Error && err.name === 'EmptyMidiError'
           ? 'That MIDI has no notes in it.'
@@ -859,8 +863,8 @@ export class App {
   }
 
   private async startExport(settings: ExportSettings): Promise<void> {
-    const midi = appState.loadedMidi.value
-    if (!midi || appState.mode.value !== 'play') return
+    const midi = this.store.state.loadedMidi
+    if (!midi || this.store.state.mode !== 'play') return
 
     const exportStartedAt = performance.now()
     track('export_started', {
@@ -888,14 +892,14 @@ export class App {
       return
     }
 
-    const wasPlaying = appState.status.value === 'playing'
+    const wasPlaying = this.store.state.status === 'playing'
     // Snapshot the playhead so we can restore position after export instead of
     // snapping back to t=0.
     const resumeAt = this.clock.currentTime
     this.clock.pause()
     this.liveNotes.reset()
     this.synth.liveReleaseAll()
-    appState.beginExport()
+    this.store.setState('status', 'exporting')
     this.synth.pause()
     this.renderer.pauseAutoRender()
 
@@ -953,7 +957,7 @@ export class App {
           audioBuffer = await renderAudioOffline({
             midi,
             instrumentId: INSTRUMENTS[this.instrumentIndex]!.id,
-            volume: appState.volume.value,
+            volume: this.store.state.volume,
           })
         } catch (err) {
           console.error('Offline audio render failed:', err)
@@ -1005,10 +1009,10 @@ export class App {
       if (ppsChanged) this.renderer.setZoom(originalPps)
       this.renderer.resumeAutoRender()
       this.clock.seek(resumeAt)
-      appState.setReady()
+      this.store.setState('status', 'ready')
       if (wasPlaying) {
         this.clock.play()
-        appState.startPlaying()
+        this.store.setState('status', 'playing')
       }
     }
   }
@@ -1021,7 +1025,7 @@ export class App {
   // mode-transition fallbacks. Samples already live on the home card, so the
   // button goes straight to the native file picker instead of routing through
   // a redundant modal.
-  private openFilePicker(): void {
+  openFilePicker(): void {
     this.dropzone.openFilePicker()
   }
 
@@ -1049,9 +1053,9 @@ export class App {
     // Samples are a "watch it" gesture — start playback as soon as the synth
     // is ready. Sample click counts as the user gesture that unlocks audio.
     setTimeout(() => {
-      if (appState.mode.value === 'play' && appState.status.value !== 'playing') {
+      if (this.store.state.mode === 'play' && this.store.state.status !== 'playing') {
         this.clock.play()
-        appState.startPlaying()
+        this.store.setState('status', 'playing')
       }
     }, 250)
   }
@@ -1062,28 +1066,30 @@ export class App {
       return
     }
     if (mode === 'learn') {
-      this.setMode('learn')
+      if (!ENABLE_LEARN_MODE) return
+      this.store.setState('mode', 'learn')
       return
     }
-    if (appState.loadedMidi.value) {
+    if (this.store.state.loadedMidi) {
       this.enterPlayMode()
       return
     }
     this.openFilePicker()
   }
 
-  // Thin delegators kept for the existing callsites in App. All mode logic
-  // lives in the corresponding ModeController; setMode() owns the transition.
+  // Thin delegators: each flips the store and lets Solid's mode shell run
+  // the side effects (onMount in HomeMode/PlayMode/LiveMode/LearnMode).
   private enterHomeMode(): void {
-    this.setMode('home')
+    this.store.enterHome()
   }
 
   private enterLiveMode(primeAudio = true): void {
-    this.setMode('live', { primeAudio })
+    setNextLiveOpts({ primeAudio })
+    this.store.enterLive()
   }
 
   private enterPlayMode(): void {
-    this.setMode('play')
+    this.store.enterPlay()
   }
 
   // Schedules a UI side-effect to run at (roughly) the AudioContext time
@@ -1162,10 +1168,10 @@ export class App {
   // with MP4/M4A export available.
   private loadSessionAsFile(midi: import('./core/midi/types').MidiFile): void {
     this.resetInteractionState()
-    appState.beginPlayLoad()
+    this.store.beginPlayLoad()
     this.renderer.clearMidi()
     this.synth.load(midi).catch((err) => console.error('SynthEngine.load failed:', err))
-    appState.completePlayLoad(midi)
+    this.store.completePlayLoad(midi)
     // Typing keyboard stays on — users can play along with their own session.
     this.keyboardInput.enable()
     this.renderer.loadMidi(midi)
@@ -1215,7 +1221,7 @@ export class App {
   // Play mode is excluded — the chord readout is a "what am I playing?" cue,
   // not a passive playback annotation.
   private applyChordOverlayVisibility(): void {
-    const allowedHere = appState.mode.value !== 'play'
+    const allowedHere = this.store.state.mode !== 'play'
     this.chordOverlay.setVisible(this.chordOverlayOn && allowedHere)
   }
 
@@ -1239,7 +1245,7 @@ export class App {
 
   private collectActivePitches(currentTime: number): Set<number> {
     const set = new Set<number>()
-    const mode = appState.mode.value
+    const mode = this.store.state.mode
 
     // Live performance — what the player and looper are pressing right now.
     if (mode === 'live' || mode === 'home') {
@@ -1251,7 +1257,7 @@ export class App {
     if (mode === 'play') {
       // Play mode — every visible-track note overlapping the playhead, plus
       // any live-keyboard notes the user is playing alongside the file.
-      const midi = appState.loadedMidi.value
+      const midi = this.store.state.loadedMidi
       if (midi) {
         for (const track of midi.tracks) {
           if (!this.renderer.isTrackVisible(track.id)) continue
@@ -1267,7 +1273,7 @@ export class App {
     return set
   }
 
-  private resetInteractionState(): void {
+  resetInteractionState(): void {
     this.clock.pause()
     this.clock.seek(0)
     this.synth.pause()
@@ -1280,7 +1286,7 @@ export class App {
     this.synth.liveReleaseAll()
   }
 
-  private primeInteractiveAudio(): void {
+  primeInteractiveAudio(): void {
     if (this.audioPrimed) return
     this.audioPrimed = true
     this.clock.prime()
@@ -1316,19 +1322,11 @@ export class App {
   }
 
   private showError(message: string): void {
-    this.showToast(message, 'toast', 4000)
+    showError(message)
   }
 
   private showSuccess(message: string): void {
-    this.showToast(message, 'toast toast--success', 3500)
-  }
-
-  private showToast(message: string, className: string, duration: number): void {
-    const el = document.createElement('div')
-    el.className = className
-    el.textContent = message
-    document.body.appendChild(el)
-    setTimeout(() => el.remove(), duration)
+    showSuccess(message)
   }
 
   dispose(): void {

@@ -4,14 +4,15 @@ import { fetchSampleMidi, getSample } from '../core/samples'
 import { t } from '../i18n'
 import type { ExerciseDescriptor } from '../learn/core/Exercise'
 import { ExerciseRunner } from '../learn/core/ExerciseRunner'
-import { LearnState, type LearnStatus } from '../learn/core/LearnState'
-import { LearnProgressStore } from '../learn/core/progress'
+import { createLearnState, type LearnState, type LearnStatus } from '../learn/core/LearnState'
+import { createLearnProgressStore, type LearnProgressStore } from '../learn/core/progress'
 import { LearnHub } from '../learn/hub/LearnHub'
 import { LearnOverlay } from '../learn/overlays/LearnOverlay'
 import { SessionSummary } from '../learn/ui/SessionSummary'
-import { Signal } from '../store/state'
+import { createEventSignal } from '../store/eventSignal'
+import { watch } from '../store/watch'
 import { track, trackEvent } from '../telemetry'
-import type { ModeContext, ModeController } from './ModeController'
+import type { ModeContext } from './ModeController'
 
 // Learn mode host. Owns all Learn-scoped state (loaded MIDI, transport,
 // progress, overlay) so Play and Live never see Learn's in-flight file, and
@@ -21,15 +22,14 @@ import type { ModeContext, ModeController } from './ModeController'
 // Routing: the hub (catalog/streak/continue card) and the active exercise
 // mount into sibling host elements. Switching between them is a class toggle,
 // not a remount — cheap and avoids re-fetching the hub's data.
-export class LearnController implements ModeController {
-  readonly id = 'learn' as const
-  // Play/Live capture overdub + session + burst particles; Learn suppresses
-  // all of that because practice presses shouldn't pollute saved performances.
-  readonly capturesLivePerformance = false
-
+// Long-lived Learn-mode owner. Instantiated once by `createApp()`; methods
+// `enter`/`exit` are driven by `<LearnMode/>`'s onMount/onCleanup. Not a
+// `ModeController` anymore — mode dispatch lives in the Solid tree.
+// `capturesLivePerformance` moved to MODE_CAPTURES_LIVE (see ModeController.ts).
+export class LearnController {
   // Learn-owned state. Sibling to `appState`, not a subset of it.
-  readonly learnState = new LearnState()
-  private readonly progress = new LearnProgressStore()
+  readonly learnState: LearnState = createLearnState()
+  private readonly progress: LearnProgressStore = createLearnProgressStore()
 
   private hub: LearnHub
   private runner: ExerciseRunner | null = null
@@ -39,7 +39,7 @@ export class LearnController implements ModeController {
   private overlay: LearnOverlay | null = null
   // Which sub-view is visible. Exposed as a Signal so the hub UI can
   // subscribe for smooth show/hide transitions instead of imperative toggling.
-  readonly view = new Signal<'hub' | 'exercise'>('hub')
+  readonly view = createEventSignal<'hub' | 'exercise'>('hub')
   private hubHost: HTMLElement | null = null
   private exerciseHost: HTMLElement | null = null
   // Subscriptions scoped to the mode being active. Wired in `enter`,
@@ -63,7 +63,7 @@ export class LearnController implements ModeController {
   enter(): void {
     const { services, trackPanel, dropzone, keyboardInput, resetInteractionState, overlay } =
       this.ctx
-    const from = services.store.mode.value
+    const from = services.store.state.mode
     const wasAlreadyLearn = from === 'learn'
     resetInteractionState()
     // Halt the shared transport BEFORE switching modes. A Play-mode session
@@ -74,7 +74,7 @@ export class LearnController implements ModeController {
     services.clock.seek(0)
     // Mode is a cross-cutting router concern, so it still lives on AppStore.
     // Everything else about Learn's transport lives on `this.learnState`.
-    services.store.mode.set('learn')
+    services.store.setState('mode', 'learn')
     services.renderer.clearMidi()
     // Hide the ascending live-note sprites — Learn surfaces show the scheduled
     // piece (if any) and user presses should only highlight the keyboard.
@@ -93,13 +93,16 @@ export class LearnController implements ModeController {
     // finishing an exercise — "opened the app today" is still practice.
     this.progress.touchStreak()
 
-    // While Learn is active, mirror the shared clock into `learnState` and
-    // drive the synth from Learn's status. Wired per-enter (rather than at
-    // construction) so Learn's state can't leak into Play/Live ticks.
+    // Status watch keeps synth wired to Learn's transport. No per-tick
+    // currentTime mirror anymore — nobody reads it reactively, and writing
+    // to a Solid store at 60 Hz re-fires every effect that tracks that field.
+    // Consumers that need the live time subscribe to `services.clock` directly.
     this.firstPlayLogged = false
     this.unsubs.push(
-      services.clock.subscribe((time) => this.learnState.setCurrentTime(time)),
-      this.learnState.status.subscribe((status) => this.onStatusChange(status)),
+      watch(
+        () => this.learnState.state.status,
+        (status) => this.onStatusChange(status),
+      ),
     )
 
     if (!wasAlreadyLearn) trackEvent('learn_mode_entered', { from })
@@ -147,7 +150,7 @@ export class LearnController implements ModeController {
     } catch (err) {
       console.error('[LearnController] loadMidiFromFile failed:', err)
       track('midi_load_failed', { source, target: 'learn', error_type: 'parse' })
-      this.learnState.setReady()
+      this.learnState.setState('status', 'ready')
       this.showError(
         err instanceof Error && err.name === 'EmptyMidiError'
           ? 'That MIDI has no notes in it.'
@@ -174,7 +177,7 @@ export class LearnController implements ModeController {
       })
     } catch (err) {
       console.error('[LearnController] loadSample failed:', err)
-      this.learnState.setReady()
+      this.learnState.setState('status', 'ready')
       this.showError(t('error.sample.fetchFailed'))
     }
   }
@@ -255,7 +258,7 @@ export class LearnController implements ModeController {
       void synth.play(clock.currentTime)
       if (!this.firstPlayLogged) {
         this.firstPlayLogged = true
-        const midi = this.learnState.loadedMidi.value
+        const midi = this.learnState.state.loadedMidi
         track('first_play', {
           mode: 'learn',
           duration_s: midi ? Math.round(midi.duration) : null,
