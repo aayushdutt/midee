@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync, readdirSync, mkdirSync, statSync } from 'node:fs'
 import { resolve, join, relative } from 'node:path'
 import { marked } from 'marked'
+import { renderFontTags } from './fonts-css.mjs'
 import { renderPosthogSnippet } from './posthog-snippet.mjs'
 
 const posthogSnippet = renderPosthogSnippet()
@@ -13,6 +14,12 @@ const root = process.cwd()
 const contentDir = resolve(root, 'content')
 const distDir = resolve(root, 'dist')
 const layout = readFileSync(resolve(contentDir, '_layout.html'), 'utf8')
+
+// Self-hosted fonts via the same hashed woff2 files the SPA ships. Reads
+// `dist/assets/` so this must run after `vite build` (it does — npm's
+// `postbuild` hook). Drops the cross-origin chain Lighthouse measures as
+// ~360 ms render-blocking on first load.
+const { fontFaces, fontPreload } = renderFontTags(resolve(distDir, 'assets'))
 
 const SITE = 'https://midee.app'
 
@@ -147,7 +154,7 @@ function ensureDir(dir) {
 // answer "which post / which CTA position drove this app conversion?" in
 // PostHog without instrumenting the content pages themselves — UTMs are
 // captured by autocapture and persisted as landing_utm_* super-props
-// (set via register_once in src/analytics.ts).
+// (set via register_once in src/telemetry.ts).
 //   source   — content section (blog / vs / guide)
 //   campaign — the page slug
 //   content  — CTA position (brand / nav / cta_end)
@@ -199,6 +206,8 @@ function render(mdPath) {
     .replaceAll('{{appHrefNav}}',   appHref(data.path, 'nav'))
     .replaceAll('{{appHrefCta}}',   appHref(data.path, 'cta_end'))
     .replaceAll('{{posthogSnippet}}', posthogSnippet)
+    .replaceAll('{{fontPreload}}', fontPreload)
+    .replaceAll('{{fontFaces}}', fontFaces)
 
   const outDir = resolve(distDir, '.' + data.path)
   ensureDir(outDir)
@@ -257,6 +266,8 @@ function writeBlogIndex(results) {
     .replaceAll('{{appHrefNav}}',   appHref(indexData.path, 'nav'))
     .replaceAll('{{appHrefCta}}',   appHref(indexData.path, 'cta_end'))
     .replaceAll('{{posthogSnippet}}', posthogSnippet)
+    .replaceAll('{{fontPreload}}', fontPreload)
+    .replaceAll('{{fontFaces}}', fontFaces)
 
   ensureDir(resolve(distDir, 'blog'))
   writeFileSync(resolve(distDir, 'blog', 'index.html'), page, 'utf8')

@@ -1,8 +1,15 @@
 // Inline PostHog loader for static content pages (blog, /vs, guides).
-// Mirrors the SPA's init in src/main.ts + super-props in src/analytics.ts so a
-// reader who lands on a blog post and later opens the app stays the same
-// distinct_id, with the same device/landing context attached. Same-origin —
-// midee.app cookies are shared, no cross-domain config needed.
+// Mirrors the SPA's init in src/main.tsx + super-props in src/telemetry.ts
+// (`registerAnalyticsContext`) so a reader who lands on a blog post and
+// later opens the app stays the same distinct_id, with the same device /
+// landing context attached. Same-origin — midee.app cookies are shared,
+// no cross-domain config needed.
+//
+// Why eager here vs deferred in the SPA: the SPA hides PostHog behind
+// `loadPostHog()` + requestIdleCallback so it doesn't bloat the initial
+// JS bundle (~70 KB chunk). Static content pages have no critical-path
+// JS to compete with, so the array-loader fires immediately at parse —
+// pageview lands within ~50 ms instead of waiting for idle.
 //
 // Returns '' when VITE_POSTHOG_KEY is unset (dev / forks) so generated HTML
 // stays clean and no script tag fires. Session recording is a project-level
@@ -18,10 +25,11 @@ const LOADER = `!function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.i
 
 export function renderPosthogSnippet() {
   if (!KEY) return ''
-  // Keep `defaults` and `person_profiles` in sync with src/main.ts so events
-  // from blog and app share one canonical configuration. The IIFE registers
-  // the same super-props as registerAnalyticsContext() — duplicated here on
-  // purpose to avoid pulling a TS module into the static build pipeline.
+  // Keep `defaults` and `person_profiles` in sync with src/telemetry.ts's
+  // `loadPostHog()` config so events from blog and app share one canonical
+  // configuration. The IIFE registers the same super-props as
+  // `registerAnalyticsContext()` — duplicated here on purpose to avoid
+  // pulling a TS module into the static build pipeline.
   return `<script>
 ${LOADER}
 posthog.init(${JSON.stringify(KEY)}, {
