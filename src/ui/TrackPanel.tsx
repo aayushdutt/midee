@@ -3,6 +3,7 @@ import { render } from 'solid-js/web'
 import type { MidiFile, MidiTrack } from '../core/midi/types'
 import { t, tn } from '../i18n'
 import type { PianoRollRenderer } from '../renderer/PianoRollRenderer'
+import { getTrackColor, type Theme } from '../renderer/theme'
 import { icons } from './icons'
 import { hexToCSS, isNarrowViewport } from './utils'
 
@@ -14,7 +15,9 @@ interface PanelProps {
   isOpen: () => boolean
   isSheet: () => boolean
   tracks: () => readonly MidiTrack[]
+  theme: () => Theme
   renderer: PianoRollRenderer
+  onTrackEnabledChange: (trackId: string, enabled: boolean) => void
   onLoadNew: () => void
   registerPanelEl: (el: HTMLElement) => void
 }
@@ -35,30 +38,38 @@ function TrackPanelView(props: PanelProps) {
       </div>
       <div class="panel-items">
         <For each={props.tracks()}>
-          {(tr) => (
-            <label class="track-item">
-              <span class="track-swatch" style={{ background: hexToCSS(tr.color) }} />
-              <span class="track-info">
-                <span class="track-name">{tr.name}</span>
-                <span class="track-meta">
-                  {tn('tracks.notes', tr.notes.length, { channel: tr.channel + 1 })}
+          {(tr) => {
+            // Resolve from the active theme so the swatch matches what
+            // NoteRenderer actually paints — `tr.color` is the parser's
+            // hardcoded palette and only coincidentally matches in Dark.
+            const color = (): string => hexToCSS(getTrackColor(tr, props.theme()))
+            return (
+              <label class="track-item">
+                <span class="track-swatch" style={{ background: color() }} />
+                <span class="track-info">
+                  <span class="track-name">{tr.name}</span>
+                  <span class="track-meta">
+                    {tn('tracks.notes', tr.notes.length, { channel: tr.channel + 1 })}
+                  </span>
                 </span>
-              </span>
-              <span class="track-toggle-wrap" style={{ '--track-color': hexToCSS(tr.color) }}>
-                <input
-                  type="checkbox"
-                  class="track-toggle"
-                  data-id={tr.id}
-                  checked
-                  onChange={(e) => {
-                    e.stopPropagation()
-                    props.renderer.setTrackVisible(tr.id, e.currentTarget.checked)
-                  }}
-                />
-                <span class="toggle-track" />
-              </span>
-            </label>
-          )}
+                <span class="track-toggle-wrap" style={{ '--track-color': color() }}>
+                  <input
+                    type="checkbox"
+                    class="track-toggle"
+                    data-id={tr.id}
+                    checked
+                    onChange={(e) => {
+                      e.stopPropagation()
+                      const enabled = e.currentTarget.checked
+                      props.renderer.setTrackVisible(tr.id, enabled)
+                      props.onTrackEnabledChange(tr.id, enabled)
+                    }}
+                  />
+                  <span class="toggle-track" />
+                </span>
+              </label>
+            )
+          }}
         </For>
       </div>
       <div class="panel-footer">
@@ -81,6 +92,7 @@ export class TrackPanel {
   private readonly isOpenFn: () => boolean
   private readonly setIsSheet: (v: boolean) => void
   private readonly setTracks: (v: readonly MidiTrack[]) => void
+  private readonly setThemeSig: (v: Theme) => void
 
   private onDocPointer = (e: PointerEvent): void => {
     const target = e.target as Node
@@ -102,14 +114,21 @@ export class TrackPanel {
     this.positionUnder()
   }
 
-  constructor(container: HTMLElement, renderer: PianoRollRenderer, onLoadNew: () => void) {
+  constructor(
+    container: HTMLElement,
+    renderer: PianoRollRenderer,
+    onTrackEnabledChange: (trackId: string, enabled: boolean) => void,
+    onLoadNew: () => void,
+  ) {
     const [isOpen, setIsOpen] = createSignal(false)
     const [isSheet, setIsSheet] = createSignal(false)
     const [tracks, setTracks] = createSignal<readonly MidiTrack[]>([])
+    const [theme, setThemeSig] = createSignal<Theme>(renderer.currentTheme)
     this.isOpenFn = isOpen
     this.setIsOpen = setIsOpen
     this.setIsSheet = setIsSheet
     this.setTracks = setTracks
+    this.setThemeSig = setThemeSig
 
     const wrapper = document.createElement('div')
     container.appendChild(wrapper)
@@ -120,7 +139,9 @@ export class TrackPanel {
           isOpen={isOpen}
           isSheet={isSheet}
           tracks={tracks}
+          theme={theme}
           renderer={renderer}
+          onTrackEnabledChange={onTrackEnabledChange}
           onLoadNew={() => {
             this.close()
             onLoadNew()
@@ -136,6 +157,10 @@ export class TrackPanel {
 
   render(midi: MidiFile): void {
     this.setTracks(midi.tracks)
+  }
+
+  setTheme(theme: Theme): void {
+    this.setThemeSig(theme)
   }
 
   setTrigger(el: HTMLElement): void {

@@ -1131,7 +1131,7 @@ export class Controls {
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
     const mode = this.opts.services.store.state.mode
 
-    if (e.shiftKey && e.code === 'KeyP') {
+    if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.code === 'KeyP') {
       e.preventDefault()
       this.togglePin()
       return
@@ -1149,7 +1149,9 @@ export class Controls {
         this.handleSkip(SKIP_SECONDS)
       } else if (e.code === 'KeyT') {
         this.opts.onOpenTracks?.()
-      } else if (e.code === 'KeyR') {
+      } else if (e.code === 'KeyR' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+        // Bare R only — leaves Cmd+R / Shift+Cmd+R for the browser's reload
+        // shortcuts and avoids hijacking the user's muscle memory.
         if (!this.hudEl.classList.contains('hud--exporting')) {
           this.opts.onRecord?.()
         }
@@ -1169,7 +1171,9 @@ export class Controls {
         return
       }
 
-      if (e.shiftKey) {
+      // Shift-only (no Cmd/Ctrl/Alt) so we don't hijack browser shortcuts like
+      // Shift+Cmd+R (hard reload).
+      if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
         switch (e.code) {
           case 'KeyR':
             e.preventDefault()

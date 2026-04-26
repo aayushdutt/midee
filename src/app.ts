@@ -329,7 +329,12 @@ export class App {
     )
     recomputeActivity()
 
-    this.trackPanel = new TrackPanel(overlay, this.renderer, () => this.openFilePicker())
+    this.trackPanel = new TrackPanel(
+      overlay,
+      this.renderer,
+      (id, enabled) => this.synth.setTrackEnabled(id, enabled),
+      () => this.openFilePicker(),
+    )
     this.trackPanel.setTrigger(this.controls.tracksButton)
 
     this.instrumentMenu = new InstrumentMenu(this.controls.instrumentSlot, overlay)
@@ -984,6 +989,7 @@ export class App {
             midi,
             instrumentId: INSTRUMENTS[this.instrumentIndex]!.id,
             volume: this.store.state.volume,
+            disabledTrackIds: this.synth.getDisabledTrackIds(),
             onRenderAudioProgressMode: (d) => exportModal.setRenderAudioProgressMode(d),
             onProgress: (pct) => exportModal.updateProgress('Rendering audio', pct),
           })
@@ -1429,6 +1435,7 @@ export class App {
   private applyTheme(theme: Theme): void {
     this.renderer.setTheme(theme)
     this.customizeMenu?.setTheme(this.themeIndex)
+    this.trackPanel?.setTheme(theme)
     const accent = theme.uiAccentCSS
     document.documentElement.style.setProperty('--accent', accent)
     document.documentElement.style.setProperty('--accent-soft', `${accent}2e`)

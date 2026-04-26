@@ -514,7 +514,10 @@ function createDigitalPiano(): InstrumentRuntime {
     modulation: { type: 'sine' },
     modulationEnvelope: { attack: 0.003, decay: 0.35, sustain: 0, release: 0.3 },
   })
-  synth.volume.value = -6
+  // Sine-carrier FM lands quieter per-voice than the sawtooth/triangle-based
+  // patches in this file; +2 dB nudges it past Rhodes/Marimba so it reads as
+  // the bright "stage piano" it's meant to be.
+  synth.volume.value = 2
   const chorus = new Chorus(1.1, 2.0, 0.2).start()
   const reverb = new Reverb({ decay: 1.1, wet: 0.14 })
   synth.chain(chorus, reverb, getDestination())
@@ -555,18 +558,6 @@ function wrapPolySynth(synth: PolyToneSource): InstrumentRuntime {
   }
 }
 
-// ── MIDI note-name table ────────────────────────────────────────────────
-
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-const MIDI_NOTE_NAMES: readonly string[] = (() => {
-  const out: string[] = new Array(128)
-  for (let m = 0; m < 128; m++) {
-    const octave = Math.floor(m / 12) - 1
-    out[m] = `${NOTE_NAMES[m % 12]!}${octave}`
-  }
-  return out
-})()
-
-export function midiToNoteName(midi: number): string {
-  return MIDI_NOTE_NAMES[midi]!
-}
+// MIDI note-name conversion lives in `./midiNoteName` so tone-free consumers
+// (tests, pure helpers) can import it without dragging the Tone bundle.
+export { midiToNoteName } from './midiNoteName'

@@ -24,6 +24,7 @@ interface NoteEvent {
   note: string
   duration: number
   velocity: number
+  trackId: string
 }
 
 export class SynthEngine implements AudioEngine {
@@ -57,13 +58,29 @@ export class SynthEngine implements AudioEngine {
   // Each play() call increments; if a newer call or a pause() ran, the older
   // play() bails before hitting transport.start.
   private playGeneration = 0
+  // Tracks the user has muted via the Tracks panel. Checked at trigger time
+  // inside the scheduled Part — new notes from a disabled track are skipped,
+  // notes already in flight finish their natural decay (we don't track per-track
+  // voice handles, and stealing them mid-note would click).
+  private disabledTrackIds = new Set<string>()
 
   async load(source: MidiFile | AudioBuffer): Promise<void> {
     if (!(source instanceof AudioBuffer)) {
       this.midi = source as MidiFile
     }
+    // A new file's tracks are unrelated to whatever the user muted previously.
+    this.disabledTrackIds.clear()
     this.readyPromise = this.ensureInstrument(this.currentId).then(() => undefined)
     return this.readyPromise
+  }
+
+  setTrackEnabled(trackId: string, enabled: boolean): void {
+    if (enabled) this.disabledTrackIds.delete(trackId)
+    else this.disabledTrackIds.add(trackId)
+  }
+
+  getDisabledTrackIds(): ReadonlySet<string> {
+    return this.disabledTrackIds
   }
 
   // Kick off piano sample download in the background — safe to call at app
@@ -171,6 +188,7 @@ export class SynthEngine implements AudioEngine {
             note: midiToNoteName(note.pitch),
             duration: note.duration,
             velocity: note.velocity,
+            trackId: track.id,
           },
         ])
       }
@@ -184,6 +202,7 @@ export class SynthEngine implements AudioEngine {
       // Re-resolve the instrument each tick so mid-playback switches take
       // effect without rebuilding the Part. setInstrument() releases the old
       // voice so overlapping notes from the previous instrument don't linger.
+      if (this.disabledTrackIds.has(ev.trackId)) return
       const inst = this.instruments.get(this.currentId)
       inst?.triggerAttackRelease(ev.note, ev.duration, time, ev.velocity)
     }, partEvents)

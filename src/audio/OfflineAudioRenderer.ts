@@ -18,17 +18,18 @@ import {
   setContext,
 } from 'tone'
 import type { MidiFile } from '../core/midi/types'
-import {
-  createInstrument,
-  type InstrumentId,
-  midiToNoteName,
-  preloadSampleBuffers,
-} from './instruments'
+import { createInstrument, type InstrumentId, preloadSampleBuffers } from './instruments'
+import { buildOfflineEvents, type OfflineNoteEvent } from './offlineEvents'
+
+export { buildOfflineEvents, type OfflineNoteEvent } from './offlineEvents'
 
 export interface OfflineRenderOptions {
   midi: MidiFile
   instrumentId: InstrumentId
   volume: number // 0–1
+  // Tracks the user has muted; their notes are excluded from the render so the
+  // exported audio matches what was audible during interactive playback.
+  disabledTrackIds?: ReadonlySet<string>
   sampleRate?: number
   // Progress in [0, 1] — how far through the render we are. Called ~20 times
   // across the render, driven by OfflineAudioContext.suspend() checkpoints.
@@ -56,15 +57,8 @@ const TAIL_SECONDS = 1.5
 // smooth bar without measurable overhead on typical MIDIs.
 const PROGRESS_STEPS = 20
 
-interface NoteEvent {
-  time: number
-  note: string
-  duration: number
-  velocity: number
-}
-
 export async function renderAudioOffline(opts: OfflineRenderOptions): Promise<AudioBuffer> {
-  const { midi, instrumentId, volume, onProgress } = opts
+  const { midi, instrumentId, volume, disabledTrackIds, onProgress } = opts
   const sampleRate = opts.sampleRate ?? DEFAULT_SAMPLE_RATE
 
   // Pre-decode sample buffers against the online context BEFORE building the
@@ -77,17 +71,7 @@ export async function renderAudioOffline(opts: OfflineRenderOptions): Promise<Au
   // Flatten all tracks into one time-ordered event list up-front. Avoids N×M
   // nested scheduling inside the offline context and lets Tone.Part slot the
   // whole batch into a single transport entry instead of 2×notes entries.
-  const events: NoteEvent[] = []
-  for (const track of midi.tracks) {
-    for (const note of track.notes) {
-      events.push({
-        time: note.time,
-        note: midiToNoteName(note.pitch),
-        duration: note.duration,
-        velocity: note.velocity,
-      })
-    }
-  }
+  const events = buildOfflineEvents(midi, disabledTrackIds)
 
   const renderDuration = Math.max(0.1, midi.duration + TAIL_SECONDS)
 
@@ -115,7 +99,7 @@ export async function renderAudioOffline(opts: OfflineRenderOptions): Promise<Au
     // only cover the object form. Narrow cast keeps the named import shakeable.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const part = new (Part as any)(
-      (time: number, ev: NoteEvent) => {
+      (time: number, ev: OfflineNoteEvent) => {
         inst.triggerAttackRelease(ev.note, ev.duration, time, ev.velocity)
       },
       events.map((ev) => [ev.time, ev]),
