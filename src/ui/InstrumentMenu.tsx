@@ -1,6 +1,7 @@
 import { createSignal, For } from 'solid-js'
 import { render } from 'solid-js/web'
 import { INSTRUMENTS, type InstrumentId } from '../audio/SynthEngine'
+import { t } from '../i18n'
 import { icons } from './icons'
 import { isNarrowViewport } from './utils'
 
@@ -27,8 +28,8 @@ function TriggerView(props: TriggerProps) {
       }}
       id="ts-instrument"
       type="button"
-      title="Instrument"
-      aria-label="Choose instrument"
+      title={t('instrument.title')}
+      aria-label={t('instrument.aria')}
       aria-busy={props.loading() ? 'true' : 'false'}
       onClick={() => props.onToggle()}
     >
@@ -64,7 +65,7 @@ function MenuView(props: MenuProps) {
       }}
     >
       <div class="panel-header">
-        <span class="panel-label">Instrument</span>
+        <span class="panel-label">{t('instrument.panelLabel')}</span>
       </div>
       <div class="instrument-items">
         <For each={INSTRUMENTS}>
@@ -142,7 +143,7 @@ export class InstrumentMenu {
 
     const label = (): string => {
       const info = INSTRUMENTS.find((i) => i.id === current())
-      return info?.name ?? 'Piano'
+      return info?.name ?? t('instrument.fallback')
     }
 
     const triggerWrapper = document.createElement('div')

@@ -18,6 +18,8 @@ import { batch, createSignal } from 'solid-js'
 import { createEventSignal } from '../store/eventSignal'
 import { en, type MessageKey, type Messages } from './locales/en'
 
+export type { MessageKey, Messages } from './locales/en'
+
 // Add a new locale here, in `LOCALES`, and create the corresponding file
 // under `locales/`. TypeScript will then enforce key parity via `Messages`.
 export const SUPPORTED_LOCALES = ['en', 'fr', 'es', 'pt-BR'] as const

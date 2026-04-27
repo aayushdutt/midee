@@ -1,8 +1,16 @@
 import { createEffect, For, on, onCleanup, onMount, Show } from 'solid-js'
 import { render } from 'solid-js/web'
+import { type MessageKey, t } from '../../../i18n'
 import { icons } from '../../../ui/icons'
 import type { IntervalsEngine } from './engine'
 import { getInterval, getIntervalsByIds } from './theory'
+
+// Localised name for an interval id (e.g. `M3` → `Major 3rd`). Falls back to
+// the id itself if the key is missing — should never happen in production
+// but keeps `getInterval` returning useful labels in tests.
+function intervalFullName(id: string): string {
+  return t(`learn.interval.${id}` as MessageKey)
+}
 
 // Card UI for the Intervals quiz. Single centered card — no piano roll behind
 // it, no moveable panel. Ear training benefits from a focused, quiet surface
@@ -72,14 +80,14 @@ function IntervalsCard(props: IntervalsUiOptions) {
     <div class="iv-card" data-phase={engine.state.phase}>
       <header class="iv-card__head">
         <div class="iv-card__crumb">
-          <span class="iv-card__kicker">Ear training</span>
-          <h2 class="iv-card__title">Intervals</h2>
+          <span class="iv-card__kicker">{t('learn.intervals.kicker')}</span>
+          <h2 class="iv-card__title">{t('learn.intervals.title')}</h2>
         </div>
         <button
           class="iv-card__close"
           type="button"
-          aria-label="Back to learn hub"
-          data-tip="Back to hub (Esc)"
+          aria-label={t('learn.intervals.backAria')}
+          data-tip={t('learn.intervals.backTip')}
           onClick={() => props.onCloseExercise()}
           innerHTML={icons.close(14)}
         />
@@ -90,32 +98,36 @@ function IntervalsCard(props: IntervalsUiOptions) {
           <div class="iv-card__progress-fill" style={{ '--pct': `${pct()}%` }} />
         </div>
         <div class="iv-card__progress-meta">
-          <span>{total() > 0 ? `Question ${idx() + 1} of ${total()}` : 'Preparing…'}</span>
+          <span>
+            {total() > 0
+              ? t('learn.intervals.questionOf', { n: idx() + 1, total: total() })
+              : t('learn.intervals.preparing')}
+          </span>
           <span class="iv-card__streak">
-            {engine.state.streak >= 2 ? `🔥 ${engine.state.streak} in a row` : ''}
+            {engine.state.streak >= 2
+              ? t('learn.intervals.streakInRow', { n: engine.state.streak })
+              : ''}
           </span>
         </div>
       </div>
 
       <div class="iv-card__body">
         <div class="iv-card__prompt">
-          <span class="iv-card__prompt-label">Listen</span>
-          <p class="iv-card__prompt-hint">
-            Press play to hear two notes — pick the interval you just heard.
-          </p>
+          <span class="iv-card__prompt-label">{t('learn.intervals.listen')}</span>
+          <p class="iv-card__prompt-hint">{t('learn.intervals.listenHint')}</p>
         </div>
         <button
           class="iv-card__listen"
           type="button"
-          aria-label="Play interval"
-          data-tip="Play again (Space)"
+          aria-label={t('learn.intervals.playAria')}
+          data-tip={t('learn.intervals.playTip')}
           onClick={() => engine.playCurrent()}
         >
           <span class="iv-card__listen-glyph" aria-hidden="true" innerHTML={PLAY_GLYPH} />
-          <span class="iv-card__listen-label">Play interval</span>
+          <span class="iv-card__listen-label">{t('learn.intervals.playLabel')}</span>
         </button>
 
-        <fieldset class="iv-card__answers" aria-label="Choose an interval">
+        <fieldset class="iv-card__answers" aria-label={t('learn.intervals.choose')}>
           <For each={intervals}>
             {(interval, i) => {
               const fb = () => engine.state.feedback
@@ -124,7 +136,10 @@ function IntervalsCard(props: IntervalsUiOptions) {
                   type="button"
                   class="iv-answer"
                   data-answer={interval.id}
-                  data-tip={`${interval.full} · press ${i() + 1}`}
+                  data-tip={t('learn.intervals.answerTip', {
+                    full: intervalFullName(interval.id),
+                    n: i() + 1,
+                  })}
                   classList={{
                     'iv-answer--correct': fb() !== null && fb()!.answer === interval.id,
                     'iv-answer--wrong':
@@ -133,7 +148,7 @@ function IntervalsCard(props: IntervalsUiOptions) {
                   onClick={() => onPick(interval.id)}
                 >
                   <span class="iv-answer__short">{interval.short}</span>
-                  <span class="iv-answer__full">{interval.full}</span>
+                  <span class="iv-answer__full">{intervalFullName(interval.id)}</span>
                 </button>
               )
             }}
@@ -143,7 +158,8 @@ function IntervalsCard(props: IntervalsUiOptions) {
         <Show when={engine.state.feedback}>
           {(fb) => {
             const answerInterval = () => getInterval(fb().answer)
-            const answerName = () => answerInterval()?.full ?? fb().answer
+            const answerName = () =>
+              answerInterval() ? intervalFullName(answerInterval()!.id) : fb().answer
             const lastQuestion = () => engine.state.index === engine.state.questions.length - 1
             return (
               <div class="iv-card__feedback">
@@ -155,25 +171,29 @@ function IntervalsCard(props: IntervalsUiOptions) {
                       'iv-card__feedback-badge--miss': !fb().correct,
                     }}
                   >
-                    {fb().correct ? 'Correct' : 'Miss'}
+                    {fb().correct ? t('learn.intervals.correct') : t('learn.intervals.miss')}
                   </span>
                   <span class="iv-card__feedback-copy">
-                    {fb().correct ? `${answerName()} — nice ear.` : `It was ${answerName()}.`}
+                    {fb().correct
+                      ? t('learn.intervals.correctMsg', { name: answerName() })
+                      : t('learn.intervals.missMsg', { name: answerName() })}
                   </span>
                 </div>
                 <div class="iv-card__feedback-actions">
                   <button
                     class="iv-card__ghost"
                     type="button"
-                    aria-label="Hear the interval again"
-                    data-tip="Hear again"
+                    aria-label={t('learn.intervals.replayAria')}
+                    data-tip={t('learn.intervals.replayTip')}
                     onClick={() => engine.playCurrent()}
                   >
                     <span innerHTML={REPLAY_GLYPH} />
-                    <span>Replay</span>
+                    <span>{t('learn.intervals.replayLabel')}</span>
                   </button>
                   <button class="iv-card__next" type="button" onClick={() => onNext()}>
-                    <span>{lastQuestion() ? 'Finish' : 'Next'}</span>
+                    <span>
+                      {lastQuestion() ? t('learn.intervals.finish') : t('learn.intervals.next')}
+                    </span>
                     <span innerHTML={NEXT_GLYPH} />
                   </button>
                 </div>
@@ -191,9 +211,9 @@ function IntervalsCard(props: IntervalsUiOptions) {
         </div>
         <div class="iv-card__hint-row">
           <kbd>Space</kbd>
-          <span>replay</span>
+          <span>{t('learn.intervals.shortcutReplay')}</span>
           <kbd>1-4</kbd>
-          <span>pick answer</span>
+          <span>{t('learn.intervals.shortcutPick')}</span>
         </div>
       </footer>
     </div>

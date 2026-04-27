@@ -1,7 +1,7 @@
 import type { Messages } from './en'
 
 // All keys from en.ts are required here — TypeScript will error if any are
-// missing. Technical terms (MIDI, MP4, BPM) stay as-is.
+// missing. Technical terms (MIDI, MP4, BPM, fps) stay as-is across locales.
 
 const fr: Messages = {
   // ── Home / dropzone ─────────────────────────────────────────
@@ -22,10 +22,8 @@ const fr: Messages = {
   'home.metaLink.blog': 'Lire le blog',
   'home.metaLink.github': 'Code source sur GitHub',
   'home.metaLink.discord': 'Rejoindre la communauté Discord',
-  'home.hero.title': 'Jouez des notes, voyez-les éclore',
-  'home.hero.sub': 'Déposez un MIDI, ou jouez en direct avec un clavier ou un contrôleur MIDI.',
-  'home.drop.prompt': 'Déposez un fichier .mid ici',
-  'home.drop.fileHint': 'ou touchez pour choisir',
+  'home.metaLinks.aria': 'liens midee',
+  'home.aria': 'accueil midee',
 
   // ── Top strip (primary nav) ─────────────────────────────────
   'topStrip.home': 'Accueil',
@@ -35,11 +33,35 @@ const fr: Messages = {
   'topStrip.openMidi': 'Ouvrir un fichier MIDI',
   'topStrip.tracks': 'Pistes',
   'topStrip.midi': 'Périphérique MIDI',
-  'topStrip.particle': 'Style des particules',
-  'topStrip.theme': 'Thème',
   'topStrip.export': 'Exporter en MP4',
-  'topStrip.status.ready': 'Prêt',
-  'topStrip.status.openHint': 'Ouvrez un MIDI ou jouez en direct',
+  'topStrip.export.label': 'Exporter',
+  'topStrip.mode.play.label': 'Jouer',
+  'topStrip.mode.live.label': 'Direct',
+  'topStrip.mode.learn.label': 'Apprendre',
+  'topStrip.learnThis.aria': 'Apprendre ce MIDI',
+  'topStrip.learnThis.tip': 'Travailler ce morceau en mode attente',
+  'topStrip.learnThis.label': 'Apprendre',
+  'topStrip.context.ready.kicker': 'Prêt',
+  'topStrip.context.ready.title': 'Ouvrez un MIDI ou jouez en direct',
+  'topStrip.context.loading.kicker': 'Chargement',
+  'topStrip.context.loading.title': 'Ouverture du MIDI',
+  'topStrip.context.live.kicker': 'Direct',
+  'topStrip.context.live.midiSession': 'Session MIDI',
+  'topStrip.context.live.keyboard': 'Jouez avec votre clavier',
+  'topStrip.context.play.kicker': 'En lecture',
+  'topStrip.context.play.fallback': 'Ouvrir MIDI',
+  'topStrip.context.learnSoon.kicker': 'Bientôt',
+  'topStrip.context.learnSoon.title': 'Le mode Apprendre arrive',
+  'topStrip.context.learning.kicker': 'Apprentissage',
+  'topStrip.context.learn.kicker': 'Apprendre',
+  'topStrip.context.learn.title': 'Exercices, oreille, lecture',
+  'topStrip.midi.connectedMenu': 'MIDI : {name}',
+  'topStrip.midi.connectedDefault': 'connecté',
+  'topStrip.midi.blockedMenu': 'Activer le périphérique MIDI',
+  'topStrip.midi.unavailableMenu': 'MIDI indisponible dans ce navigateur',
+  'topStrip.midi.disconnectedMenu': 'Connecter un périphérique MIDI',
+  'topStrip.midi.blockedPill': 'Activer MIDI',
+  'topStrip.midi.pillFallback': 'MIDI',
 
   // ── Appearance / customize popover ──────────────────────────
   'customize.aria': 'Apparence',
@@ -95,6 +117,28 @@ const fr: Messages = {
   'hud.aria.octaveDown': "Descendre d'une octave",
   'hud.aria.octaveUp': "Monter d'une octave",
 
+  // ── Session / loop / metro labels ──────────────────────────
+  'hud.session.label.record': 'Enregistrer',
+  'hud.loop.label.idle': 'Boucle',
+  'hud.loop.label.armed': 'Jouez maintenant…',
+  'hud.loop.label.recording': 'Stop',
+  'hud.loop.label.playing': 'Touchez pour overdub',
+  'hud.loop.label.playingMulti': 'Boucle ×{count}',
+  'hud.loop.label.overdub': 'Overdub {count}',
+
+  // ── Keyboard reference ─────────────────────────────────────
+  'keyHint.play': 'Jouer',
+  'keyHint.octave': 'Octave',
+  'keyHint.shortcuts': 'Raccourcis',
+  'keyHint.shortcut.record': 'Enreg.',
+  'keyHint.shortcut.loop': 'Boucle',
+  'keyHint.shortcut.undo': 'Annuler',
+  'keyHint.shortcut.clear': 'Effacer',
+  'keyHint.shortcut.metronome': 'Métronome',
+
+  // ── ChordOverlay ───────────────────────────────────────────
+  'chord.aria': 'Accord en cours',
+
   // ── Export modal ───────────────────────────────────────────
   'export.title': 'Exporter en MP4',
   'export.sub': 'Précision image · audio intégré · entièrement hors ligne',
@@ -122,23 +166,187 @@ const fr: Messages = {
   'export.action': 'Exporter',
   'export.cancel': 'Annuler',
   'export.preparing': 'Préparation…',
+  'export.preset.match': 'Identique',
+  'export.preset.match.dim': 'Taille actuelle',
+  'export.preset.vertical': 'Vertical',
+  'export.preset.square': 'Carré',
+  'export.preset.2k.hint': 'YouTube QHD',
+  'export.preset.4k.hint': 'lent · gros fichier',
+  'export.preset.vertical.hint': 'TikTok / Reels / Shorts',
+  'export.preset.square.hint': 'Fil Instagram',
+  'export.fps.unit': '{fps} fps',
+  'export.stage.renderingAudio': 'Rendu audio',
+  'export.stage.encodingAudio': 'Encodage audio',
+  'export.stage.encoding': 'Encodage',
+  'export.stage.finalizing': 'Finalisation',
+  'export.stage.saving': 'Enregistrement',
+  'export.stage.done': 'Terminé',
 
   // ── Errors ─────────────────────────────────────────────────
   'error.midi.parseFailed':
     "Impossible de lire ce fichier — assurez-vous qu'il s'agit d'un MIDI valide.",
+  'error.midi.empty': 'Ce MIDI ne contient aucune note.',
+  'error.midi.permissionBlocked':
+    "MIDI est bloqué. Cliquez sur l'icône 🔒 dans la barre d'adresse → Paramètres du site → autorisez MIDI, puis rechargez.",
+  'error.midi.permissionDenied':
+    "Autorisation MIDI refusée. Cliquez à nouveau, ou activez-la via l'icône 🔒 dans la barre d'adresse.",
   'error.sample.fetchFailed':
     'Impossible de charger cet exemple — vérifiez votre connexion et réessayez.',
   'error.audio.renderFailed': 'Échec du rendu audio — le MP4 sera silencieux.',
   'error.export.generic': "Échec de l'export — consultez la console pour plus de détails.",
 
-  // ── Document title (browser tab) ───────────────────────────
+  // ── Mode error boundary ────────────────────────────────────
+  'modeError.title': "Quelque chose n'a pas fonctionné",
+  'modeError.retry': 'Réessayer',
+
+  // ── Document title ──────────────────────────────────────────
   'doc.title.home': 'midee — déposez un MIDI, regardez-le chanter',
   'doc.title.live': 'midee · direct',
   'doc.title.learn': 'midee · apprendre',
-  'learn.hub.title': 'Apprendre',
-  'learn.hub.subtitle': 'Exercices, entraînement auditif et lecture',
-  'learn.hub.placeholder':
-    'Le hub arrive bientôt — les exercices apparaîtront au fil du catalogue.',
+
+  // ── Learn hub ───────────────────────────────────────────────
+  'learn.hub.recommended': 'Recommandé',
+  'learn.hub.uploadMidi': 'Importer un MIDI',
+  'learn.hub.startWith': 'Démarrer · {name}',
+  'learn.hub.explore': 'Explorer',
+  'learn.hub.comingSoon': 'Bientôt',
+
+  'learn.category.playAlong': 'Jouer ensemble',
+  'learn.category.sightReading': 'Lecture à vue',
+  'learn.category.earTraining': "Entraînement de l'oreille",
+  'learn.category.theory': 'Théorie',
+  'learn.category.technique': 'Technique',
+  'learn.category.reflection': 'Réflexion',
+
+  'learn.exercise.intervals.title': 'Intervalles',
+  'learn.exercise.intervals.blurb':
+    "Écoutez deux notes et identifiez l'intervalle entre elles. Niveau débutant — M3, P4, P5, octave.",
+  'learn.exercise.playAlong.title': 'Jouer ensemble',
+  'learn.exercise.playAlong.blurb':
+    "Déposez un MIDI et jouez avec. Le mode attente s'arrête à chaque accord jusqu'à ce que vous trouviez les bonnes notes.",
+
+  'learn.intervals.kicker': "Entraînement de l'oreille",
+  'learn.intervals.title': 'Intervalles',
+  'learn.intervals.backTip': 'Retour au hub (Échap)',
+  'learn.intervals.backAria': "Retour au hub d'apprentissage",
+  'learn.intervals.questionOf': 'Question {n} sur {total}',
+  'learn.intervals.preparing': 'Préparation…',
+  'learn.intervals.streakInRow': "🔥 {n} d'affilée",
+  'learn.intervals.listen': 'Écoutez',
+  'learn.intervals.listenHint':
+    "Appuyez sur lecture pour entendre deux notes — choisissez l'intervalle que vous venez d'entendre.",
+  'learn.intervals.playAria': "Lire l'intervalle",
+  'learn.intervals.playTip': 'Rejouer (Espace)',
+  'learn.intervals.playLabel': "Lire l'intervalle",
+  'learn.intervals.choose': 'Choisissez un intervalle',
+  'learn.intervals.answerTip': '{full} · touche {n}',
+  'learn.intervals.correct': 'Correct',
+  'learn.intervals.miss': 'Raté',
+  'learn.intervals.correctMsg': '{name} — belle oreille.',
+  'learn.intervals.missMsg': "C'était {name}.",
+  'learn.intervals.replayAria': "Réécouter l'intervalle",
+  'learn.intervals.replayTip': 'Réécouter',
+  'learn.intervals.replayLabel': 'Rejouer',
+  'learn.intervals.finish': 'Terminer',
+  'learn.intervals.next': 'Suivant',
+  'learn.intervals.shortcutReplay': 'rejouer',
+  'learn.intervals.shortcutPick': 'choisir',
+
+  'learn.interval.P1': 'Unisson',
+  'learn.interval.m2': 'Seconde mineure',
+  'learn.interval.M2': 'Seconde majeure',
+  'learn.interval.m3': 'Tierce mineure',
+  'learn.interval.M3': 'Tierce majeure',
+  'learn.interval.P4': 'Quarte juste',
+  'learn.interval.TT': 'Triton',
+  'learn.interval.P5': 'Quinte juste',
+  'learn.interval.m6': 'Sixte mineure',
+  'learn.interval.M6': 'Sixte majeure',
+  'learn.interval.m7': 'Septième mineure',
+  'learn.interval.M7': 'Septième majeure',
+  'learn.interval.P8': 'Octave',
+
+  'learn.pa.score': 'Score de la session',
+  'learn.pa.streak.tip': 'Accords réussis consécutifs',
+  'learn.pa.accuracy.tip': 'Réussis / (réussis + erreurs)',
+  'learn.pa.perfect.tip': 'Articulation parfaite (≤80 ms)',
+  'learn.pa.good.tip': 'Accord réussi (articulation plus lente)',
+  'learn.pa.error.tip': "Mauvaise note pendant l'attente",
+  'learn.pa.drag': 'Glissez pour déplacer',
+  'learn.pa.pinAria': 'Épingler',
+  'learn.pa.pinTip': 'Épingler · empêche le masquage automatique',
+  'learn.pa.playAria': 'Lecture',
+  'learn.pa.pauseAria': 'Pause',
+  'learn.pa.playTip': 'Lecture / pause (Espace)',
+  'learn.pa.scrubAria': 'Curseur',
+  'learn.pa.scrubTip': 'Glissez pour vous déplacer',
+  'learn.pa.backAria': "Retour au hub d'apprentissage",
+  'learn.pa.backTip': 'Retour au hub (Échap)',
+  'learn.pa.speedAria': 'Vitesse',
+  'learn.pa.speedLabel': 'Vitesse',
+  'learn.pa.speedSlowTip': 'Lent · 60 % ([)',
+  'learn.pa.speedMedTip': 'Moyen · 80 %',
+  'learn.pa.speedFullTip': 'Plein · 100 % (])',
+  'learn.pa.speedPctAria': 'vitesse {pct} %',
+  'learn.pa.handsAria': 'Mains',
+  'learn.pa.handsLabel': 'Mains',
+  'learn.pa.handLeftTip': 'Main gauche seule',
+  'learn.pa.handRightTip': 'Main droite seule',
+  'learn.pa.handBothTip': 'Les deux mains',
+  'learn.pa.handLeftAria': 'Main gauche',
+  'learn.pa.handRightAria': 'Main droite',
+  'learn.pa.handBothAria': 'Les deux mains',
+  'learn.pa.handLeftLabel': 'G',
+  'learn.pa.handRightLabel': 'D',
+  'learn.pa.handBothLabel': 'Deux',
+  'learn.pa.loopClearTip': 'Effacer la boucle (L)',
+  'learn.pa.loopMarkBTip': 'Marquer la fin (L)',
+  'learn.pa.loopMarkATip': 'Marquer le début (L)',
+  'learn.pa.loopClearAria': 'Effacer la boucle',
+  'learn.pa.loopMarkBAria': 'Marquer la fin',
+  'learn.pa.loopMarkAAria': 'Marquer le début',
+  'learn.pa.loopMarkBLabel': 'Marquer B',
+  'learn.pa.loopLabel': 'Boucle',
+  'learn.pa.loopXClear': 'Effacer la boucle',
+  'learn.pa.waitTip': 'Mode attente · pause à chaque accord',
+  'learn.pa.waitAria': 'Activer/désactiver le mode attente',
+  'learn.pa.waitLabel': 'Attente',
+  'learn.pa.rampTip': 'Auto-vitesse · accélère après des passages propres',
+  'learn.pa.rampAria': 'Activer/désactiver la rampe de tempo',
+  'learn.pa.rampLabel': 'Rampe',
+
+  'learn.streak.tip': 'Série de pratique · 14 derniers jours',
+  'learn.streak.label': 'jours de série',
+
+  'learn.summary.accuracy': 'précision',
+  'learn.summary.xp': 'xp',
+  'learn.summary.streakBump': 'série +1',
+  'learn.summary.again': 'Encore',
+  'learn.summary.next': 'Suivant',
+
+  'learn.soon.docTitle': 'Apprendre · midee',
+  'learn.soon.badge': 'Bientôt',
+  'learn.soon.title.html': 'La pratique, <em>gamifiée</em>.',
+  'learn.soon.body': 'Séries, niveaux et un piano roll qui sait quand vous devinez.',
+
+  'coachmark.learn.title': 'Travaillez ce morceau',
+  'coachmark.learn.body': 'Avancez note par note avec le mode attente.',
+  'coachmark.dismiss': 'Fermer',
+
+  // ── MidiPickerModal ─────────────────────────────────────────
+  'midiPicker.aria': 'Ouvrir un MIDI',
+  'midiPicker.title': 'Ouvrir un MIDI',
+  'midiPicker.sub': 'Déposez un fichier, choisissez-en un, ou démarrez avec un exemple.',
+  'midiPicker.close': 'Fermer',
+  'midiPicker.dropTitle': 'Déposez un fichier MIDI ici',
+  'midiPicker.dropSub': 'ou cliquez pour choisir depuis votre ordinateur',
+  'midiPicker.samplesLabel': 'Ou explorez un exemple',
+
+  // ── Instrument menu ─────────────────────────────────────────
+  'instrument.title': 'Instrument',
+  'instrument.aria': 'Choisir un instrument',
+  'instrument.panelLabel': 'Instrument',
+  'instrument.fallback': 'Piano',
 
   // ── Track panel ────────────────────────────────────────────
   'tracks.title': 'Pistes',

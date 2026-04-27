@@ -6,6 +6,7 @@
 
 import { createSignal, onCleanup, onMount } from 'solid-js'
 import { Portal, render } from 'solid-js/web'
+import { t } from '../i18n'
 import { icons } from './icons'
 import { SamplesGrid } from './SamplesGrid'
 
@@ -84,20 +85,18 @@ function MidiPickerView(props: ViewProps) {
         <div
           class="midi-picker-card"
           role="dialog"
-          aria-label="Open a MIDI"
+          aria-label={t('midiPicker.aria')}
           aria-hidden={!props.isOpen()}
         >
           <header class="midi-picker-head">
             <div>
-              <h2 class="midi-picker-title">Open a MIDI</h2>
-              <p class="midi-picker-sub">
-                Drop a file, choose one from disk, or jump in with a sample.
-              </p>
+              <h2 class="midi-picker-title">{t('midiPicker.title')}</h2>
+              <p class="midi-picker-sub">{t('midiPicker.sub')}</p>
             </div>
             <button
               type="button"
               class="midi-picker-close"
-              aria-label="Close"
+              aria-label={t('midiPicker.close')}
               onClick={() => props.onClose()}
               innerHTML={icons.close(14)}
             />
@@ -114,12 +113,12 @@ function MidiPickerView(props: ViewProps) {
             onDrop={onDrop}
           >
             <span class="midi-picker-drop-icon" innerHTML={icons.upload(20)} />
-            <span class="midi-picker-drop-title">Drop a MIDI file here</span>
-            <span class="midi-picker-drop-sub">or click to choose from your computer</span>
+            <span class="midi-picker-drop-title">{t('midiPicker.dropTitle')}</span>
+            <span class="midi-picker-drop-sub">{t('midiPicker.dropSub')}</span>
           </button>
 
           <section class="midi-picker-samples">
-            <div class="midi-picker-section-label">Or explore a sample</div>
+            <div class="midi-picker-section-label">{t('midiPicker.samplesLabel')}</div>
             <div class="midi-picker-samples-mount" ref={samplesHost} />
           </section>
 

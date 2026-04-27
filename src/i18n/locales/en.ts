@@ -36,12 +36,8 @@ export const en = {
   'home.metaLink.blog': 'Read the blog',
   'home.metaLink.github': 'Source on GitHub',
   'home.metaLink.discord': 'Join the Discord community',
-  // Legacy aliases kept so older callers keep compiling — safe to remove
-  // once nothing references them.
-  'home.hero.title': 'Play notes, see them bloom',
-  'home.hero.sub': 'Drop a MIDI, or play live with a keyboard or MIDI controller.',
-  'home.drop.prompt': 'Drop a .mid file here',
-  'home.drop.fileHint': 'or tap to choose',
+  'home.metaLinks.aria': 'midee links',
+  'home.aria': 'midee home',
 
   // ── Top strip (primary nav) ─────────────────────────────────
   'topStrip.home': 'Home',
@@ -51,11 +47,39 @@ export const en = {
   'topStrip.openMidi': 'Open MIDI file',
   'topStrip.tracks': 'Tracks',
   'topStrip.midi': 'MIDI device',
-  'topStrip.particle': 'Particle style',
-  'topStrip.theme': 'Theme',
   'topStrip.export': 'Export MP4',
-  'topStrip.status.ready': 'Ready',
-  'topStrip.status.openHint': 'Open MIDI or play live',
+  'topStrip.export.label': 'Export',
+  // Mode-pill visible labels (the longer descriptors live in `topStrip.mode*`).
+  'topStrip.mode.play.label': 'Play',
+  'topStrip.mode.live.label': 'Live',
+  'topStrip.mode.learn.label': 'Learn',
+  // "Learn this MIDI" CTA (only visible when a piece is loaded in Play).
+  'topStrip.learnThis.aria': 'Learn this MIDI',
+  'topStrip.learnThis.tip': 'Practice this piece with wait-mode',
+  'topStrip.learnThis.label': 'Learn',
+  // Topbar context strip — kicker (small label) + title (main).
+  'topStrip.context.ready.kicker': 'Ready',
+  'topStrip.context.ready.title': 'Open MIDI or play live',
+  'topStrip.context.loading.kicker': 'Loading',
+  'topStrip.context.loading.title': 'Opening MIDI',
+  'topStrip.context.live.kicker': 'Live',
+  'topStrip.context.live.midiSession': 'MIDI session',
+  'topStrip.context.live.keyboard': 'Play with your keyboard',
+  'topStrip.context.play.kicker': 'Now playing',
+  'topStrip.context.play.fallback': 'Open MIDI',
+  'topStrip.context.learnSoon.kicker': 'Coming soon',
+  'topStrip.context.learnSoon.title': 'Learn mode is on the way',
+  'topStrip.context.learning.kicker': 'Learning',
+  'topStrip.context.learn.kicker': 'Learn',
+  'topStrip.context.learn.title': 'Exercises, ear training, sight reading',
+  // MIDI pill + menu labels (status-driven). `{name}` is the device name.
+  'topStrip.midi.connectedMenu': 'MIDI: {name}',
+  'topStrip.midi.connectedDefault': 'connected',
+  'topStrip.midi.blockedMenu': 'Enable MIDI device',
+  'topStrip.midi.unavailableMenu': 'MIDI unavailable in this browser',
+  'topStrip.midi.disconnectedMenu': 'Connect a MIDI device',
+  'topStrip.midi.blockedPill': 'Enable MIDI',
+  'topStrip.midi.pillFallback': 'MIDI',
 
   // ── Appearance / customize popover ──────────────────────────
   'customize.aria': 'Appearance',
@@ -140,12 +164,61 @@ export const en = {
   'export.action': 'Export',
   'export.cancel': 'Cancel',
   'export.preparing': 'Preparing…',
+  // Resolution preset labels + hints (formerly hardcoded in PRESETS).
+  'export.preset.match': 'Match',
+  'export.preset.match.dim': 'Current size',
+  'export.preset.vertical': 'Vertical',
+  'export.preset.square': 'Square',
+  'export.preset.2k.hint': 'YouTube QHD',
+  'export.preset.4k.hint': 'slow · big file',
+  'export.preset.vertical.hint': 'TikTok / Reels / Shorts',
+  'export.preset.square.hint': 'Instagram feed',
+  // FPS button label — `{fps}` is the numeric rate.
+  'export.fps.unit': '{fps} fps',
+  // Encoder pipeline stages — surfaced in the progress card.
+  'export.stage.renderingAudio': 'Rendering audio',
+  'export.stage.encodingAudio': 'Encoding audio',
+  'export.stage.encoding': 'Encoding',
+  'export.stage.finalizing': 'Finalizing',
+  'export.stage.saving': 'Saving',
+  'export.stage.done': 'Done',
+
+  // ── Session / loop / metro labels (live HUD) ───────────────
+  'hud.session.label.record': 'Record',
+  'hud.loop.label.idle': 'Loop',
+  'hud.loop.label.armed': 'Play now…',
+  'hud.loop.label.recording': 'Stop',
+  'hud.loop.label.playing': 'Tap to overdub',
+  'hud.loop.label.playingMulti': 'Loop ×{count}',
+  'hud.loop.label.overdub': 'Overdub {count}',
+
+  // ── Keyboard reference card (live mode) ────────────────────
+  'keyHint.play': 'Play',
+  'keyHint.octave': 'Octave',
+  'keyHint.shortcuts': 'Shortcuts',
+  'keyHint.shortcut.record': 'Record',
+  'keyHint.shortcut.loop': 'Loop',
+  'keyHint.shortcut.undo': 'Undo',
+  'keyHint.shortcut.clear': 'Clear',
+  'keyHint.shortcut.metronome': 'Metronome',
+
+  // ── ChordOverlay ───────────────────────────────────────────
+  'chord.aria': 'Currently sounding chord',
 
   // ── Errors ─────────────────────────────────────────────────
   'error.midi.parseFailed': "Could not read that file — make sure it's a valid MIDI.",
+  'error.midi.empty': 'That MIDI has no notes in it.',
+  'error.midi.permissionBlocked':
+    'MIDI is blocked. Click the 🔒 icon in your address bar → Site settings → allow MIDI, then reload.',
+  'error.midi.permissionDenied':
+    'MIDI permission denied. Click again, or enable it via the 🔒 icon in your address bar.',
   'error.sample.fetchFailed': 'Could not load that sample — check your network and try again.',
   'error.audio.renderFailed': 'Audio render failed — MP4 will be silent.',
   'error.export.generic': 'Export failed — check console for details.',
+
+  // ── Mode error boundary ────────────────────────────────────
+  'modeError.title': 'Something went wrong',
+  'modeError.retry': 'Try again',
 
   // ── Document title (browser tab) ───────────────────────────
   'doc.title.home': 'midee — drop a MIDI, watch it sing',
@@ -153,9 +226,157 @@ export const en = {
   'doc.title.learn': 'midee · learn',
 
   // ── Learn hub ───────────────────────────────────────────────
-  'learn.hub.title': 'Learn',
-  'learn.hub.subtitle': 'Exercises, ear training, and sight reading',
-  'learn.hub.placeholder': 'Hub coming soon — exercises land as the catalog fills in.',
+  'learn.hub.recommended': 'Recommended',
+  'learn.hub.uploadMidi': 'Upload a MIDI',
+  'learn.hub.startWith': 'Start · {name}',
+  'learn.hub.explore': 'Explore',
+  'learn.hub.comingSoon': 'Coming soon',
+
+  // Catalog category labels.
+  'learn.category.playAlong': 'Play along',
+  'learn.category.sightReading': 'Sight reading',
+  'learn.category.earTraining': 'Ear training',
+  'learn.category.theory': 'Theory',
+  'learn.category.technique': 'Technique',
+  'learn.category.reflection': 'Reflect',
+
+  // Exercise descriptors (title + blurb shown in catalog cards).
+  'learn.exercise.intervals.title': 'Intervals',
+  'learn.exercise.intervals.blurb':
+    'Hear two notes and name the distance between them. Beginner set — M3, P4, P5, octave.',
+  'learn.exercise.playAlong.title': 'Play along',
+  'learn.exercise.playAlong.blurb':
+    'Drop a MIDI and play along. Wait-mode pauses at each chord until you hit the right notes.',
+
+  // Intervals quiz UI.
+  'learn.intervals.kicker': 'Ear training',
+  'learn.intervals.title': 'Intervals',
+  'learn.intervals.backTip': 'Back to hub (Esc)',
+  'learn.intervals.backAria': 'Back to learn hub',
+  'learn.intervals.questionOf': 'Question {n} of {total}',
+  'learn.intervals.preparing': 'Preparing…',
+  'learn.intervals.streakInRow': '🔥 {n} in a row',
+  'learn.intervals.listen': 'Listen',
+  'learn.intervals.listenHint': 'Press play to hear two notes — pick the interval you just heard.',
+  'learn.intervals.playAria': 'Play interval',
+  'learn.intervals.playTip': 'Play again (Space)',
+  'learn.intervals.playLabel': 'Play interval',
+  'learn.intervals.choose': 'Choose an interval',
+  'learn.intervals.answerTip': '{full} · press {n}',
+  'learn.intervals.correct': 'Correct',
+  'learn.intervals.miss': 'Miss',
+  'learn.intervals.correctMsg': '{name} — nice ear.',
+  'learn.intervals.missMsg': 'It was {name}.',
+  'learn.intervals.replayAria': 'Hear the interval again',
+  'learn.intervals.replayTip': 'Hear again',
+  'learn.intervals.replayLabel': 'Replay',
+  'learn.intervals.finish': 'Finish',
+  'learn.intervals.next': 'Next',
+  'learn.intervals.shortcutReplay': 'replay',
+  'learn.intervals.shortcutPick': 'pick answer',
+
+  // Interval names. Translators: `short` codes (P5, m3) stay universal — only
+  // the `full` names below get localised.
+  'learn.interval.P1': 'Unison',
+  'learn.interval.m2': 'Minor 2nd',
+  'learn.interval.M2': 'Major 2nd',
+  'learn.interval.m3': 'Minor 3rd',
+  'learn.interval.M3': 'Major 3rd',
+  'learn.interval.P4': 'Perfect 4th',
+  'learn.interval.TT': 'Tritone',
+  'learn.interval.P5': 'Perfect 5th',
+  'learn.interval.m6': 'Minor 6th',
+  'learn.interval.M6': 'Major 6th',
+  'learn.interval.m7': 'Minor 7th',
+  'learn.interval.M7': 'Major 7th',
+  'learn.interval.P8': 'Octave',
+
+  // Play-along HUD.
+  'learn.pa.score': 'Session score',
+  'learn.pa.streak.tip': 'Consecutive cleared chords',
+  'learn.pa.accuracy.tip': 'Hits / (hits + errors)',
+  'learn.pa.perfect.tip': 'Perfect chord articulation (≤80 ms)',
+  'learn.pa.good.tip': 'Cleared chord (slower articulation)',
+  'learn.pa.error.tip': 'Wrong-pitch press while waiting',
+  'learn.pa.drag': 'Drag to move',
+  'learn.pa.pinAria': 'Pin in place',
+  'learn.pa.pinTip': 'Pin · keep from auto-hiding',
+  'learn.pa.playAria': 'Play',
+  'learn.pa.pauseAria': 'Pause',
+  'learn.pa.playTip': 'Play / pause (Space)',
+  'learn.pa.scrubAria': 'Scrubber',
+  'learn.pa.scrubTip': 'Drag to seek',
+  'learn.pa.backAria': 'Back to learn hub',
+  'learn.pa.backTip': 'Back to hub (Esc)',
+  'learn.pa.speedAria': 'Speed',
+  'learn.pa.speedLabel': 'Speed',
+  'learn.pa.speedSlowTip': 'Slow · 60% ([)',
+  'learn.pa.speedMedTip': 'Medium · 80%',
+  'learn.pa.speedFullTip': 'Full · 100% (])',
+  'learn.pa.speedPctAria': '{pct}% speed',
+  'learn.pa.handsAria': 'Hands',
+  'learn.pa.handsLabel': 'Hands',
+  'learn.pa.handLeftTip': 'Left hand only',
+  'learn.pa.handRightTip': 'Right hand only',
+  'learn.pa.handBothTip': 'Both hands',
+  'learn.pa.handLeftAria': 'Left hand',
+  'learn.pa.handRightAria': 'Right hand',
+  'learn.pa.handBothAria': 'Both hands',
+  'learn.pa.handLeftLabel': 'L',
+  'learn.pa.handRightLabel': 'R',
+  'learn.pa.handBothLabel': 'Both',
+  'learn.pa.loopClearTip': 'Clear loop (L)',
+  'learn.pa.loopMarkBTip': 'Mark loop end (L)',
+  'learn.pa.loopMarkATip': 'Mark loop start (L)',
+  'learn.pa.loopClearAria': 'Clear loop',
+  'learn.pa.loopMarkBAria': 'Mark loop end',
+  'learn.pa.loopMarkAAria': 'Mark loop start',
+  'learn.pa.loopMarkBLabel': 'Mark B',
+  'learn.pa.loopLabel': 'Loop',
+  'learn.pa.loopXClear': 'Clear loop',
+  'learn.pa.waitTip': 'Wait mode · pauses at each chord',
+  'learn.pa.waitAria': 'Toggle wait mode',
+  'learn.pa.waitLabel': 'Wait',
+  'learn.pa.rampTip': 'Auto-speed · ramps up on clean passes',
+  'learn.pa.rampAria': 'Toggle tempo ramp',
+  'learn.pa.rampLabel': 'Ramp',
+
+  // Streak row (Learn hub topbar).
+  'learn.streak.tip': 'Practice streak · last 14 days',
+  'learn.streak.label': 'day streak',
+
+  // End-of-session summary.
+  'learn.summary.accuracy': 'accuracy',
+  'learn.summary.xp': 'xp',
+  'learn.summary.streakBump': 'streak +1',
+  'learn.summary.again': 'Again',
+  'learn.summary.next': 'Next',
+
+  // Coming-soon surface (Learn mode disabled via feature flag).
+  'learn.soon.docTitle': 'Learn · midee',
+  'learn.soon.badge': 'Coming soon',
+  'learn.soon.title.html': 'Practice, <em>gamified</em>.',
+  'learn.soon.body': "Streaks, levels, and a piano roll that knows when you're guessing.",
+
+  // First-encounter coachmark for the topbar's "Learn this MIDI" pill.
+  'coachmark.learn.title': 'Practice this piece',
+  'coachmark.learn.body': 'Step through note-by-note with wait-mode.',
+  'coachmark.dismiss': 'Dismiss',
+
+  // ── MidiPickerModal ─────────────────────────────────────────
+  'midiPicker.aria': 'Open a MIDI',
+  'midiPicker.title': 'Open a MIDI',
+  'midiPicker.sub': 'Drop a file, choose one from disk, or jump in with a sample.',
+  'midiPicker.close': 'Close',
+  'midiPicker.dropTitle': 'Drop a MIDI file here',
+  'midiPicker.dropSub': 'or click to choose from your computer',
+  'midiPicker.samplesLabel': 'Or explore a sample',
+
+  // ── Instrument menu ─────────────────────────────────────────
+  'instrument.title': 'Instrument',
+  'instrument.aria': 'Choose instrument',
+  'instrument.panelLabel': 'Instrument',
+  'instrument.fallback': 'Piano',
 
   // ── Track panel ────────────────────────────────────────────
   'tracks.title': 'Tracks',

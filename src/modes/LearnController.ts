@@ -182,8 +182,8 @@ export class LearnController {
       this.learnState.setState('status', 'ready')
       this.showError(
         err instanceof Error && err.name === 'EmptyMidiError'
-          ? 'That MIDI has no notes in it.'
-          : "Could not read that file — make sure it's a valid MIDI.",
+          ? t('error.midi.empty')
+          : t('error.midi.parseFailed'),
       )
     }
   }

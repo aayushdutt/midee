@@ -1,11 +1,31 @@
 import { createMemo, For, onCleanup, onMount, Show } from 'solid-js'
 import { render } from 'solid-js/web'
+import { t } from '../../i18n'
 import type { ExerciseCategory, ExerciseDescriptor } from '../core/Exercise'
 import type { LearnState } from '../core/LearnState'
 import type { LearnProgressStore } from '../core/progress'
 import { ComingSoonCardView, ExerciseCardView } from '../ui/ExerciseCard'
 import { StreakRow } from '../ui/StreakRow'
 import { CATALOG } from './catalog'
+
+// Looked up by ExerciseDescriptor.category. Returns the localised label —
+// callers read it inline so locale flips swap labels without remount.
+export function categoryLabel(cat: ExerciseCategory): string {
+  switch (cat) {
+    case 'play-along':
+      return t('learn.category.playAlong')
+    case 'sight-reading':
+      return t('learn.category.sightReading')
+    case 'ear-training':
+      return t('learn.category.earTraining')
+    case 'theory':
+      return t('learn.category.theory')
+    case 'technique':
+      return t('learn.category.technique')
+    case 'reflection':
+      return t('learn.category.reflection')
+  }
+}
 
 export interface LearnHubOptions {
   progress: LearnProgressStore
@@ -34,15 +54,6 @@ const CATEGORY_ORDER: ExerciseCategory[] = [
   'reflection',
 ]
 
-const CATEGORY_LABEL: Record<ExerciseCategory, string> = {
-  'play-along': 'Play along',
-  'sight-reading': 'Sight reading',
-  'ear-training': 'Ear training',
-  theory: 'Theory',
-  technique: 'Technique',
-  reflection: 'Reflect',
-}
-
 const CATEGORY_ICON: Record<ExerciseCategory, string> = {
   'play-along':
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M12 6v10M17 8v6"/></svg>',
@@ -67,15 +78,18 @@ function Hero(props: LearnHubOptions) {
   const featured = CATALOG.find((d) => d.id === 'play-along')
   if (!featured) return null
   const loaded = () => props.learnState.state.loadedMidi
-  const kicker =
-    CATEGORY_LABEL[featured.category].toLowerCase() === featured.title.toLowerCase()
-      ? 'Recommended'
-      : CATEGORY_LABEL[featured.category]
+  // Hide the category kicker when it would just repeat the title (e.g.
+  // "Play along" hero card whose category is also "Play along") — show the
+  // localised "Recommended" instead.
+  const kicker = (): string => {
+    const label = categoryLabel(featured.category)
+    return label.toLowerCase() === featured.title.toLowerCase() ? t('learn.hub.recommended') : label
+  }
   return (
     <div class="hero-card" data-category={featured.category}>
       <div class="hero-card__badge" innerHTML={CATEGORY_ICON[featured.category]} />
       <div class="hero-card__body">
-        <span class="hero-card__kicker">{kicker}</span>
+        <span class="hero-card__kicker">{kicker()}</span>
         <h2 class="hero-card__title">{featured.title}</h2>
         <p class="hero-card__blurb">{featured.blurb}</p>
       </div>
@@ -89,7 +103,7 @@ function Hero(props: LearnHubOptions) {
               onClick={() => props.onOpenFilePicker()}
             >
               <span class="hero-card__primary-icon" aria-hidden="true" innerHTML={ICON_UPLOAD} />
-              <span class="hero-card__primary-label">Upload a MIDI</span>
+              <span class="hero-card__primary-label">{t('learn.hub.uploadMidi')}</span>
             </button>
           }
         >
@@ -100,7 +114,9 @@ function Hero(props: LearnHubOptions) {
               onClick={() => props.launchExercise(featured)}
             >
               <span class="hero-card__primary-icon" aria-hidden="true" innerHTML={ICON_PLAY} />
-              <span class="hero-card__primary-label">Start · {midi().name}</span>
+              <span class="hero-card__primary-label">
+                {t('learn.hub.startWith', { name: midi().name })}
+              </span>
             </button>
           )}
         </Show>
@@ -129,7 +145,7 @@ function Grid(props: { launchExercise: (d: ExerciseDescriptor) => void }) {
             fallback={
               <ComingSoonCardView
                 category={cat}
-                label={CATEGORY_LABEL[cat]}
+                label={categoryLabel(cat)}
                 icon={CATEGORY_ICON[cat]}
               />
             }
@@ -170,7 +186,7 @@ function LearnHubView(props: LearnHubOptions) {
           <div class="learn-hub__hero">
             <Hero {...props} />
           </div>
-          <div class="learn-hub__grid-label">Explore</div>
+          <div class="learn-hub__grid-label">{t('learn.hub.explore')}</div>
           <div class="learn-hub__grid">
             <Grid launchExercise={props.launchExercise} />
           </div>

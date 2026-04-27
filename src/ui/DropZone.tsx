@@ -164,7 +164,7 @@ function DropZoneView(props: DropZoneProps) {
           </div>
           <div class="home-drop-hint" innerHTML={t('home.dropHint.html')} />
         </div>
-        <nav class="home-meta-links" aria-label="midee links">
+        <nav class="home-meta-links" aria-label={t('home.metaLinks.aria')}>
           <a
             href="/blog/"
             class="home-meta-link"

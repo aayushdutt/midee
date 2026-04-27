@@ -22,6 +22,8 @@ export interface ExportSettings {
   speed: ExportSpeed
 }
 
+// Built lazily inside the view so each `t()` call is reactive — flipping
+// locale at runtime swaps the labels/hints without remounting the modal.
 interface PresetCard {
   id: ExportResolution
   label: string
@@ -30,21 +32,46 @@ interface PresetCard {
   hint?: string
 }
 
-const PRESETS: readonly PresetCard[] = [
-  { id: '1080p', label: '1080p', dim: '1920 × 1080', aspect: 'landscape' },
-  { id: '720p', label: '720p', dim: '1280 × 720', aspect: 'landscape' },
-  { id: '2k', label: '2K', dim: '2560 × 1440', aspect: 'landscape', hint: 'YouTube QHD' },
-  { id: '4k', label: '4K', dim: '3840 × 2160', aspect: 'landscape', hint: 'slow · big file' },
-  {
-    id: 'vertical',
-    label: 'Vertical',
-    dim: '1080 × 1920',
-    aspect: 'vertical',
-    hint: 'TikTok / Reels / Shorts',
-  },
-  { id: 'square', label: 'Square', dim: '1080 × 1080', aspect: 'square', hint: 'Instagram feed' },
-  { id: 'match', label: 'Match', dim: 'Current size', aspect: 'match' },
-]
+function buildPresets(): readonly PresetCard[] {
+  return [
+    { id: '1080p', label: '1080p', dim: '1920 × 1080', aspect: 'landscape' },
+    { id: '720p', label: '720p', dim: '1280 × 720', aspect: 'landscape' },
+    {
+      id: '2k',
+      label: '2K',
+      dim: '2560 × 1440',
+      aspect: 'landscape',
+      hint: t('export.preset.2k.hint'),
+    },
+    {
+      id: '4k',
+      label: '4K',
+      dim: '3840 × 2160',
+      aspect: 'landscape',
+      hint: t('export.preset.4k.hint'),
+    },
+    {
+      id: 'vertical',
+      label: t('export.preset.vertical'),
+      dim: '1080 × 1920',
+      aspect: 'vertical',
+      hint: t('export.preset.vertical.hint'),
+    },
+    {
+      id: 'square',
+      label: t('export.preset.square'),
+      dim: '1080 × 1080',
+      aspect: 'square',
+      hint: t('export.preset.square.hint'),
+    },
+    {
+      id: 'match',
+      label: t('export.preset.match'),
+      dim: t('export.preset.match.dim'),
+      aspect: 'match',
+    },
+  ]
+}
 
 const FPS_OPTIONS = [24, 30, 60] as const
 
@@ -142,7 +169,7 @@ function ExportView(props: ViewProps) {
             <section class="export-section" classList={{ 'export-section--disabled': noVideo() }}>
               <span class="export-section-label">{t('export.resolutionLabel')}</span>
               <div class="res-grid">
-                <For each={PRESETS}>
+                <For each={buildPresets()}>
                   {(p) => (
                     <button
                       type="button"
@@ -171,7 +198,7 @@ function ExportView(props: ViewProps) {
                       classList={{ 'fps-btn--on': props.fps() === fps }}
                       onClick={() => props.setFps(fps)}
                     >
-                      {fps} fps
+                      {t('export.fps.unit', { fps })}
                     </button>
                   )}
                 </For>
@@ -420,7 +447,7 @@ export class ExportModal {
   }
 
   updateProgress(stage: ExportStage, pct: number): void {
-    this.setStage(`${stage}…`)
+    this.setStage(`${stageLabel(stage)}…`)
     if (stage === 'Rendering audio') {
       if (this.renderAudioProgressDeterminate === true) {
         this.setIndet(false)
@@ -454,5 +481,25 @@ export class ExportModal {
       const desiredSpeed: ExportSpeed = this.readResolution() === 'vertical' ? 'drama' : 'standard'
       this.setSpeed(desiredSpeed)
     }
+  }
+}
+
+// `ExportStage` values are the canonical English keys used by the encoder
+// pipeline — translate them at the surface so the progress card reads in
+// the active locale without leaking i18n into the encoder module.
+function stageLabel(stage: ExportStage): string {
+  switch (stage) {
+    case 'Rendering audio':
+      return t('export.stage.renderingAudio')
+    case 'Encoding audio':
+      return t('export.stage.encodingAudio')
+    case 'Encoding':
+      return t('export.stage.encoding')
+    case 'Finalizing':
+      return t('export.stage.finalizing')
+    case 'Saving':
+      return t('export.stage.saving')
+    case 'Done':
+      return t('export.stage.done')
   }
 }

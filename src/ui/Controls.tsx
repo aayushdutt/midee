@@ -102,7 +102,7 @@ function TopStripView(props: TopStripProps) {
         class="ts-home"
         id="ts-home"
         type="button"
-        aria-label="midee home"
+        aria-label={t('home.aria')}
         data-tip={t('topStrip.home')}
         onClick={() => props.onHome()}
         innerHTML={`${icons.wordmark()}<span class="ts-home-name">midee</span>`}
@@ -125,7 +125,7 @@ function TopStripView(props: TopStripProps) {
           onClick={() => props.onMode('play')}
         >
           <span class="ts-mode-icon" aria-hidden="true" innerHTML={icons.modePlay()} />
-          <span class="ts-mode-label">Play</span>
+          <span class="ts-mode-label">{t('topStrip.mode.play.label')}</span>
         </button>
         <button
           class="ts-mode-seg"
@@ -138,7 +138,7 @@ function TopStripView(props: TopStripProps) {
           onClick={() => props.onMode('live')}
         >
           <span class="ts-mode-icon" aria-hidden="true" innerHTML={icons.modeLive()} />
-          <span class="ts-mode-label">Live</span>
+          <span class="ts-mode-label">{t('topStrip.mode.live.label')}</span>
         </button>
         <button
           class="ts-mode-seg"
@@ -151,7 +151,7 @@ function TopStripView(props: TopStripProps) {
           onClick={() => props.onMode('learn')}
         >
           <span class="ts-mode-icon" aria-hidden="true" innerHTML={icons.practice()} />
-          <span class="ts-mode-label">Learn</span>
+          <span class="ts-mode-label">{t('topStrip.mode.learn.label')}</span>
         </button>
         <span class="ts-mode-thumb" aria-hidden="true" />
       </div>
@@ -212,12 +212,12 @@ function TopStripView(props: TopStripProps) {
           }}
           id="ts-learn-this"
           type="button"
-          aria-label="Learn this MIDI"
-          data-tip="Practice this piece with wait-mode"
+          aria-label={t('topStrip.learnThis.aria')}
+          data-tip={t('topStrip.learnThis.tip')}
           onClick={() => props.onLearnThis()}
         >
           <span innerHTML={icons.practice()} />
-          <span>Learn</span>
+          <span>{t('topStrip.learnThis.label')}</span>
         </button>
         <span id="ts-instrument-slot" />
         <div class="ts-sep" aria-hidden="true" />
@@ -249,7 +249,7 @@ function TopStripView(props: TopStripProps) {
           onClick={() => props.onRecord()}
         >
           <span innerHTML={icons.export()} />
-          <span>Export</span>
+          <span>{t('topStrip.export.label')}</span>
         </button>
       </div>
     </div>
@@ -605,7 +605,7 @@ function KeyHintView(props: KeyHintProps) {
       <div class="kh-body">
         <div class="kh-section kh-section--first">
           <div class="kh-section-head">
-            <span class="kh-label">Play</span>
+            <span class="kh-label">{t('keyHint.play')}</span>
             <button
               class="kh-close"
               id="kh-close"
@@ -630,7 +630,7 @@ function KeyHintView(props: KeyHintProps) {
         </div>
 
         <div class="kh-section">
-          <span class="kh-label">Octave</span>
+          <span class="kh-label">{t('keyHint.octave')}</span>
           <span class="kh-keys">
             <button
               class="kh-cap-btn"
@@ -659,36 +659,36 @@ function KeyHintView(props: KeyHintProps) {
         </div>
 
         <div class="kh-section">
-          <span class="kh-label">Shortcuts</span>
+          <span class="kh-label">{t('keyHint.shortcuts')}</span>
           <div class="kh-shortcuts">
             <span class="kh-combo">
               <kbd>Tab</kbd>
-              <span>Record</span>
+              <span>{t('keyHint.shortcut.record')}</span>
             </span>
             <span class="kh-combo">
               <span class="kh-cap-group">
                 <kbd class="kh-cap-sym">⇧</kbd>
                 <kbd>L</kbd>
               </span>
-              <span>Loop</span>
+              <span>{t('keyHint.shortcut.loop')}</span>
             </span>
             <span class="kh-combo">
               <span class="kh-cap-group">
                 <kbd class="kh-cap-sym">⇧</kbd>
                 <kbd>U</kbd>
               </span>
-              <span>Undo</span>
+              <span>{t('keyHint.shortcut.undo')}</span>
             </span>
             <span class="kh-combo">
               <span class="kh-cap-group">
                 <kbd class="kh-cap-sym">⇧</kbd>
                 <kbd>C</kbd>
               </span>
-              <span>Clear</span>
+              <span>{t('keyHint.shortcut.clear')}</span>
             </span>
             <span class="kh-combo">
               <kbd class="kh-cap-sym">`</kbd>
-              <span>Metronome</span>
+              <span>{t('keyHint.shortcut.metronome')}</span>
             </span>
           </div>
         </div>
@@ -782,7 +782,10 @@ export class Controls {
     const [zoom, setZoomSig] = createSignal(ZOOM_DEFAULT)
 
     const [uiStore, setUi] = createStore<UiStoreShape>({
-      context: { kicker: 'Ready', title: 'Open MIDI or play live' },
+      context: {
+        kicker: t('topStrip.context.ready.kicker'),
+        title: t('topStrip.context.ready.title'),
+      },
       midi: { status: 'disconnected', deviceName: '' },
       session: { recording: false, elapsed: 0 },
       loop: { state: 'idle', layerCount: 0, progressDeg: 0 },
@@ -857,7 +860,9 @@ export class Controls {
             instrumentLoading={instrumentLoading}
             sessionRecording={() => uiStore.session.recording}
             sessionLabel={() =>
-              uiStore.session.recording ? formatMMSS(uiStore.session.elapsed) : 'Record'
+              uiStore.session.recording
+                ? formatMMSS(uiStore.session.elapsed)
+                : t('hud.session.label.record')
             }
             loopState={() => uiStore.loop.state}
             loopLabel={() => loopLabel(uiStore.loop.state, uiStore.loop.layerCount)}
@@ -1274,45 +1279,60 @@ export class Controls {
     const midi = this.uiStore.midi
 
     if (mode === 'play' && this.opts.services.store.state.status === 'loading') {
-      this.setUi('context', { kicker: 'Loading', title: 'Opening MIDI' })
+      this.setUi('context', {
+        kicker: t('topStrip.context.loading.kicker'),
+        title: t('topStrip.context.loading.title'),
+      })
       return
     }
 
     if (mode === 'live') {
       this.setUi('context', {
-        kicker: 'Live',
+        kicker: t('topStrip.context.live.kicker'),
         title:
           midi.status === 'connected'
-            ? midi.deviceName || 'MIDI session'
-            : 'Play with your keyboard',
+            ? midi.deviceName || t('topStrip.context.live.midiSession')
+            : t('topStrip.context.live.keyboard'),
       })
       return
     }
 
     if (mode === 'play') {
-      this.setUi('context', { kicker: 'Now playing', title: fileName ?? 'Open MIDI' })
+      this.setUi('context', {
+        kicker: t('topStrip.context.play.kicker'),
+        title: fileName ?? t('topStrip.context.play.fallback'),
+      })
       return
     }
 
     if (mode === 'learn') {
       if (!ENABLE_LEARN_MODE) {
-        this.setUi('context', { kicker: 'Coming soon', title: 'Learn mode is on the way' })
+        this.setUi('context', {
+          kicker: t('topStrip.context.learnSoon.kicker'),
+          title: t('topStrip.context.learnSoon.title'),
+        })
         return
       }
       // Show the loaded song name when an exercise is using one, otherwise
       // fall back to the generic Learn label.
       if (this.learnFileName) {
-        this.setUi('context', { kicker: 'Learning', title: this.learnFileName })
+        this.setUi('context', {
+          kicker: t('topStrip.context.learning.kicker'),
+          title: this.learnFileName,
+        })
       } else {
         this.setUi('context', {
-          kicker: 'Learn',
-          title: 'Exercises, ear training, sight reading',
+          kicker: t('topStrip.context.learn.kicker'),
+          title: t('topStrip.context.learn.title'),
         })
       }
       return
     }
 
-    this.setUi('context', { kicker: 'Ready', title: 'Open MIDI or play live' })
+    this.setUi('context', {
+      kicker: t('topStrip.context.ready.kicker'),
+      title: t('topStrip.context.ready.title'),
+    })
   }
 
   private wakeUp(): void {
@@ -1411,19 +1431,22 @@ export class Controls {
 }
 
 function getMidiMenuLabel(status: MidiDeviceStatus, deviceName: string): string {
-  if (status === 'connected') return `MIDI: ${deviceName || 'connected'}`
-  if (status === 'blocked') return 'Enable MIDI device'
-  if (status === 'unavailable') return 'MIDI unavailable in this browser'
-  return 'Connect a MIDI device'
+  if (status === 'connected')
+    return t('topStrip.midi.connectedMenu', {
+      name: deviceName || t('topStrip.midi.connectedDefault'),
+    })
+  if (status === 'blocked') return t('topStrip.midi.blockedMenu')
+  if (status === 'unavailable') return t('topStrip.midi.unavailableMenu')
+  return t('topStrip.midi.disconnectedMenu')
 }
 
 function getMidiPillLabel(status: MidiDeviceStatus, deviceName: string): string {
   if (status === 'connected') {
     const n = deviceName.split(',')[0]?.trim()
-    return n && n.length < 22 ? n : 'MIDI'
+    return n && n.length < 22 ? n : t('topStrip.midi.pillFallback')
   }
-  if (status === 'blocked') return 'Enable MIDI'
-  return 'MIDI'
+  if (status === 'blocked') return t('topStrip.midi.blockedPill')
+  return t('topStrip.midi.pillFallback')
 }
 
 function formatTime(s: number): string {
@@ -1460,14 +1483,16 @@ function saveKeyHintHidden(hidden: boolean): void {
 function loopLabel(state: LiveLooperState, layerCount: number): string {
   switch (state) {
     case 'idle':
-      return 'Loop'
+      return t('hud.loop.label.idle')
     case 'armed':
-      return 'Play now…'
+      return t('hud.loop.label.armed')
     case 'recording':
-      return 'Stop'
+      return t('hud.loop.label.recording')
     case 'playing':
-      return layerCount > 1 ? `Loop ×${layerCount}` : 'Tap to overdub'
+      return layerCount > 1
+        ? t('hud.loop.label.playingMulti', { count: layerCount })
+        : t('hud.loop.label.playing')
     case 'overdubbing':
-      return `Overdub ${layerCount + 1}`
+      return t('hud.loop.label.overdub', { count: layerCount + 1 })
   }
 }

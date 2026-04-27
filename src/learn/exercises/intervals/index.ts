@@ -1,3 +1,4 @@
+import { t } from '../../../i18n'
 import type { Exercise, ExerciseDescriptor } from '../../core/Exercise'
 import type { ExerciseContext } from '../../core/ExerciseContext'
 import type { ExerciseResult } from '../../core/Result'
@@ -13,10 +14,16 @@ const QUESTION_COUNT = 10
 
 export const intervalsDescriptor: ExerciseDescriptor = {
   id: 'intervals',
-  title: 'Intervals',
+  // `title` / `blurb` are getters so the hub re-reads them after a locale
+  // flip — the descriptor object itself is constructed once at module load.
+  get title() {
+    return t('learn.exercise.intervals.title')
+  },
   category: 'ear-training',
   difficulty: 'beginner',
-  blurb: 'Hear two notes and name the distance between them. Beginner set — M3, P4, P5, octave.',
+  get blurb() {
+    return t('learn.exercise.intervals.blurb')
+  },
   factory: (ctx) => new IntervalsExercise(ctx),
 }
 

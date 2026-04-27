@@ -1,6 +1,7 @@
 import { createSignal, Show } from 'solid-js'
 import { render } from 'solid-js/web'
 import type { ChordReading } from '../core/music/ChordDetector'
+import { t } from '../i18n'
 
 // Inline chord readout — lives in the top strip rather than as a floating
 // card, so it sits as a quiet supplementary cue beside the now-playing
@@ -27,7 +28,7 @@ function ChordReadoutView(props: ViewProps) {
       }}
       role="status"
       aria-live="polite"
-      aria-label="Currently sounding chord"
+      aria-label={t('chord.aria')}
     >
       <span class="ts-chord-readout-name">
         <span class="ts-chord-readout-tonic">{props.tonic()}</span>

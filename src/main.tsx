@@ -95,7 +95,7 @@ function showLocaleHint(): void {
   el.className = 'locale-hint'
   el.innerHTML = `
     <span>${t('onboarding.localeDetected', { language: currentLocaleNativeName() })}</span>
-    <button class="locale-hint-close" type="button" aria-label="Dismiss">×</button>
+    <button class="locale-hint-close" type="button" aria-label="${escapeAttr(t('coachmark.dismiss'))}">×</button>
   `
   document.body.appendChild(el)
   requestAnimationFrame(() => el.classList.add('locale-hint--shown'))
@@ -105,6 +105,13 @@ function showLocaleHint(): void {
   }
   el.querySelector<HTMLButtonElement>('.locale-hint-close')?.addEventListener('click', dismiss)
   setTimeout(dismiss, 8000)
+}
+
+// Translated strings can carry quotes; encode for safe interpolation into
+// an HTML attribute. Locale-hint copy is the only place we touch innerHTML
+// with translated content.
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 }
 
 void boot().catch((err) => {

@@ -1,5 +1,6 @@
 import { onCleanup, Show } from 'solid-js'
 import { render } from 'solid-js/web'
+import { t } from '../../i18n'
 import type { ExerciseResult } from '../core/Result'
 
 // Quiet end-of-session surface. Slides up from the bottom, displays accuracy
@@ -39,15 +40,15 @@ function SessionSummaryView(props: ViewProps) {
       <div class="session-summary__row">
         <div class="session-summary__metric">
           <span class="session-summary__value">{accuracyPct}%</span>
-          <span class="session-summary__label">accuracy</span>
+          <span class="session-summary__label">{t('learn.summary.accuracy')}</span>
         </div>
         <div class="session-summary__metric">
           <span class="session-summary__value">+{props.xpGained}</span>
-          <span class="session-summary__label">xp</span>
+          <span class="session-summary__label">{t('learn.summary.xp')}</span>
         </div>
         <Show when={props.streakExtended}>
           <div class="session-summary__metric session-summary__metric--streak">
-            <span class="session-summary__value">streak +1</span>
+            <span class="session-summary__value">{t('learn.summary.streakBump')}</span>
           </div>
         </Show>
         <div class="session-summary__actions">
@@ -59,7 +60,7 @@ function SessionSummaryView(props: ViewProps) {
               props.onAgain()
             }}
           >
-            Again
+            {t('learn.summary.again')}
           </button>
           <button
             class="session-summary__btn session-summary__btn--primary"
@@ -69,7 +70,7 @@ function SessionSummaryView(props: ViewProps) {
               props.onNext()
             }}
           >
-            Next
+            {t('learn.summary.next')}
           </button>
         </div>
       </div>

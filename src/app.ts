@@ -784,9 +784,7 @@ export class App {
     }
     if (this.midiInput.status.value === 'blocked') {
       track('midi_permission_denied', { was_blocked: wasBlocked })
-      const msg = wasBlocked
-        ? 'MIDI is blocked. Click the 🔒 icon in your address bar → Site settings → allow MIDI, then reload.'
-        : 'MIDI permission denied. Click again, or enable it via the 🔒 icon in your address bar.'
+      const msg = wasBlocked ? t('error.midi.permissionBlocked') : t('error.midi.permissionDenied')
       this.showError(msg)
     }
   }
@@ -835,8 +833,8 @@ export class App {
       else this.store.setState('status', 'ready')
       const msg =
         err instanceof Error && err.name === 'EmptyMidiError'
-          ? 'That MIDI has no notes in it.'
-          : "Could not read that file — make sure it's a valid MIDI."
+          ? t('error.midi.empty')
+          : t('error.midi.parseFailed')
       this.showError(msg)
     } finally {
       this.hideLoading()

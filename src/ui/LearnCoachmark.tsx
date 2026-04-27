@@ -1,5 +1,6 @@
 import { createEffect, createSignal, onCleanup, onMount, Show } from 'solid-js'
 import { Portal } from 'solid-js/web'
+import { t } from '../i18n'
 
 // First-encounter coachmark anchored to the topbar's "Learn" pill. Surfaces
 // once per browser profile, the first time a user lands in Play mode with a
@@ -121,12 +122,12 @@ export function LearnCoachmark(props: { eligible: () => boolean }) {
           style={{ top: `${pos().top}px`, left: `${pos().left}px` }}
         >
           <div class="learn-coachmark__arrow" aria-hidden="true" />
-          <div class="learn-coachmark__title">Practice this piece</div>
-          <div class="learn-coachmark__body">Step through note-by-note with wait-mode.</div>
+          <div class="learn-coachmark__title">{t('coachmark.learn.title')}</div>
+          <div class="learn-coachmark__body">{t('coachmark.learn.body')}</div>
           <button
             class="learn-coachmark__close"
             type="button"
-            aria-label="Dismiss"
+            aria-label={t('coachmark.dismiss')}
             onClick={() => dismiss()}
           >
             ×

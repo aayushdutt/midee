@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js'
 import { render } from 'solid-js/web'
+import { t } from '../../../i18n'
 import { watch } from '../../../store/watch'
 import { icons } from '../../../ui/icons'
 import type { PlayAlongEngine } from './engine'
@@ -84,7 +85,7 @@ function LiveStats(props: { engine: PlayAlongEngine }) {
   const streakHot = () => engine.state.streak >= STREAK_HOT_THRESHOLD
   const streakWarm = () => engine.state.streak >= 1 && engine.state.streak < STREAK_HOT_THRESHOLD
   return (
-    <div class="pa-hud__stats" role="status" aria-label="Session score">
+    <div class="pa-hud__stats" role="status" aria-label={t('learn.pa.score')}>
       <Show when={engine.state.streak > 0}>
         <span
           class="pa-hud__stat pa-hud__stat--streak"
@@ -92,7 +93,7 @@ function LiveStats(props: { engine: PlayAlongEngine }) {
             'pa-hud__stat--streak-warm': streakWarm(),
             'pa-hud__stat--streak-hot': streakHot(),
           }}
-          data-tip="Consecutive cleared chords"
+          data-tip={t('learn.pa.streak.tip')}
         >
           <span class="pa-hud__stat-glyph" aria-hidden="true">
             🔥
@@ -100,7 +101,7 @@ function LiveStats(props: { engine: PlayAlongEngine }) {
           <span class="pa-hud__stat-num">{engine.state.streak}</span>
         </span>
       </Show>
-      <span class="pa-hud__stat pa-hud__stat--accuracy" data-tip="Hits / (hits + errors)">
+      <span class="pa-hud__stat pa-hud__stat--accuracy" data-tip={t('learn.pa.accuracy.tip')}>
         <span class="pa-hud__stat-num">{accuracyPct()}</span>
         <span class="pa-hud__stat-unit">%</span>
       </span>
@@ -108,7 +109,7 @@ function LiveStats(props: { engine: PlayAlongEngine }) {
         <span
           class="pa-hud__stat pa-hud__stat--perfect"
           classList={{ 'is-zero': engine.state.perfect === 0 }}
-          data-tip="Perfect chord articulation (≤80 ms)"
+          data-tip={t('learn.pa.perfect.tip')}
         >
           <span class="pa-hud__stat-glyph">✓</span>
           <span class="pa-hud__stat-num">{engine.state.perfect}</span>
@@ -116,7 +117,7 @@ function LiveStats(props: { engine: PlayAlongEngine }) {
         <span
           class="pa-hud__stat pa-hud__stat--good"
           classList={{ 'is-zero': engine.state.good === 0 }}
-          data-tip="Cleared chord (slower articulation)"
+          data-tip={t('learn.pa.good.tip')}
         >
           <span class="pa-hud__stat-glyph">◌</span>
           <span class="pa-hud__stat-num">{engine.state.good}</span>
@@ -124,7 +125,7 @@ function LiveStats(props: { engine: PlayAlongEngine }) {
         <span
           class="pa-hud__stat pa-hud__stat--error"
           classList={{ 'is-zero': engine.state.errors === 0 }}
-          data-tip="Wrong-pitch press while waiting"
+          data-tip={t('learn.pa.error.tip')}
         >
           <span class="pa-hud__stat-glyph">×</span>
           <span class="pa-hud__stat-num">{engine.state.errors}</span>
@@ -355,8 +356,8 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
         <button
           class="hud-drag-handle pa-hud__drag"
           type="button"
-          aria-label="Drag to move"
-          data-tip="Drag to move"
+          aria-label={t('learn.pa.drag')}
+          data-tip={t('learn.pa.drag')}
           onPointerDown={(e) => startDrag(e)}
           innerHTML={icons.grip(10)}
         />
@@ -364,8 +365,8 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
           class="hud-pin-btn pa-hud__pin"
           classList={{ 'hud-pin-btn--on': pinned() }}
           type="button"
-          aria-label="Pin in place"
-          data-tip="Pin · keep from auto-hiding"
+          aria-label={t('learn.pa.pinAria')}
+          data-tip={t('learn.pa.pinTip')}
           onClick={() => togglePin()}
           innerHTML={icons.pin(12)}
         />
@@ -376,8 +377,10 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
           class="pa-hud__play"
           classList={{ 'is-playing': engine.state.userWantsToPlay }}
           type="button"
-          aria-label={engine.state.userWantsToPlay ? 'Pause' : 'Play'}
-          data-tip="Play / pause (Space)"
+          aria-label={
+            engine.state.userWantsToPlay ? t('learn.pa.pauseAria') : t('learn.pa.playAria')
+          }
+          data-tip={t('learn.pa.playTip')}
           onClick={() => engine.togglePlay()}
           innerHTML={engine.state.userWantsToPlay ? PAUSE_GLYPH : PLAY_GLYPH}
         />
@@ -402,8 +405,8 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
               max="1"
               step="0.01"
               value="0"
-              aria-label="Scrubber"
-              data-tip="Drag to seek"
+              aria-label={t('learn.pa.scrubAria')}
+              data-tip={t('learn.pa.scrubTip')}
               onPointerDown={() => {
                 scrubbing = true
               }}
@@ -433,16 +436,16 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
         <button
           class="pa-hud__icon-btn pa-hud__close"
           type="button"
-          aria-label="Back to learn hub"
-          data-tip="Back to hub (Esc)"
+          aria-label={t('learn.pa.backAria')}
+          data-tip={t('learn.pa.backTip')}
           onClick={() => props.onCloseExercise()}
           innerHTML={icons.close(14)}
         />
       </div>
 
       <div class="pa-hud__options">
-        <fieldset class="pa-hud__segmented" aria-label="Speed">
-          <span class="pa-hud__seg-label">Speed</span>
+        <fieldset class="pa-hud__segmented" aria-label={t('learn.pa.speedAria')}>
+          <span class="pa-hud__seg-label">{t('learn.pa.speedLabel')}</span>
           <div class="pa-hud__seg-track">
             {[60, 80, 100].map((pct) => (
               <button
@@ -450,9 +453,13 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
                 classList={{ 'is-active': engine.state.speedPct === pct }}
                 type="button"
                 data-tip={
-                  pct === 60 ? 'Slow · 60% ([)' : pct === 80 ? 'Medium · 80%' : 'Full · 100% (])'
+                  pct === 60
+                    ? t('learn.pa.speedSlowTip')
+                    : pct === 80
+                      ? t('learn.pa.speedMedTip')
+                      : t('learn.pa.speedFullTip')
                 }
-                aria-label={`${pct}% speed`}
+                aria-label={t('learn.pa.speedPctAria', { pct })}
                 onClick={() => engine.setSpeedPreset(pct)}
               >
                 {pct}
@@ -461,8 +468,8 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
           </div>
         </fieldset>
 
-        <fieldset class="pa-hud__segmented" aria-label="Hands">
-          <span class="pa-hud__seg-label">Hands</span>
+        <fieldset class="pa-hud__segmented" aria-label={t('learn.pa.handsAria')}>
+          <span class="pa-hud__seg-label">{t('learn.pa.handsLabel')}</span>
           <div class="pa-hud__seg-track">
             {(['left', 'right', 'both'] as const).map((h) => (
               <button
@@ -470,12 +477,26 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
                 classList={{ 'is-active': engine.state.hand === h }}
                 type="button"
                 data-tip={
-                  h === 'left' ? 'Left hand only' : h === 'right' ? 'Right hand only' : 'Both hands'
+                  h === 'left'
+                    ? t('learn.pa.handLeftTip')
+                    : h === 'right'
+                      ? t('learn.pa.handRightTip')
+                      : t('learn.pa.handBothTip')
                 }
-                aria-label={h === 'both' ? 'Both hands' : `${h === 'left' ? 'Left' : 'Right'} hand`}
+                aria-label={
+                  h === 'both'
+                    ? t('learn.pa.handBothAria')
+                    : h === 'left'
+                      ? t('learn.pa.handLeftAria')
+                      : t('learn.pa.handRightAria')
+                }
                 onClick={() => engine.setHand(h)}
               >
-                {h === 'left' ? 'L' : h === 'right' ? 'R' : 'Both'}
+                {h === 'left'
+                  ? t('learn.pa.handLeftLabel')
+                  : h === 'right'
+                    ? t('learn.pa.handRightLabel')
+                    : t('learn.pa.handBothLabel')}
               </button>
             ))}
           </div>
@@ -493,17 +514,17 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
             type="button"
             data-tip={
               engine.state.loopRegion
-                ? 'Clear loop (L)'
+                ? t('learn.pa.loopClearTip')
                 : engine.state.loopMark !== null
-                  ? 'Mark loop end (L)'
-                  : 'Mark loop start (L)'
+                  ? t('learn.pa.loopMarkBTip')
+                  : t('learn.pa.loopMarkATip')
             }
             aria-label={
               engine.state.loopRegion
-                ? 'Clear loop'
+                ? t('learn.pa.loopClearAria')
                 : engine.state.loopMark !== null
-                  ? 'Mark loop end'
-                  : 'Mark loop start'
+                  ? t('learn.pa.loopMarkBAria')
+                  : t('learn.pa.loopMarkAAria')
             }
             aria-pressed={engine.state.loopRegion !== null}
             onClick={() => props.onMarkLoop()}
@@ -512,9 +533,13 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
             <span>
               <Show
                 when={engine.state.loopRegion}
-                fallback={engine.state.loopMark !== null ? 'Mark B' : 'Loop'}
+                fallback={
+                  engine.state.loopMark !== null
+                    ? t('learn.pa.loopMarkBLabel')
+                    : t('learn.pa.loopLabel')
+                }
               >
-                Loop
+                {t('learn.pa.loopLabel')}
               </Show>
             </span>
             <Show when={engine.state.loopRegion}>
@@ -529,8 +554,8 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
             <button
               class="pa-hud__loop-clear"
               type="button"
-              data-tip="Clear loop"
-              aria-label="Clear loop"
+              data-tip={t('learn.pa.loopXClear')}
+              aria-label={t('learn.pa.loopXClear')}
               onClick={() => props.onClearLoop()}
               innerHTML={CLOSE_X_GLYPH}
             />
@@ -541,23 +566,23 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
           class="pa-hud__pill"
           type="button"
           aria-pressed={isWaitOn()}
-          data-tip="Wait mode · pauses at each chord"
-          aria-label="Toggle wait mode"
+          data-tip={t('learn.pa.waitTip')}
+          aria-label={t('learn.pa.waitAria')}
           onClick={() => engine.setWaitEnabled(!isWaitOn())}
         >
           <span innerHTML={WAIT_GLYPH} />
-          <span>Wait</span>
+          <span>{t('learn.pa.waitLabel')}</span>
         </button>
         <button
           class="pa-hud__pill"
           type="button"
           aria-pressed={isRampOn()}
-          data-tip="Auto-speed · ramps up on clean passes"
-          aria-label="Toggle tempo ramp"
+          data-tip={t('learn.pa.rampTip')}
+          aria-label={t('learn.pa.rampAria')}
           onClick={() => engine.setTempoRamp(!isRampOn())}
         >
           <span innerHTML={RAMP_GLYPH} />
-          <span>Ramp</span>
+          <span>{t('learn.pa.rampLabel')}</span>
         </button>
       </div>
     </div>

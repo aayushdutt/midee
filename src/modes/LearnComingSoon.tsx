@@ -1,4 +1,5 @@
 import { onCleanup, onMount } from 'solid-js'
+import { t } from '../i18n'
 import { useApp } from '../store/AppCtx'
 
 // Marketing surface for builds without VITE_ENABLE_LEARN_MODE. Lives in the
@@ -17,7 +18,7 @@ export function LearnComingSoon() {
     services.renderer.clearMidi()
     services.renderer.setLiveNotesVisible(false)
     services.renderer.setVisible(false)
-    document.title = 'Learn · midee'
+    document.title = t('learn.soon.docTitle')
   })
   onCleanup(() => {
     services.renderer.setVisible(true)
@@ -34,14 +35,13 @@ export function LearnComingSoon() {
             <span class="learn-soon__pulse-dot" />
             <span class="learn-soon__pulse-ring" />
           </span>
-          <span class="learn-soon__badge-text">Coming soon</span>
+          <span class="learn-soon__badge-text">{t('learn.soon.badge')}</span>
         </span>
-        <h1 class="learn-soon__title">
-          Practice, <em>gamified</em>.
-        </h1>
-        <p class="learn-soon__sub">
-          Streaks, levels, and a piano roll that knows when you're guessing.
-        </p>
+        {/* biome-ignore lint/a11y/useHeadingContent: `learn.soon.title.html` is
+            a translation key whose value is raw HTML — biome can't introspect
+            innerHTML. Content is always present at runtime. */}
+        <h1 class="learn-soon__title" innerHTML={t('learn.soon.title.html')} />
+        <p class="learn-soon__sub">{t('learn.soon.body')}</p>
       </div>
     </div>
   )

@@ -1,3 +1,4 @@
+import { t } from '../../i18n'
 import { watch } from '../../store/watch'
 import type { LearnProgressStore } from '../core/progress'
 import { isoDay } from '../core/progress-actions'
@@ -24,13 +25,13 @@ export class StreakRow {
     if (this.root) return
     const el = document.createElement('div')
     el.className = 'streak-row'
-    el.setAttribute('data-tip', 'Practice streak · last 14 days')
+    el.setAttribute('data-tip', t('learn.streak.tip'))
     el.innerHTML = `
       <span class="streak-row__flame" aria-hidden="true">
         <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 1c1 2 3 3 3 6 0 2-1.3 3.5-3 3.5-2 0-3-1.5-3-3.5 0-1 .5-1.5 1-2 .5 1 1 1.5 2-.5-1-1.5 0-2.5 0-3.5z"/></svg>
       </span>
       <span class="streak-row__count" data-streak-count>0</span>
-      <span class="streak-row__label">day streak</span>
+      <span class="streak-row__label">${t('learn.streak.label')}</span>
       <span class="streak-row__dots" data-streak-dots aria-hidden="true"></span>
     `
     container.appendChild(el)

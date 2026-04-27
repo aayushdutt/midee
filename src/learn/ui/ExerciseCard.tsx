@@ -1,5 +1,6 @@
 import { Show } from 'solid-js'
 import { render } from 'solid-js/web'
+import { t } from '../../i18n'
 import type { ExerciseDescriptor } from '../core/Exercise'
 
 // Catalog tile. Clicking a card triggers `onLaunch` which hoists up to the
@@ -64,7 +65,7 @@ export function ComingSoonCardView(props: ComingSoonProps) {
         {(icon) => <span class="ex-card__icon" aria-hidden="true" innerHTML={icon()} />}
       </Show>
       <span class="ex-card__title">{props.label}</span>
-      <span class="ex-card__blurb">Coming soon</span>
+      <span class="ex-card__blurb">{t('learn.hub.comingSoon')}</span>
     </div>
   )
 }

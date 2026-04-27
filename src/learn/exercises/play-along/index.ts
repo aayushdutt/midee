@@ -1,5 +1,6 @@
 import { getContext } from 'tone'
 import type { BusNoteEvent } from '../../../core/input/InputBus'
+import { t } from '../../../i18n'
 import { watch } from '../../../store/watch'
 import type { Exercise, ExerciseDescriptor } from '../../core/Exercise'
 import type { ExerciseContext } from '../../core/ExerciseContext'
@@ -19,11 +20,16 @@ const PLAY_ALONG_LOOK_AHEAD_SEC = 0.005
 
 export const playAlongDescriptor: ExerciseDescriptor = {
   id: 'play-along',
-  title: 'Play along',
+  // `title` / `blurb` are getters so the hub re-reads them after a locale
+  // flip — the descriptor object itself is constructed once at module load.
+  get title() {
+    return t('learn.exercise.playAlong.title')
+  },
   category: 'play-along',
   difficulty: 'beginner',
-  blurb:
-    'Drop a MIDI and play along. Wait-mode pauses at each chord until you hit the right notes.',
+  get blurb() {
+    return t('learn.exercise.playAlong.blurb')
+  },
   factory: (ctx) => new PlayAlongExercise(ctx),
 }
 
