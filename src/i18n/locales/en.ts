@@ -54,9 +54,9 @@ export const en = {
   'topStrip.mode.live.label': 'Live',
   'topStrip.mode.learn.label': 'Learn',
   // "Learn this MIDI" CTA (only visible when a piece is loaded in Play).
-  'topStrip.learnThis.aria': 'Learn this MIDI',
+  'topStrip.learnThis.aria': 'Learn this piece',
   'topStrip.learnThis.tip': 'Practice this piece with wait-mode',
-  'topStrip.learnThis.label': 'Learn',
+  'topStrip.learnThis.label': 'Learn this piece',
   // Topbar context strip — kicker (small label) + title (main).
   'topStrip.context.ready.kicker': 'Ready',
   'topStrip.context.ready.title': 'Open MIDI or play live',

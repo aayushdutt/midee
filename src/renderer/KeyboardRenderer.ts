@@ -73,14 +73,17 @@ export class KeyboardRenderer {
   private whiteActiveLayer: Graphics
   private blackActiveLayer: Graphics
 
-  // Persistent practice-mode hint layer — sits underneath the active overlay
-  // so a key the user has already pressed shows its accent over the hint
-  // glow rather than fighting with it. Redrawn only when the hint changes.
-  private practiceHintLayer: Graphics
+  // Persistent practice-mode hint layers. White-key hints sit below the baked
+  // black-key sprite so black keys naturally occlude neighboring white halos;
+  // black-key hints sit above the black sprite. This mirrors the active-key
+  // z-stack and avoids masks.
+  private whitePracticeHintLayer: Graphics
+  private blackPracticeHintLayer: Graphics
   private practiceSignature = ''
   private practicePulsePhase = 0
   private practiceTickerHandler: ((ticker: import('pixi.js').Ticker) => void) | null = null
   private practicePending: ReadonlySet<number> | null = null
+  private practiceAccepted: ReadonlySet<number> | null = null
   private practiceTheme: Theme | null = null
 
   // Snapshot of the last-drawn pitch→color map as a single signature string.
@@ -105,16 +108,17 @@ export class KeyboardRenderer {
     this.whiteActiveLayer.label = 'keyboard-active-white'
     this.blackActiveLayer = new Graphics()
     this.blackActiveLayer.label = 'keyboard-active-black'
-    this.practiceHintLayer = new Graphics()
-    this.practiceHintLayer.label = 'keyboard-practice-hint'
-    // Order matters: white active must sit above the white sprite but
-    // below the black sprite. Black active sits at the top of the stack.
+    this.whitePracticeHintLayer = new Graphics()
+    this.whitePracticeHintLayer.label = 'keyboard-practice-hint-white'
+    this.blackPracticeHintLayer = new Graphics()
+    this.blackPracticeHintLayer.label = 'keyboard-practice-hint-black'
+    // Order matters: white hints/active must sit above the white sprite but
+    // below the black sprite. Black hints/active sit above the black sprite.
     // Sprites are inserted by build() at the correct indices.
+    this.container.addChild(this.whitePracticeHintLayer)
     this.container.addChild(this.whiteActiveLayer)
+    this.container.addChild(this.blackPracticeHintLayer)
     this.container.addChild(this.blackActiveLayer)
-    // Practice hint sits at the very top so its pulse reads on both white
-    // and black keys regardless of static-sprite layering.
-    this.container.addChild(this.practiceHintLayer)
   }
 
   // Build or rebuild the static keyboard textures.
@@ -267,25 +271,24 @@ export class KeyboardRenderer {
     blackBake.destroy({ children: true })
 
     // ─── Assemble the z-stack ────────────────────────────────────────
-    // After the destroys above, the container holds only the two active
-    // layers [whiteActiveLayer, blackActiveLayer]. Reinsert the sprites
+    // After the destroys above, the container holds only the four overlay
+    // layers. Reinsert the sprites
     // at the correct indices so the final order is:
-    //   whiteSprite, whiteActiveLayer, blackSprite, blackActiveLayer
+    //   whiteSprite, whitePracticeHintLayer, whiteActiveLayer,
+    //   blackSprite, blackPracticeHintLayer, blackActiveLayer
     this.whiteSprite = new Sprite(this.whiteTexture)
     this.whiteSprite.y = yOffset
     this.container.addChildAt(this.whiteSprite, 0)
 
     this.blackSprite = new Sprite(this.blackTexture)
     this.blackSprite.y = yOffset
-    // After the whiteSprite insert at 0, the stack is:
-    //   [whiteSprite, whiteActiveLayer, blackActiveLayer]
-    // Insert blackSprite at index 2 so it lands between whiteActiveLayer
-    // and blackActiveLayer.
-    this.container.addChildAt(this.blackSprite, 2)
+    // Insert blackSprite between the white overlays and black overlays.
+    this.container.addChildAt(this.blackSprite, 3)
 
+    this.whitePracticeHintLayer.y = yOffset
     this.whiteActiveLayer.y = yOffset
+    this.blackPracticeHintLayer.y = yOffset
     this.blackActiveLayer.y = yOffset
-    this.practiceHintLayer.y = yOffset
     // Force a redraw of the hint layer on the next setPracticeHints call —
     // the geometry depends on the freshly-built viewport.
     this.practiceSignature = ''
@@ -356,6 +359,7 @@ export class KeyboardRenderer {
     theme: Theme,
   ): void {
     this.practicePending = pending
+    this.practiceAccepted = accepted
     this.practiceTheme = theme
     const sig = this.hintSignature(pending, accepted)
     if (sig !== this.practiceSignature) {
@@ -376,19 +380,17 @@ export class KeyboardRenderer {
       this.app.ticker.remove(this.practiceTickerHandler)
       this.practiceTickerHandler = null
       this.practicePulsePhase = 0
-      this.practiceHintLayer.clear()
+      this.drawPracticeHints()
     }
   }
 
   private drawPracticeHints(): void {
-    const layer = this.practiceHintLayer
-    layer.clear()
+    this.whitePracticeHintLayer.clear()
+    this.blackPracticeHintLayer.clear()
     const pending = this.practicePending
-    if (!pending || pending.size === 0) return
+    const accepted = this.practiceAccepted
+    if ((!pending || pending.size === 0) && (!accepted || accepted.size === 0)) return
     const theme = this.practiceTheme ?? this.theme
-    // Find any cached viewport positions via the static sprite as a proxy —
-    // we need geometry, so we lazily walk the same map drawActiveKeys uses.
-    // The container hosts a sprite for whites whose width matches canvasWidth.
     const yOffset = this.whiteSprite?.y ?? 0
     const totalH = this.whiteSprite?.height ?? 0
     if (totalH === 0) return
@@ -397,55 +399,75 @@ export class KeyboardRenderer {
     // the chord the remaining keys keep a strong baseline glow.
     const pulse = 0.55 + 0.45 * Math.abs(Math.sin(this.practicePulsePhase))
 
-    // Re-walk the keys we know about — pull positions from the saved sprite
-    // by re-deriving from MIDI bounds. We only use the same data the render
-    // pipeline already has access to (positions live in the Viewport, but
-    // they're keyed by pitch). We grab them via the locallyRetained sprite
-    // dimensions.
-    // For correctness, draw each requested pitch by querying the parent for
-    // positions through the public hint API; here we recompute approximate x
-    // by mapping pitch index to width.
-    // Pull the same key positions used at build time.
+    // Use the exact key positions captured during the latest static keyboard
+    // build so hint geometry matches the baked sprites.
     const positions = this.lastPositions
     if (!positions) return
 
-    layer.y = yOffset
+    this.whitePracticeHintLayer.y = yOffset
+    this.blackPracticeHintLayer.y = yOffset
     const accent = theme.uiAccentCSS
     const tint = parseHexColor(accent) ?? theme.trackColors[0] ?? theme.nowLine
+    const acceptedTint = 0x9ee7b8
     const fullKbHeight = totalH
 
+    if (accepted) {
+      for (const pitch of accepted) {
+        const pos = positions.get(pitch)
+        if (!pos) continue
+        const layer = isBlackKey(pitch) ? this.blackPracticeHintLayer : this.whitePracticeHintLayer
+        this.drawPracticeKey(layer, pitch, pos, fullKbHeight, acceptedTint, {
+          bodyAlpha: isBlackKey(pitch) ? 0.36 : 0.25,
+          stripAlpha: 0.58,
+          haloScale: 0.55,
+        })
+      }
+    }
+
+    if (!pending) return
     for (const pitch of pending) {
       const pos = positions.get(pitch)
       if (!pos) continue
       const isBlack = isBlackKey(pitch)
-      const w = pos.width
-      const x = pos.x
-      const h = isBlack ? fullKbHeight * 0.62 : fullKbHeight - 4
-      const y = isBlack ? 0 : 2
-      const radius = isBlack ? 2 : 3
-
-      // Halo — soft, thick, expands beyond the key footprint.
-      const halos: readonly [number, number][] = [
-        [12, 0.05 * pulse],
-        [7, 0.1 * pulse],
-        [3, 0.18 * pulse],
-      ]
-      for (const [expand, alpha] of halos) {
-        layer.roundRect(x - expand, y - expand, w + expand * 2, h + expand * 2, radius + expand)
-        layer.fill({ color: tint, alpha })
-      }
-
-      // Soft body fill — gentle, not as opaque as a press so the user can
-      // still distinguish "next up" from "playing".
-      const bodyAlpha = (isBlack ? 0.32 : 0.22) * pulse
-      layer.roundRect(x, y, w, h, radius)
-      layer.fill({ color: tint, alpha: bodyAlpha })
-
-      // Top accent strip — a thin bar of the accent so the pulse has a focal
-      // line. Sits inside the rounded corners.
-      layer.rect(x + radius, y, w - radius * 2, 2)
-      layer.fill({ color: tint, alpha: 0.55 * pulse })
+      const layer = isBlack ? this.blackPracticeHintLayer : this.whitePracticeHintLayer
+      this.drawPracticeKey(layer, pitch, pos, fullKbHeight, tint, {
+        bodyAlpha: (isBlack ? 0.32 : 0.22) * pulse,
+        stripAlpha: 0.55 * pulse,
+        haloScale: pulse,
+      })
     }
+  }
+
+  private drawPracticeKey(
+    layer: Graphics,
+    pitch: number,
+    pos: { x: number; width: number },
+    fullKbHeight: number,
+    tint: number,
+    opts: { bodyAlpha: number; stripAlpha: number; haloScale: number },
+  ): void {
+    const x = pos.x
+    const w = pos.width
+    const isBlack = isBlackKey(pitch)
+    const h = isBlack ? fullKbHeight * 0.62 : fullKbHeight - 4
+    const y = isBlack ? 0 : 2
+    const radius = isBlack ? 2 : 3
+
+    const halos: readonly [number, number][] = [
+      [12, 0.05 * opts.haloScale],
+      [7, 0.1 * opts.haloScale],
+      [3, 0.18 * opts.haloScale],
+    ]
+    for (const [expand, alpha] of halos) {
+      layer.roundRect(x - expand, y - expand, w + expand * 2, h + expand * 2, radius + expand)
+      layer.fill({ color: tint, alpha })
+    }
+
+    layer.roundRect(x, y, w, h, radius)
+    layer.fill({ color: tint, alpha: opts.bodyAlpha })
+
+    layer.rect(x + radius, y, w - radius * 2, 2)
+    layer.fill({ color: tint, alpha: opts.stripAlpha })
   }
 
   private hintSignature(

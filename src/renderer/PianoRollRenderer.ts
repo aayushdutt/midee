@@ -76,9 +76,11 @@ export class PianoRollRenderer {
   private liveNoteStore: LiveNoteStore | null = null
   private loopNoteStore: LiveNoteStore | null = null
   private visibleTrackIds = new Set<string>()
+  private practiceFocusTrackIds: Set<string> | null = null
   private theme: Theme = darkTheme
   private pixelsPerSecond = DEFAULT_PIXELS_PER_SECOND
   private keyboardHeight = DEFAULT_KEYBOARD_HEIGHT
+  private lastRenderTime = 0
 
   // Two pooled Sets swapped each frame. Keys are packed `trackIndex * 128 + pitch`
   // so comparisons never allocate strings in the hot path.
@@ -237,6 +239,7 @@ export class PianoRollRenderer {
   loadMidi(midi: MidiFile): void {
     this.midi = midi
     this.visibleTrackIds = new Set(midi.tracks.map((t) => t.id))
+    this.practiceFocusTrackIds = null
     this.noteRenderer.setTracks(midi.tracks)
     this.particles.clear()
     this.prevActive.clear()
@@ -247,6 +250,7 @@ export class PianoRollRenderer {
   clearMidi(): void {
     this.midi = null
     this.visibleTrackIds.clear()
+    this.practiceFocusTrackIds = null
     this.noteRenderer.setTracks([])
     this.noteRenderer.clear()
     this.liveNoteRenderer.clear()
@@ -262,6 +266,11 @@ export class PianoRollRenderer {
   setTrackVisible(trackId: string, visible: boolean): void {
     if (visible) this.visibleTrackIds.add(trackId)
     else this.visibleTrackIds.delete(trackId)
+  }
+
+  setPracticeTrackFocus(trackIds: Iterable<string> | null): void {
+    this.practiceFocusTrackIds = trackIds ? new Set(trackIds) : null
+    if (this.midi) this.renderStaticFrame(this.lastRenderTime)
   }
 
   setZoom(pixelsPerSecond: number): void {
@@ -364,6 +373,7 @@ export class PianoRollRenderer {
   }
 
   private renderFrame(currentTime: number, dt: number, emitParticles: boolean): void {
+    this.lastRenderTime = currentTime
     const curr = this.currActive
     const activeColors = this.activeKeyColors
     curr.clear()
@@ -390,6 +400,8 @@ export class PianoRollRenderer {
       for (let ti = 0; ti < tracks.length; ti++) {
         const track = tracks[ti]!
         if (!this.visibleTrackIds.has(track.id)) continue
+        const practiceInactive =
+          this.practiceFocusTrackIds !== null && !this.practiceFocusTrackIds.has(track.id)
         // Always compute the track color — we now use it for the keyboard
         // overlay too, not just particle bursts.
         const trackColor = getTrackColor(track, this.theme)
@@ -399,10 +411,13 @@ export class PianoRollRenderer {
           if (note.time > currentTime || note.time + note.duration < currentTime) continue
 
           const key = keyBase + note.pitch
-          curr.add(key)
-          if (!beforeFirstPlay) activeColors.set(note.pitch, trackColor)
+          const awaitingPracticePress = this.practiceHintPending?.has(note.pitch) ?? false
+          if (!practiceInactive && !awaitingPracticePress) {
+            curr.add(key)
+            if (!beforeFirstPlay) activeColors.set(note.pitch, trackColor)
+          }
 
-          if (!emitParticles) continue
+          if (!emitParticles || practiceInactive || awaitingPracticePress) continue
 
           const w = this.viewport.pitchWidth(note.pitch)
           const cx = this.viewport.pitchToX(note.pitch) + w / 2
@@ -434,7 +449,13 @@ export class PianoRollRenderer {
         this.viewport,
         this.theme,
       )
-      this.noteRenderer.draw(tracks, currentTime, this.viewport, this.visibleTrackIds)
+      this.noteRenderer.draw(
+        tracks,
+        currentTime,
+        this.viewport,
+        this.visibleTrackIds,
+        this.practiceFocusTrackIds,
+      )
     } else {
       this.noteRenderer.clear()
     }

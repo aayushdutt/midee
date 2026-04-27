@@ -2,7 +2,7 @@ import { Container, Graphics } from 'pixi.js'
 import type { RenderContext, RenderLayer } from '../../renderer/RenderLayer'
 
 // Shared cinematic vocabulary for Learn-mode exercises. Every exercise that
-// wants target zones, loop bands, upcoming-note glows, or celebration swells
+// wants target zones, loop bands, or celebration swells
 // drives them through this one overlay instead of drawing its own — so the
 // visual language stays consistent across the suite.
 //
@@ -46,12 +46,10 @@ export class LearnOverlay implements RenderLayer {
   private zoneGraphic: Graphics | null = null
   private loopGraphic: Graphics | null = null
   private celebrationGraphic: Graphics | null = null
-  private upcomingGraphic: Graphics | null = null
 
   private pulse: TargetPulse | null = null
   private celebrations: Celebration[] = []
   private loop: LoopBandState | null = null
-  private upcomingPitches: Set<number> = new Set()
 
   mount(stage: Container): void {
     if (this.container) return
@@ -59,13 +57,11 @@ export class LearnOverlay implements RenderLayer {
     root.label = 'learn-overlay'
     this.zoneGraphic = new Graphics()
     this.loopGraphic = new Graphics()
-    this.upcomingGraphic = new Graphics()
     this.celebrationGraphic = new Graphics()
     // Draw order inside the overlay: loop band (bottom) → target zone →
-    // upcoming highlights → celebration swells (top).
+    // celebration swells (top).
     root.addChild(this.loopGraphic)
     root.addChild(this.zoneGraphic)
-    root.addChild(this.upcomingGraphic)
     root.addChild(this.celebrationGraphic)
     stage.addChild(root)
     this.container = root
@@ -77,11 +73,9 @@ export class LearnOverlay implements RenderLayer {
     this.zoneGraphic = null
     this.loopGraphic = null
     this.celebrationGraphic = null
-    this.upcomingGraphic = null
     this.pulse = null
     this.celebrations = []
     this.loop = null
-    this.upcomingPitches.clear()
   }
 
   // ── Imperative API for exercises ────────────────────────────────────────
@@ -101,13 +95,6 @@ export class LearnOverlay implements RenderLayer {
     if (this.celebrations.length > 6) this.celebrations.shift()
   }
 
-  // Guidance hints drawn on top of the next ~8 upcoming notes. Pitches are
-  // keyboard pitches; the overlay renders thin outlines and lets
-  // `drawUpcoming` in `rebuild` do the geometry work. Empty set = off.
-  highlightUpcoming(pitches: Iterable<number>): void {
-    this.upcomingPitches = new Set(pitches)
-  }
-
   // Amber translucent band over a time range. `null` clears. Epsilon-free
   // here — exercises compute the range; the overlay just renders it.
   drawLoopBand(band: LoopBandState | null): void {
@@ -119,7 +106,6 @@ export class LearnOverlay implements RenderLayer {
   update(ctx: RenderContext): void {
     this.drawTargetZone(ctx)
     this.drawLoop(ctx)
-    this.drawUpcoming(ctx)
     this.drawCelebrations(ctx)
   }
 
@@ -128,7 +114,6 @@ export class LearnOverlay implements RenderLayer {
     // is both the simplest and cheapest approach.
     this.drawTargetZone(ctx)
     this.drawLoop(ctx)
-    this.drawUpcoming(ctx)
     this.drawCelebrations(ctx)
   }
 
@@ -182,24 +167,6 @@ export class LearnOverlay implements RenderLayer {
     g.fill({ color, alpha: LOOP_BAND_ALPHA * 0.5 })
     g.rect(0, bottom - fade, w, fade)
     g.fill({ color, alpha: LOOP_BAND_ALPHA * 0.5 })
-  }
-
-  private drawUpcoming(ctx: RenderContext): void {
-    const g = this.upcomingGraphic
-    if (!g) return
-    g.clear()
-    if (this.upcomingPitches.size === 0) return
-    // Thin stroke around each key at the now-line — the effect reads as a
-    // "next up" outline on the keyboard. Exercises that already render
-    // their own upcoming-note sprites can skip this path.
-    const y = ctx.viewport.nowLineY - TARGET_ZONE_HEIGHT
-    for (const pitch of this.upcomingPitches) {
-      const x = ctx.viewport.pitchToX(pitch)
-      const width = ctx.viewport.pitchWidth(pitch)
-      if (width <= 0) continue
-      g.rect(x + 0.5, y + 0.5, width - 1, TARGET_ZONE_HEIGHT * 2 - 1)
-      g.stroke({ color: ctx.theme.nowLine, alpha: 0.25, width: 1 })
-    }
   }
 
   private drawCelebrations(ctx: RenderContext): void {

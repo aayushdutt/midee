@@ -8,6 +8,8 @@ import type { Viewport } from './viewport'
 // A separate glow container holds only the notes currently being struck,
 // so the expensive GlowFilter only runs over a small subset each frame.
 
+const PRACTICE_INACTIVE_ALPHA_SCALE = 0.24
+
 export class NoteRenderer {
   readonly container: Container
 
@@ -68,6 +70,7 @@ export class NoteRenderer {
     currentTime: number,
     viewport: Viewport,
     visibleTrackIds: Set<string>,
+    practiceFocusTrackIds: ReadonlySet<string> | null,
   ): void {
     const { noteRadius } = this.theme
     const nowLineY = viewport.nowLineY
@@ -87,6 +90,8 @@ export class NoteRenderer {
       if (!visibleTrackIds.has(track.id)) continue
 
       const noteColor = getTrackColor(track, this.theme)
+      const practiceInactive =
+        practiceFocusTrackIds !== null && !practiceFocusTrackIds.has(track.id)
       const colorR = (noteColor >> 16) & 0xff
       const colorG = (noteColor >> 8) & 0xff
       const colorB = noteColor & 0xff
@@ -104,12 +109,17 @@ export class NoteRenderer {
         const y = noteTop
 
         // Velocity → alpha (0.5 minimum so faint notes are still visible)
-        const alpha = 0.5 + note.velocity * 0.5
+        const alpha =
+          (0.5 + note.velocity * 0.5) * (practiceInactive ? PRACTICE_INACTIVE_ALPHA_SCALE : 1)
 
         g.roundRect(x, y, w, h, noteRadius)
         g.fill({ color: noteColor, alpha })
 
-        if (note.time <= currentTime && note.time + note.duration >= currentTime) {
+        if (
+          !practiceInactive &&
+          note.time <= currentTime &&
+          note.time + note.duration >= currentTime
+        ) {
           this.glowGraphics.roundRect(x, y, w, h, noteRadius)
           this.glowGraphics.fill({ color: noteColor, alpha: 0.9 })
           sumR += colorR

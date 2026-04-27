@@ -67,6 +67,18 @@ function makeSynth() {
   }
 }
 
+function makeRenderer() {
+  const focusCalls: Array<string[] | null> = []
+  return {
+    setPracticeTrackFocus: (ids: Iterable<string> | null) => {
+      focusCalls.push(ids ? Array.from(ids) : null)
+    },
+    get focusCalls() {
+      return focusCalls
+    },
+  }
+}
+
 function makeMidi(): MidiFile {
   return {
     name: 'drill.mid',
@@ -96,25 +108,59 @@ function makeMidi(): MidiFile {
   }
 }
 
+function makeSplitHandMidi(): MidiFile {
+  return {
+    name: 'split.mid',
+    duration: 12,
+    bpm: 120,
+    timeSignature: [4, 4],
+    tracks: [
+      {
+        id: 'lh',
+        name: 'Left',
+        channel: 0,
+        instrument: 0,
+        isDrum: false,
+        color: 0xffffff,
+        colorIndex: 0,
+        notes: [{ pitch: 48, time: 2, duration: 0.5, velocity: 1 }],
+      },
+      {
+        id: 'rh',
+        name: 'Right',
+        channel: 1,
+        instrument: 0,
+        isDrum: false,
+        color: 0xffffff,
+        colorIndex: 1,
+        notes: [{ pitch: 72, time: 4, duration: 0.5, velocity: 1 }],
+      },
+    ],
+  }
+}
+
 function makeServices(): {
   services: AppServices
   clock: ReturnType<typeof makeClock>
   synth: ReturnType<typeof makeSynth>
+  renderer: ReturnType<typeof makeRenderer>
   learnState: LearnState
 } {
   const clock = makeClock()
   const synth = makeSynth()
+  const renderer = makeRenderer()
   const learnState = createLearnState()
   return {
     clock,
     synth,
+    renderer,
     learnState,
     services: {
       store: null as never,
       clock: clock as unknown as AppServices['clock'],
       synth: synth as unknown as AppServices['synth'],
       metronome: null as never,
-      renderer: null as never,
+      renderer: renderer as unknown as AppServices['renderer'],
       input: null as never,
     },
   }
@@ -220,6 +266,69 @@ describe('PlayAlongEngine', () => {
     // User explicitly pauses.
     engine.pause()
     expect(engine.state.userWantsToPlay).toBe(false)
+  })
+
+  it('continues to the selected hand when switching away from the current wait', () => {
+    const { services, clock, learnState, renderer } = makeServices()
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(makeSplitHandMidi())
+    engine.setWaitEnabled(true)
+    engine.play()
+
+    clock.emit(2.01)
+    expect(engine.practice.isWaiting).toBe(true)
+    expect(clock.playing).toBe(false)
+    expect(learnState.state.status).toBe('paused')
+
+    engine.setHand('right')
+    expect(engine.practice.isWaiting).toBe(false)
+    expect(clock.playing).toBe(true)
+    expect(learnState.state.status).toBe('playing')
+    expect(renderer.focusCalls.at(-1)).toEqual(['rh'])
+
+    clock.emit(4.01)
+    expect(engine.practice.isWaiting).toBe(true)
+    expect(clock.playing).toBe(false)
+    expect(learnState.state.status).toBe('paused')
+  })
+
+  it('keeps waiting when switching to the hand that owns the current wait', () => {
+    const { services, clock, learnState, renderer } = makeServices()
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(makeSplitHandMidi())
+    engine.setWaitEnabled(true)
+    engine.play()
+
+    clock.emit(2.01)
+    expect(engine.practice.isWaiting).toBe(true)
+    expect(clock.playing).toBe(false)
+
+    engine.setHand('left')
+    expect(engine.practice.isWaiting).toBe(true)
+    expect(clock.playing).toBe(false)
+    expect(learnState.state.status).toBe('paused')
+    expect(renderer.focusCalls.at(-1)).toEqual(['lh'])
+
+    engine.onNoteOn({ pitch: 48, velocity: 1, clockTime: 2.01, source: 'midi' })
+    expect(engine.state.perfect).toBe(1)
+    expect(clock.playing).toBe(true)
+    expect(learnState.state.status).toBe('playing')
+  })
+
+  it('does not resume playback on hand switch when the user is explicitly paused', () => {
+    const { services, clock, learnState, renderer } = makeServices()
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(makeSplitHandMidi())
+    engine.setWaitEnabled(true)
+
+    clock.emit(2.01)
+    expect(engine.practice.isWaiting).toBe(true)
+    engine.setHand('right')
+
+    expect(engine.practice.isWaiting).toBe(false)
+    expect(clock.playing).toBe(false)
+    expect(learnState.state.status).toBe('paused')
+    expect(renderer.focusCalls.at(-1)).toEqual(['rh'])
   })
 
   it('resets clean-pass counter on a wrong-pitch error while waiting', () => {

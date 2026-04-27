@@ -172,6 +172,7 @@ export class PlayAlongEngine {
     this.opts.learnState.setState('status', 'paused')
     this.practice.setEnabled(false)
     this.practice.dispose()
+    this.opts.services.renderer.setPracticeTrackFocus(null)
     this.opts.services.clock.speed = 1
     this.opts.services.synth.setSpeed(1)
   }
@@ -279,6 +280,7 @@ export class PlayAlongEngine {
   setHand(filter: HandFilter): void {
     this.setState('hand', filter)
     this.applyHand(this.currentMidi)
+    this.resumeAfterPracticeFilterChange()
   }
 
   setTempoRamp(enabled: boolean): void {
@@ -370,6 +372,7 @@ export class PlayAlongEngine {
     const filter = this.state.hand
     if (filter === 'both') {
       this.practice.setVisibleTracks(null)
+      this.opts.services.renderer.setPracticeTrackFocus(null)
       return
     }
     const visible = midi.tracks
@@ -380,6 +383,18 @@ export class PlayAlongEngine {
       })
       .map((t) => t.id)
     this.practice.setVisibleTracks(visible)
+    this.opts.services.renderer.setPracticeTrackFocus(visible)
+  }
+
+  private resumeAfterPracticeFilterChange(): void {
+    if (!this.active || !this.state.userWantsToPlay || this.practice.isWaiting) return
+    const { services, learnState } = this.opts
+    // A hand switch rebuilds PracticeEngine steps and may clear a wait that
+    // was holding the clock for the now-inactive hand. If the user still
+    // intends playback, continue from the current playhead until the selected
+    // hand's next step engages.
+    services.clock.play()
+    learnState.setState('status', 'playing')
   }
 
   private onTick(time: number): void {

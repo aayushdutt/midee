@@ -14,7 +14,7 @@ export interface RenderContext {
 }
 
 // A pluggable visual overlay hosted by PianoRollRenderer. Learn-mode overlays
-// (target zone, upcoming-note glow, loop-region band, staff cursor, etc.)
+// (target zone, loop-region band, staff cursor, etc.)
 // implement this interface and register themselves via `addLayer` when the
 // exercise mounts. The renderer owns draw order via `zIndex`; ties break in
 // insertion order.

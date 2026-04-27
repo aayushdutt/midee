@@ -93,12 +93,6 @@ class PlayAlongExercise implements Exercise {
     this.engine.attach(midi)
     // Wait mode is default-on for Play-Along.
     this.engine.setWaitEnabled(true)
-    // Auto-start the transport — the user landed here from a "start
-    // practice" click, so they expect playback to begin. Wait-mode
-    // will immediately halt at the first chord onset; without this the
-    // clock stays frozen at t=0 and clicking a key does nothing visible
-    // because no step has engaged yet.
-    this.engine.play()
     // Fold the engine's loop region into the overlay band whenever it
     // changes. Kept here rather than inside the engine so the engine stays
     // DOM/PixiJS-free. Subscription is tracked so `stop` can tear it down —
@@ -120,7 +114,19 @@ class PlayAlongExercise implements Exercise {
           }
         },
       ),
+      this.engine.practice.status.subscribe((status) => {
+        if (!status.waiting) {
+          this.ctx.services.renderer.setPracticeHints(null, null)
+          return
+        }
+        this.ctx.services.renderer.setPracticeHints(status.pending, status.accepted)
+      }),
     )
+    // Auto-start the transport after subscribers are wired — the user landed
+    // here from a "start practice" click, so they expect playback to begin.
+    // Wait-mode may halt on the first synchronous clock tick, so hint listeners
+    // must be ready before play().
+    this.engine.play()
     // Keyboard shortcuts. Kept local to the exercise — removed on stop so
     // they don't bleed into the hub or other modes.
     window.addEventListener('keydown', this.onKeyDown)
@@ -130,6 +136,7 @@ class PlayAlongExercise implements Exercise {
     window.removeEventListener('keydown', this.onKeyDown)
     for (const off of this.unsubs) off()
     this.unsubs = []
+    this.ctx.services.renderer.setPracticeHints(null, null)
     this.engine.detach()
     // Restore Tone lookAhead so Play / Live get back their default scheduling
     // headroom. Skipped (with the null check) when start() couldn't read it
@@ -147,6 +154,7 @@ class PlayAlongExercise implements Exercise {
   unmount(): void {
     this.hud.unmount()
     this.ctx.overlay.drawLoopBand(null)
+    this.ctx.services.renderer.setPracticeHints(null, null)
   }
 
   onNoteOn(evt: BusNoteEvent): void {

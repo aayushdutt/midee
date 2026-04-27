@@ -31,6 +31,12 @@ const REARM_BUFFER_SEC = 0.003
 // `PlayAlongExercise.start/stop` in `play-along/index.ts`.
 const ENGAGE_LEAD_SEC = 0.01
 
+// Human players often strike the next note just before the falling bar reaches
+// the target edge. Treat a small anticipation as intentional instead of making
+// the input feel dropped. Wider windows start to erase rhythm, so keep this
+// below a typical sixteenth-note at moderate tempos.
+const EARLY_ACCEPT_SEC = 0.12
+
 export interface PracticeStep {
   // Start time of the chord step (seconds).
   time: number
@@ -142,10 +148,17 @@ export class PracticeEngine {
   }
 
   setVisibleTracks(ids: Iterable<string> | null): void {
+    const previousWaitStep = this.waiting ? (this.steps[this.nextStepIdx] ?? null) : null
     this.visibleTrackIds = ids ? new Set(ids) : null
     this.rebuildSteps()
-    this.recomputeNextStep(this.clock.currentTime)
     this.releaseInternalState()
+    if (!this.enabled) {
+      this.publish()
+      return
+    }
+    if (previousWaitStep && this.reengageFilteredWait(previousWaitStep)) return
+    this.recomputeNextStep(this.clock.currentTime)
+    if (this.engageWaitIfDue(this.clock.currentTime)) return
     this.publish()
   }
 
@@ -179,7 +192,8 @@ export class PracticeEngine {
 
   // See `PressOutcome` for the four kinds and what they signal.
   notePressed(pitch: number): PressOutcome {
-    if (!this.enabled || !this.waiting) return { kind: 'rejected' }
+    if (!this.enabled) return { kind: 'rejected' }
+    if (!this.waiting && !this.tryEngageEarly(pitch)) return { kind: 'rejected' }
     if (this.accepted.has(pitch)) return { kind: 'duplicate' }
     if (!this.pending.has(pitch)) return { kind: 'rejected' }
     // Articulation timer starts on the FIRST accepted pitch of the step;
@@ -228,12 +242,18 @@ export class PracticeEngine {
     if (this.nextStepIdx < 0) return
     if (time < this.earliestRearmTime) return
 
+    this.engageWaitIfDue(time)
+  }
+
+  private engageWaitIfDue(time: number): boolean {
     const step = this.steps[this.nextStepIdx]
-    if (!step) return
+    if (!step) return false
 
     if (time >= step.time - ENGAGE_LEAD_SEC) {
       this.engageWait(step)
+      return true
     }
+    return false
   }
 
   private engageWait(step: PracticeStep): void {
@@ -242,6 +262,30 @@ export class PracticeEngine {
     this.accepted = new Set()
     this.publish()
     this.callbacks.onWaitStart(step)
+  }
+
+  private tryEngageEarly(pitch: number): boolean {
+    if (this.nextStepIdx < 0) return false
+    const step = this.steps[this.nextStepIdx]
+    if (!step) return false
+    const time = this.clock.currentTime
+    if (time < step.time - EARLY_ACCEPT_SEC || time >= step.time) return false
+    if (!step.pitches.has(pitch)) return false
+    this.engageWait(step)
+    return true
+  }
+
+  private reengageFilteredWait(previousStep: PracticeStep): boolean {
+    if (!this.enabled) return false
+    const idx = this.steps.findIndex(
+      (step) =>
+        Math.abs(step.time - previousStep.time) <= STEP_GROUPING_SEC &&
+        setsIntersect(step.pitches, previousStep.pitches),
+    )
+    if (idx < 0) return false
+    this.nextStepIdx = idx
+    this.engageWait(this.steps[idx]!)
+    return true
   }
 
   private advancePastCurrentStep(): void {
@@ -347,4 +391,11 @@ export class PracticeEngine {
     this.unsubClock?.()
     this.unsubClock = null
   }
+}
+
+function setsIntersect(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
+  for (const value of a) {
+    if (b.has(value)) return true
+  }
+  return false
 }

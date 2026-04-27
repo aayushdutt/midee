@@ -95,9 +95,9 @@ export class LearnController {
     this.overlay = new LearnOverlay()
     services.renderer.addLayer(this.overlay)
 
-    // Reflect any already-loaded learn song in the topbar — re-entering Learn
-    // with a piece still loaded should still show its name.
-    this.ctx.setLearnFileName(this.learnState.state.loadedMidi?.name ?? null)
+    // Learn is intentionally session-local: entering the hub starts from the
+    // picker instead of resurrecting a previous practice file.
+    this.clearLoadedLearnMidi()
     // Touch the streak so attendance counts even if the user bails before
     // finishing an exercise — "opened the app today" is still practice.
     this.progress.touchStreak()
@@ -212,6 +212,14 @@ export class LearnController {
   }
 
   private async consumeMidi(midi: MidiFile): Promise<void> {
+    // A newly selected piece is a fresh practice session. Do not inherit the
+    // previous exercise's playhead, hand focus, loop, or wait state.
+    if (this.runner?.isActive) this.runner.close('abandoned')
+    this.ctx.services.clock.pause()
+    this.ctx.services.clock.seek(0)
+    this.ctx.services.synth.pause()
+    this.ctx.services.renderer.clearMidi()
+    this.learnState.clearMidi()
     // Load the synth asynchronously — we don't await so the hub reflects the
     // new MIDI immediately while samples finish downloading in the background.
     this.ctx.services.synth.load(midi).catch((err) => {
@@ -252,15 +260,23 @@ export class LearnController {
   closeActiveExercise(reason: 'completed' | 'abandoned' = 'abandoned'): void {
     if (!this.runner?.isActive) return
     const lastDescriptor = this.runner.activeId
+    const lastMidi = this.learnState.state.loadedMidi
     const xpBefore = this.progress.xp
     const streakBefore = this.progress.streakDays
     const result = this.runner.close(reason)
     this.showHubView()
+    this.clearLoadedLearnMidi()
     if (result && lastDescriptor) {
       // Compute post-close deltas so the summary reads "+X XP, streak +1"
       // regardless of which internals changed.
       const summary = new SessionSummary({
-        onAgain: () => this.relaunchById(lastDescriptor),
+        onAgain: () => {
+          if (lastMidi && lastDescriptor === playAlongDescriptor.id) {
+            void this.consumeMidi(lastMidi)
+          } else {
+            this.relaunchById(lastDescriptor)
+          }
+        },
         onNext: () => {
           // No next recommendation yet — just dismiss (auto-fade also dismisses).
         },
@@ -337,6 +353,14 @@ export class LearnController {
     // showing — exercise mount restores it. stage.visible=false also skips
     // per-frame draw work, not just compositing.
     this.ctx.services.renderer.setVisible(false)
+  }
+
+  private clearLoadedLearnMidi(): void {
+    this.ctx.services.clock.pause()
+    this.ctx.services.clock.seek(0)
+    this.ctx.services.synth.pause()
+    this.learnState.clearMidi()
+    this.ctx.setLearnFileName(null)
   }
 
   private showExerciseView(): void {
