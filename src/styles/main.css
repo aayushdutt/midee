@@ -1014,25 +1014,8 @@ body {
   z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 28px 40px 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-}
-.learn-hub__brand {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.learn-hub__title {
-  font: 700 22px / 1 var(--font);
-  margin: 0;
-  letter-spacing: -0.02em;
-}
-.learn-hub__subtitle {
-  font: 400 12.5px / 1.3 var(--font);
-  color: var(--text-muted);
-  margin: 0;
+  justify-content: flex-end;
+  padding: 18px 40px 12px;
 }
 
 .learn-hub__scroll {
@@ -1884,9 +1867,7 @@ body {
 /* ─── Compact layout for narrow viewports ─────────────────── */
 @media (max-width: 720px) {
   .learn-hub__topbar {
-    padding: 20px 20px 14px;
-    flex-wrap: wrap;
-    gap: 10px;
+    padding: 14px 20px 10px;
   }
   .learn-hub__inner {
     padding: 22px 20px 32px;

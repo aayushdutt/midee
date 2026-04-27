@@ -1068,20 +1068,28 @@ export class App {
 
   // Entry point for every "open MIDI" action — top strip button, track panel,
   // play-mode entry without a loaded file, learn-hub upload CTA. Routes through
-  // the unified `MidiPickerModal` (drop / file picker / samples) and dispatches
-  // selections by current mode so Learn keeps its MIDI isolated from Play's.
-  openFilePicker(): void {
+  // the unified `MidiPickerModal` (drop / file picker / samples).
+  //
+  // `target` pins the destination at *call time*, not at file-pick time. This
+  // matters because `requestMode('play')` from Learn opens the picker without
+  // flipping the mode (we don't want a half-set-up Play surface flashing while
+  // the user is still choosing). If we read `store.state.mode` inside the
+  // file callback, it would still be 'learn' and the file would route to
+  // LearnController instead of Play. Explicit target avoids the race.
+  openFilePicker(target?: 'play' | 'learn'): void {
+    const resolveTarget = (): 'play' | 'learn' =>
+      target ?? (this.store.state.mode === 'learn' ? 'learn' : 'play')
     void this.ensureMidiPicker().then((modal) => {
       modal.open({
         onFile: (file) => {
-          if (this.store.state.mode === 'learn') {
+          if (resolveTarget() === 'learn') {
             void this.ensureLearnController().then((c) => c.loadMidiFromFile(file, 'picker'))
           } else {
             void this.loadMidi(file, 'picker')
           }
         },
         onSample: (id) => {
-          if (this.store.state.mode === 'learn') {
+          if (resolveTarget() === 'learn') {
             void this.ensureLearnController().then((c) => c.loadSample(id))
           } else {
             void this.loadSample(id)
@@ -1207,7 +1215,11 @@ export class App {
       this.enterPlayMode()
       return
     }
-    this.openFilePicker()
+    // Pin the target — without it, the picker would read `state.mode` at
+    // file-pick time and (if we came here from Learn) route the file back
+    // into Learn instead of opening it in Play. The user clicked Play; honor
+    // that even if their mode hasn't flipped yet.
+    this.openFilePicker('play')
   }
 
   // Hands the currently-loaded Play MIDI off to Learn and switches modes.

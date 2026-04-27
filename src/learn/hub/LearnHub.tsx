@@ -1,6 +1,5 @@
 import { createMemo, For, onCleanup, onMount, Show } from 'solid-js'
 import { render } from 'solid-js/web'
-import { t } from '../../i18n'
 import type { ExerciseCategory, ExerciseDescriptor } from '../core/Exercise'
 import type { LearnState } from '../core/LearnState'
 import type { LearnProgressStore } from '../core/progress'
@@ -161,11 +160,9 @@ function LearnHubView(props: LearnHubOptions) {
   return (
     <div class="learn-hub">
       <div class="learn-hub__glow" aria-hidden="true" />
+      {/* Topbar is just the streak — the global topbar's active "Learn" pill
+          already names the surface, no need to repeat the title + subtitle. */}
       <header class="learn-hub__topbar">
-        <div class="learn-hub__brand">
-          <h1 class="learn-hub__title">{t('learn.hub.title')}</h1>
-          <p class="learn-hub__subtitle">{t('learn.hub.subtitle')}</p>
-        </div>
         <div class="learn-hub__streak" ref={streakHost} />
       </header>
       <div class="learn-hub__scroll">
