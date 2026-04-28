@@ -592,15 +592,28 @@ body {
 
 /* ───────────────────────────────────────────────────────────────────────
    TOP STRIP — progressive label cascade
-   ≥1121px  Full layout
-   ≤1120    Tier 1: drop decorative labels (wordmark text, theme/particle
-            labels, instrument name, status kicker). Tightens pill padding.
-   ≤900     Tier 2: collapse primary pill labels (Open MIDI / Tracks / Live /
-            MIDI) into icons. Status title truncates harder. Instrument
-            chevron hides — the pill itself is still obviously a menu.
-   ≤680     Tier 3: status zone collapses to the dot. Export goes icon-only.
-            Everything hugs the edges with minimal gaps.
+   ≥1280px  Full layout
+   ≤1279    Wordmark text drops (icon-only brand mark)
+   ≤1120    Decorative labels drop (kicker, theme/particle, instrument name)
+   ≤1023    "Open MIDI" label drops (least-priority pill)
+   ≤899     All pill labels drop; mode switcher keeps only the active label;
+            instrument chevron hides
+   ≤679     Status zone → dot only; all mode labels drop (icons only);
+            export label drops
+   ≤519     Separator hides; pills/strip pack tighter for ≥360px phones
+
+   Selector convention:
+   - Hide LABEL spans only via `> span + span` (second/text span)
+   - The icon span (`> span:first-child`, holds inline SVG) always stays
+   - This avoids the prior bug where `.ts-pill > span:not(.icon-slot)`
+     hid the icon-bearing span too, leaving empty pill boxes
 ────────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 1280px) {
+  .ts-home-name {
+    display: none;
+  }
+}
 
 @media (max-width: 1120px) {
   .home-card {
@@ -609,9 +622,6 @@ body {
     gap: 14px;
   }
 
-  .ts-home-name {
-    display: none;
-  }
   .ts-status-kicker {
     display: none;
   }
@@ -632,17 +642,41 @@ body {
   }
 }
 
-@media (max-width: 900px) {
+/* New tier — fixes the 1024×768 dead zone where the dense 6-pill cluster
+   collided with the centered status. Drops the lowest-priority pill label
+   first ("Open MIDI" — discoverable as an upload-icon button). */
+@media (max-width: 1023px) {
+  #ts-open > span + span {
+    display: none;
+  }
+  #ts-open {
+    padding: 0 9px;
+    gap: 0;
+  }
+  /* Mode switcher: only the active segment carries its label. Inactive ones
+     fall back to icon-only — the segmented thumb + active label still gives
+     enough orientation that the user knows where they are. */
+  .ts-mode-seg:not(.is-active) .ts-mode-label {
+    display: none;
+  }
+  .ts-mode-seg {
+    min-width: 0;
+    padding: 0 11px;
+  }
+  .ts-status {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 899px) {
   #top-strip {
     top: 10px;
     left: 10px;
     right: 10px;
-    gap: 8px;
     padding: 0 6px 0 10px;
   }
-  /* Hide label spans across action pills, but keep the instrument's icon
-     slot (which wraps the glyph + loading spinner) visible. */
-  .ts-pill > span:not(.ts-instrument-icon-slot) {
+  /* Hide LABEL spans only — icon span (first child) stays visible. */
+  .ts-pill > span + span {
     display: none;
   }
   .ts-pill {
@@ -665,7 +699,7 @@ body {
   }
 }
 
-@media (max-width: 680px) {
+@media (max-width: 679px) {
   .ts-status-main,
   .ts-bars {
     display: none;
@@ -674,7 +708,16 @@ body {
     padding: 0 4px;
     gap: 0;
   }
-  .ts-record-btn span {
+  /* Drop active-mode label too — at this width every mode segment is icon-only. */
+  .ts-mode-seg .ts-mode-label {
+    display: none;
+  }
+  .ts-mode-seg {
+    padding: 0 9px;
+    min-width: 0;
+  }
+  /* LABEL only — icon stays. */
+  .ts-record-btn > span + span {
     display: none;
   }
   .ts-record-btn {
@@ -685,6 +728,29 @@ body {
   }
   .ts-end {
     gap: 3px;
+  }
+}
+
+/* Phones (≥360px target). Pack tighter, drop the action-group separator —
+   at this width the visual grouping it provided is irrelevant; horizontal
+   space is the priority. */
+@media (max-width: 519px) {
+  #top-strip {
+    gap: 4px;
+    padding: 0 4px 0 6px;
+  }
+  .ts-sep {
+    display: none;
+  }
+  .ts-mode-seg {
+    padding: 0 7px;
+  }
+  .ts-pill {
+    padding: 0 7px;
+    height: 30px;
+  }
+  .ts-record-btn {
+    padding: 0 8px;
   }
 }
 
@@ -757,7 +823,9 @@ body {
   display: grid;
   grid-template-columns: auto auto 1fr auto;
   align-items: center;
-  gap: 12px;
+  /* Continuous gap — avoids stepped jumps at the responsive tier
+     breakpoints. Floor of 6px keeps things from cramping on phones. */
+  gap: clamp(6px, 1vw, 12px);
   padding: 0 8px 0 14px;
   background: rgba(7, 9, 18, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -790,6 +858,7 @@ body {
 .ts-end {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
   flex-shrink: 0;
 }
@@ -1015,7 +1084,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 18px 40px 12px;
+  /* Push content below the floating #top-strip (14px offset + 54px height +
+     12px breathing room = 80px, plus the iOS notch inset). Without this the
+     streak row renders at ~18px from the top — directly behind the strip. */
+  padding: calc(80px + env(safe-area-inset-top)) 40px 12px;
 }
 
 .learn-hub__scroll {
@@ -1867,7 +1939,8 @@ body {
 /* ─── Compact layout for narrow viewports ─────────────────── */
 @media (max-width: 720px) {
   .learn-hub__topbar {
-    padding: 14px 20px 10px;
+    /* At ≤900 the strip tucks to top:10px, so 74px clears it cleanly. */
+    padding: calc(74px + env(safe-area-inset-top)) 20px 10px;
   }
   .learn-hub__inner {
     padding: 22px 20px 32px;
@@ -2375,15 +2448,6 @@ body {
   color: var(--text);
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
-/* Compact widths: shrink segment padding, still show both labels. */
-@media (max-width: 640px) {
-  .ts-mode-seg {
-    min-width: 0;
-    padding: 0 10px;
-    font-size: 11.5px;
-  }
 }
 
 /* ─── Status display (center zone) — display-only, not interactive ─── */

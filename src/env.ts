@@ -18,9 +18,14 @@ export const env = createEnv({
       .transform((v) => v === true || v === 'true' || v === '1'),
     VITE_POSTHOG_KEY: z.string().optional(),
     VITE_POSTHOG_HOST: z.string().optional(),
+    VITE_SHOW_FPS: z
+      .union([z.string(), z.boolean()])
+      .optional()
+      .transform((v) => v === true || v === 'true' || v === '1'),
   },
   runtimeEnv: import.meta.env,
   emptyStringAsUndefined: true,
 })
 
 export const ENABLE_LEARN_MODE = env.VITE_ENABLE_LEARN_MODE
+export const SHOW_FPS = env.VITE_SHOW_FPS

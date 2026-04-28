@@ -1,4 +1,4 @@
-import { isBlackKey, MIDI_MAX, MIDI_MIN } from '../core/midi/types'
+import { isBlackKey, MIDI_MAX, MIDI_MIN, type MidiNote } from '../core/midi/types'
 
 // The strike line sits directly on the keyboard edge so notes "land" where the
 // keys begin instead of floating relative to the HUD.
@@ -139,4 +139,48 @@ export class Viewport {
       this.keyPositions.set(p, { x: left.x + blackOffset, width: blackW })
     }
   }
+}
+
+/**
+ * Returns a half-open index range [lo, hi) of the notes in `notes` (sorted by
+ * note.time ascending) whose time window overlaps [visStart, visEnd].
+ *
+ * Upper bound — first note starting strictly after visEnd — is found in O(log N).
+ * Lower bound — first note that might still extend into visStart — is found by
+ * binary-searching for the first note.time >= visStart, then scanning backward
+ * over any long notes that started before visStart but haven't ended yet.  That
+ * scan is O(K) where K is the number of overlapping long-held notes (typically 0–3).
+ *
+ * Total cost: O(log N + K) vs the previous O(N) linear scan.
+ */
+export function visibleNoteRange(
+  notes: readonly MidiNote[],
+  visStart: number,
+  visEnd: number,
+): [number, number] {
+  const len = notes.length
+  if (len === 0) return [0, 0]
+
+  // Upper bound: first index where note.time > visEnd.
+  let lo = 0,
+    hi = len
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (notes[mid]!.time <= visEnd) lo = mid + 1
+    else hi = mid
+  }
+  const upper = lo
+
+  // Lower bound: binary-search for first index where note.time >= visStart,
+  // then scan back for any note that started before visStart but still extends in.
+  lo = 0
+  hi = upper
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1
+    if (notes[mid]!.time < visStart) lo = mid + 1
+    else hi = mid
+  }
+  while (lo > 0 && notes[lo - 1]!.time + notes[lo - 1]!.duration > visStart) lo--
+
+  return [lo, upper]
 }

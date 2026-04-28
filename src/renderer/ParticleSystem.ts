@@ -1,4 +1,4 @@
-import { Container, Graphics, Sprite, Texture } from 'pixi.js'
+import { Container, Sprite, Texture } from 'pixi.js'
 
 // Per-style presets. The visual personality lives here; the renderer itself
 // is style-agnostic. Wind is a *single directional* vector picked at construction
@@ -356,31 +356,11 @@ export class ParticleSystem {
   }
 }
 
-// Build a 64×64 radial gradient texture once. All particles share it and
-// recolour via Sprite.tint — zero per-frame geometry rebuilds.
+// Build a 64×64 radial gradient texture once via Canvas 2D. All particles
+// share it and recolour via Sprite.tint — zero per-frame geometry rebuilds.
+// Tuned for additive blending: bright core + long soft tail so overlapping
+// tails compound into a smooth bloom without any filter pass.
 function buildRadialTexture(): Texture {
-  const g = new Graphics()
-  // Stacked concentric discs fake a radial gradient without requiring a 2D
-  // canvas — stays in PixiJS's own renderer.
-  const steps = 12
-  for (let i = steps; i >= 1; i--) {
-    const r = (i / steps) * (TEXTURE_RESOLUTION * 0.5)
-    const a = (1 - i / steps) ** 2 * 0.9
-    g.circle(TEXTURE_RESOLUTION / 2, TEXTURE_RESOLUTION / 2, r).fill({ color: 0xffffff, alpha: a })
-  }
-  const texture = renderToTexture(g)
-  g.destroy()
-  return texture
-}
-
-// Helper kept in-module to avoid leaking the PixiJS app reference around.
-// We generate the texture eagerly during construction, before any `app`
-// exists — so we fall back to a dynamic Canvas2D gradient that PixiJS can
-// sample. This is only done once.
-// Build a radial-gradient texture tuned for additive blending: small bright
-// core + long soft tail. Under `blendMode: 'add'`, overlapping tails compound
-// into a smooth bloom without any filter pass — glow "for free".
-function renderToTexture(_g: Graphics): Texture {
   const c = document.createElement('canvas')
   c.width = c.height = TEXTURE_RESOLUTION
   const ctx = c.getContext('2d')!

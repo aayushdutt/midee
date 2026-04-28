@@ -2,7 +2,7 @@ import { Container, Graphics } from 'pixi.js'
 import { GlowFilter } from 'pixi-filters'
 import type { MidiTrack } from '../core/midi/types'
 import { getTrackColor, type Theme } from './theme'
-import type { Viewport } from './viewport'
+import { type Viewport, visibleNoteRange } from './viewport'
 
 // One Graphics object per track — same-color draws are batched together.
 // A separate glow container holds only the notes currently being struck,
@@ -81,6 +81,9 @@ export class NoteRenderer {
       sumG = 0,
       sumB = 0
 
+    const visStart = currentTime - viewport.trailSeconds - 0.5
+    const visEnd = currentTime + viewport.lookaheadSeconds + 0.5
+
     for (const track of tracks) {
       const g = this.trackGraphics.get(track.id)
       if (!g) continue
@@ -96,8 +99,9 @@ export class NoteRenderer {
       const colorG = (noteColor >> 8) & 0xff
       const colorB = noteColor & 0xff
 
-      for (const note of track.notes) {
-        if (!viewport.isTimeVisible(note.time, note.duration, currentTime)) continue
+      const [lo, hi] = visibleNoteRange(track.notes, visStart, visEnd)
+      for (let ni = lo; ni < hi; ni++) {
+        const note = track.notes[ni]!
 
         const x = viewport.pitchToX(note.pitch)
         const w = Math.max(viewport.pitchWidth(note.pitch) - 1, 2)

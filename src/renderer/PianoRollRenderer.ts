@@ -9,7 +9,7 @@ import { NoteRenderer } from './NoteRenderer'
 import { ParticleSystem } from './ParticleSystem'
 import type { RenderContext, RenderLayer } from './RenderLayer'
 import { darkTheme, getTrackColor, type Theme } from './theme'
-import { Viewport } from './viewport'
+import { Viewport, visibleNoteRange } from './viewport'
 
 // Must match the `--keyboard-h` value in main.css :root and the reset value
 // in KeyboardResizer.onDoubleClick — all three describe the same default,
@@ -146,6 +146,8 @@ export class PianoRollRenderer {
     document.documentElement.style.setProperty('--keyboard-h', `${this.keyboardHeight}px`)
 
     this.buildScene()
+    // handleResize calls resize() → rebuildStaticLayers() + renderStaticFrame(0),
+    // so buildScene must not call rebuildStaticLayers itself.
     this.handleResize()
 
     window.addEventListener('resize', this.handleResize)
@@ -179,8 +181,6 @@ export class PianoRollRenderer {
 
     this.particles = new ParticleSystem()
     stage.addChild(this.particles.container)
-
-    this.rebuildStaticLayers()
   }
 
   // Redraw every layer whose contents don't change per frame: background, now-line,
@@ -259,7 +259,7 @@ export class PianoRollRenderer {
     this.currActive.clear()
     this.scheduledEmitNext.clear()
     this.liveEmitNext.clear()
-    this.beatGrid.graphics.clear()
+    this.beatGrid.clear()
     this.renderStaticFrame(0)
   }
 
@@ -276,8 +276,10 @@ export class PianoRollRenderer {
   setZoom(pixelsPerSecond: number): void {
     this.pixelsPerSecond = pixelsPerSecond
     // Key layout and keyboard texture are width-dependent, not zoom-dependent —
-    // no need to rebuild them when only pixelsPerSecond changes.
+    // no need to rebuild them when only pixelsPerSecond changes. External layers
+    // may cache timeOffsetToY-derived positions though, so notify them.
     this.viewport.update({ pixelsPerSecond })
+    this.rebuildExternalLayers()
   }
 
   // Narrows or widens the visible pitch range. Used during vertical/square
@@ -407,8 +409,9 @@ export class PianoRollRenderer {
         const trackColor = getTrackColor(track, this.theme)
         const keyBase = ti * 128
 
-        for (const note of track.notes) {
-          if (note.time > currentTime || note.time + note.duration < currentTime) continue
+        const [alo, ahi] = visibleNoteRange(track.notes, currentTime, currentTime)
+        for (let ni = alo; ni < ahi; ni++) {
+          const note = track.notes[ni]!
 
           const key = keyBase + note.pitch
           const awaitingPracticePress = this.practiceHintPending?.has(note.pitch) ?? false

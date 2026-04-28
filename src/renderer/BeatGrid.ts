@@ -10,6 +10,10 @@ export class BeatGrid {
     this.graphics.label = 'beat-grid'
   }
 
+  clear(): void {
+    this.graphics.clear()
+  }
+
   draw(
     currentTime: number,
     bpm: number,
