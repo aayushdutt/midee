@@ -222,6 +222,9 @@ const es: Messages = {
   'learn.exercise.playAlong.title': 'Tocar junto',
   'learn.exercise.playAlong.blurb':
     'Suelta un MIDI y toca con él. El modo de espera pausa en cada acorde hasta que pulsas las notas correctas.',
+  'learn.exercise.sightReading.title': 'Lectura a vista',
+  'learn.exercise.sightReading.blurb':
+    'Las notas pasan por la línea — lee el pentagrama y presiona la tecla correcta a tiempo.',
 
   'learn.intervals.kicker': 'Entrenamiento auditivo',
   'learn.intervals.title': 'Intervalos',

@@ -268,15 +268,12 @@ export class App {
         metronomeBpmStore.save(this.metronome.bpm.value)
       },
       onSessionToggle: () => this.toggleSessionRecord(),
-      onHudPinChange: (pinned) => hudPinnedStore.save(pinned),
       onChordToggle: () => this.toggleChordOverlay(),
       onOctaveShift: (delta) => {
         if (delta < 0) this.keyboardInput.shiftOctaveDown()
         else this.keyboardInput.shiftOctaveUp()
       },
     })
-
-    this.controls.setHudPinned(hudPinnedStore.load())
 
     const pushLoop = (): void =>
       this.controls.updateLoopState(this.liveLooper.state.value, this.liveLooper.layerCount.value)
@@ -314,22 +311,6 @@ export class App {
       this.liveLooper.progress.subscribe((p) => this.controls.updateLoopProgress(p)),
     )
     pushSession()
-
-    // Keep the HUD visible whenever something is actively running — session
-    // capture, any loop state, or the metronome. Prevents auto-hide from
-    // stealing the transport mid-take.
-    const recomputeActivity = (): void => {
-      const recording = this.sessionRec.recording.value
-      const loopActive = this.liveLooper.state.value !== 'idle'
-      const metroOn = this.metronome.running.value
-      this.controls.setHudActivityLock(recording || loopActive || metroOn)
-    }
-    this.unsubs.push(
-      this.sessionRec.recording.subscribe(recomputeActivity),
-      this.liveLooper.state.subscribe(recomputeActivity),
-      this.metronome.running.subscribe(recomputeActivity),
-    )
-    recomputeActivity()
 
     this.trackPanel = new TrackPanel(
       overlay,
@@ -1560,7 +1541,6 @@ const particleIndexStore = indexPersisted(
   PARTICLE_STYLES.length,
 )
 const metronomeBpmStore = numberPersisted('midee.metronomeBpm', 120, 40, 240)
-const hudPinnedStore = booleanPersisted('midee.hudPinned', false)
 // Chord readout defaults *on*: it's the headline live-mode cue. The
 // boolean store treats "no preference" as the fallback (true), and only
 // an explicit "false" turns it off.

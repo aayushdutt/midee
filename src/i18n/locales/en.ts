@@ -249,6 +249,9 @@ export const en = {
   'learn.exercise.playAlong.title': 'Play along',
   'learn.exercise.playAlong.blurb':
     'Drop a MIDI and play along. Wait-mode pauses at each chord until you hit the right notes.',
+  'learn.exercise.sightReading.title': 'Sight Reading',
+  'learn.exercise.sightReading.blurb':
+    'Notes scroll past the hit line — read the staff and press the right key in time.',
 
   // Intervals quiz UI.
   'learn.intervals.kicker': 'Ear training',

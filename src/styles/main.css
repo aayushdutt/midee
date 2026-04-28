@@ -1398,74 +1398,34 @@ body {
 
 /* ─── Play-Along HUD ─────────────────────────────────────── */
 
-/* Floating, moveable, pinnable card. Reuses `hud-bar` for backdrop / border /
-   shadow so it matches the Play and Live bars. Layout is a CSS grid with two
-   rows:
-     row 1 │ handle · transport (play + scrubber) · meta (score + close)
-     row 2 │ options, centered, wrap-friendly
-   `--hud-dx` / `--hud-dy` are set by the HUD's drag handler so the user's
-   position is preserved via CSS transform (no reflow). */
-.pa-hud {
-  pointer-events: auto;
-  position: absolute;
-  bottom: calc(var(--keyboard-h, 120px) + var(--hud-gap, 16px) + env(safe-area-inset-bottom));
-  left: 50%;
-  transform: translateX(calc(-50% + var(--hud-dx, 0px))) translateY(var(--hud-dy, 0px));
+/* Play-Along HUD. Uses FloatingHud for the outer pill, drag/pin/idle.
+   Overrides width + padding; wraps content in a two-row grid. */
+.float-hud.pa-hud {
   width: min(720px, calc(100vw - 24px));
   height: auto;
-  padding: 10px 14px 12px;
-  /* Chrome that mirrors .hud-bar — but owned locally since .hud-bar locks
-     `height: 56px` which breaks this HUD's two-row grid. */
-  background: rgba(7, 7, 15, 0.93);
-  backdrop-filter: blur(48px) saturate(160%);
-  -webkit-backdrop-filter: blur(48px) saturate(160%);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  box-shadow:
-    0 24px 64px rgba(0, 0, 0, 0.75),
-    0 8px 24px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.045);
-  /* `minmax(0, 1fr)` — crucial. `1fr` defaults to `minmax(auto, 1fr)` which
-     has a min of min-content, so if the scrubber's ideal width is wide, the
-     column refuses to shrink and the meta column gets pushed out / overlaps. */
+  padding: 10px 14px 12px 0;
+  align-items: flex-start;
+}
+
+/* Suppress the generic float-hud__sep; handle's border-right already separates. */
+.float-hud.pa-hud > .float-hud__sep {
+  display: none;
+}
+
+/* Two-row grid: [transport | meta] on row 1, [options] spanning row 2.
+   `minmax(0, 1fr)` prevents the scrubber from refusing to shrink. */
+.pa-hud__body {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-rows: auto auto;
   grid-template-areas:
-    "handle transport meta"
-    "options options options";
+    "transport meta"
+    "options   options";
   align-items: center;
   column-gap: 12px;
   row-gap: 8px;
-  z-index: 15;
-  transition:
-    opacity 0.35s var(--ease-out),
-    transform 0.2s var(--ease-out);
-}
-
-.pa-hud.pa-hud--dragging {
-  cursor: grabbing;
-  user-select: none;
-}
-.pa-hud.pa-hud--dragging * {
-  cursor: grabbing !important;
-}
-
-/* Idle fade while playing (matches the main HUD's auto-hide behaviour).
-   Pin suppresses this — see PlayAlongHud.scheduleIdleFade. */
-.pa-hud.pa-hud--idle:not(.pa-hud--pinned):not(.pa-hud--dragging):not(:hover) {
-  opacity: 0.28;
-}
-
-.pa-hud__handle {
-  grid-area: handle;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding-right: 2px;
-  border-right: 1px solid var(--border);
-  margin-right: 2px;
-  height: 28px;
+  flex: 1;
+  min-width: 0;
 }
 
 .pa-hud__transport {
@@ -1980,10 +1940,12 @@ body {
   .learn-hub__grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   }
-  .pa-hud {
-    grid-template-columns: auto 1fr auto;
+  .float-hud.pa-hud {
+    width: min(calc(100vw - 16px), 720px);
+    padding: 8px 12px 10px 0;
+  }
+  .pa-hud__body {
     column-gap: 8px;
-    padding: 8px 12px 10px;
   }
   .pa-hud__seg-label {
     display: none;
@@ -2814,45 +2776,25 @@ body {
 }
 
 /* ─────────────────────────────────────────
-   BOTTOM HUD
+   FLOATING HUD — shared glass pill wrapper
+   Used by: main HUD (play/live), play-along, sight-reading.
 ───────────────────────────────────────── */
 
-#hud {
+/* Canonical glass pill + positioning. Drag offset applied via --hud-dx/dy CSS vars. */
+.float-hud {
   position: absolute;
-  /* Float above the keyboard AND the iOS home-indicator safe area. */
-  bottom: calc(var(--keyboard-h) + var(--hud-gap) + env(safe-area-inset-bottom));
+  bottom: calc(var(--keyboard-h, 120px) + var(--hud-gap, 16px) + env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(calc(-50% + var(--hud-dx, 0px))) translateY(var(--hud-dy, 0px));
-  /* Width follows content — avoids a half-empty bar in live mode where
-     transport controls are hidden. Constrain so ultra-wide screens don't stretch it. */
-  width: auto;
-  max-width: min(760px, calc(100vw - 32px));
-  pointer-events: none;
-  opacity: 0;
-  z-index: 15;
-  transition:
-    opacity 0.4s var(--ease-out),
-    transform 0.4s var(--ease-out);
-}
-
-#hud.hud--active {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* Auto-hides when playing + idle — slides down and fades */
-#hud.hud--active.hud--idle {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(calc(-50% + var(--hud-dx, 0px))) translateY(calc(var(--hud-dy, 0px) + 14px));
-}
-
-.hud-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 56px; /* fixed height — same in live and file modes */
-  padding: 0 14px;
+  gap: 0;
+  pointer-events: auto;
+  z-index: 15;
+  white-space: nowrap;
+  font-family: var(--font, system-ui, sans-serif);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.75);
   background: rgba(7, 7, 15, 0.93);
   backdrop-filter: blur(48px) saturate(160%);
   -webkit-backdrop-filter: blur(48px) saturate(160%);
@@ -2862,6 +2804,81 @@ body {
     0 24px 64px rgba(0, 0, 0, 0.75),
     0 8px 24px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  transition: opacity 0.35s var(--ease-out, cubic-bezier(0.15, 0.88, 0.35, 1));
+}
+
+/* Idle: learn HUDs dim to 28%; main HUD (#hud) overrides to fully hide */
+.float-hud.float-hud--idle:not(.float-hud--pinned):not(.float-hud--dragging):not(:hover) {
+  opacity: 0.28;
+}
+
+.float-hud.float-hud--dragging {
+  cursor: grabbing;
+  user-select: none;
+  /* Kill all transitions while dragging — transform must follow cursor instantly. */
+  transition: none;
+}
+.float-hud.float-hud--dragging * {
+  cursor: grabbing !important;
+}
+
+/* Drag handle + pin cluster — always leftmost */
+.float-hud__handle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px 0 10px;
+  border-right: 1px solid var(--border);
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+
+/* Thin vertical separator between sections */
+.float-hud__sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 12px;
+  flex-shrink: 0;
+}
+
+/* ── Main HUD (#hud) overrides ─────────────────────────────────────
+   Hidden by default; shown only when hud--active (play or live mode).
+   Fully slides away when idle (vs learn HUDs that only dim). */
+#hud {
+  opacity: 0;
+  pointer-events: none;
+  max-width: min(760px, calc(100vw - 32px));
+  height: 56px; /* fixed so bar doesn't resize between play↔live mode */
+  padding-right: 14px;
+  transition: opacity 0.4s var(--ease-out);
+}
+
+#hud.hud--active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Main HUD idle: fully hide + slide down — learn HUDs only dim.
+   Own transition so the slide only animates on idle-state change, not on drag. */
+#hud.hud--active.float-hud--idle:not(.float-hud--pinned):not(.float-hud--dragging):not(:hover) {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(calc(-50% + var(--hud-dx, 0px))) translateY(calc(var(--hud-dy, 0px) + 14px));
+  transition:
+    opacity 0.4s var(--ease-out),
+    transform 0.4s var(--ease-out);
+}
+
+/* Controls wrapper inside the main HUD pill — flex child of float-hud.
+   The glass pill, position, and drag offset all live on float-hud now;
+   hud-bar only needs the flex layout that keeps buttons on one row. */
+.hud-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
 .hud-group {
@@ -2874,7 +2891,7 @@ body {
 #hud.hud--live .hud-group--transport {
   display: none;
 }
-/* Instrument button shows in live mode only — that's where people pick a sound */
+/* Instrument button shows in live mode only */
 #hud:not(.hud--live) .hud-group--instrument {
   display: none;
 }
@@ -2902,11 +2919,9 @@ body {
   background: rgba(255, 255, 255, 0.06);
 }
 
-#hud.hud--dragging,
-#hud.hud--dragging .hud-drag-handle {
+.float-hud.float-hud--dragging .hud-drag-handle {
   cursor: grabbing;
 }
-
 /* Pin toggle — disables auto-hide when active. Sits next to the drag handle
    so grip + pin live in the same "handle" cluster. */
 .hud-pin-btn {
@@ -5704,18 +5719,26 @@ body.canvas-hidden #kbd-resizer {
     width: auto;
   }
   /* Drag / pin are desktop-floating affordances — drop them at fixed dock. */
-  #hud .hud-drag-handle,
-  #hud .hud-pin-btn {
+  #hud .float-hud__handle {
     display: none;
   }
   /* Idle auto-hide on desktop slides down; on mobile that would push it
      into the roll. Fade only. */
-  #hud.hud--active.hud--idle {
+  #hud.hud--active.float-hud--idle {
     transform: none;
   }
 
   /* Two-row layout: transport icons centered on row 1, scrubber flows
      full-width on row 2. Auto height lets both rows breathe. */
+  /* Override the outer pill for mobile portrait dock (fixed top position,
+     full-width, no blur so it reads as a header bar not a floating card). */
+  #hud {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow:
+      0 6px 16px rgba(0, 0, 0, 0.55),
+      inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  }
   .hud-bar {
     height: auto;
     min-height: 48px;
@@ -5725,14 +5748,6 @@ body.canvas-hidden #kbd-resizer {
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
-
-    background: #07070f;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    border-radius: 14px;
-    box-shadow:
-      0 6px 16px rgba(0, 0, 0, 0.55),
-      inset 0 1px 0 rgba(255, 255, 255, 0.045);
   }
 
   /* Hide secondary controls that don't fit a 375px row: mini-sliders
@@ -5856,40 +5871,28 @@ body.canvas-hidden #kbd-resizer {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
-/* Desktop HUD lives at the bottom of the viewport — flip the tip above
-   the control so it doesn't drop off the screen edge. */
-.hud-bar [data-tip]::after {
+/* All floating HUDs sit above the keyboard — flip tips upward so they
+   don't land on the keys below. Covers main HUD, play-along, sight-reading. */
+.float-hud [data-tip]::after {
   top: auto;
   bottom: calc(100% + 8px);
   transform: translateX(-50%) translateY(4px);
 }
-.hud-bar [data-tip]:hover::after,
-.hud-bar [data-tip]:focus-visible::after,
-.hud-bar [data-tip]:active::after {
-  transform: translateX(-50%) translateY(0);
-}
-/* Play-Along HUD shares the same tooltip convention — flip above so hints
-   don't land on top of the keyboard that sits directly below the bar. */
-.pa-hud [data-tip]::after {
-  top: auto;
-  bottom: calc(100% + 8px);
-  transform: translateX(-50%) translateY(4px);
-}
-.pa-hud [data-tip]:hover::after,
-.pa-hud [data-tip]:focus-visible::after,
-.pa-hud [data-tip]:active::after {
+.float-hud [data-tip]:hover::after,
+.float-hud [data-tip]:focus-visible::after,
+.float-hud [data-tip]:active::after {
   transform: translateX(-50%) translateY(0);
 }
 /* On mobile portrait the HUD is docked at the top, so flip back to below. */
 @media (max-width: 640px) and (orientation: portrait) {
-  .hud-bar [data-tip]::after {
+  .float-hud [data-tip]::after {
     top: calc(100% + 8px);
     bottom: auto;
     transform: translateX(-50%) translateY(-4px);
   }
-  .hud-bar [data-tip]:hover::after,
-  .hud-bar [data-tip]:focus-visible::after,
-  .hud-bar [data-tip]:active::after {
+  .float-hud [data-tip]:hover::after,
+  .float-hud [data-tip]:focus-visible::after,
+  .float-hud [data-tip]:active::after {
     transform: translateX(-50%) translateY(0);
   }
 }
@@ -6925,4 +6928,382 @@ body.canvas-hidden #kbd-resizer {
   .ts-chord-readout--on {
     display: none;
   }
+}
+
+/* ─── Sight-reading exercise HUD ───────────────────────── */
+
+/* Control bar uses FloatingHud; override height + right padding only. */
+.float-hud.sr-hud {
+  height: 44px;
+  padding-right: 16px;
+}
+
+.sr-hud__sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 12px;
+  flex-shrink: 0;
+}
+
+/* Streak chip */
+.sr-hud__streak {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 28px;
+}
+.sr-hud__streak--warm {
+  color: #ffb84d;
+}
+.sr-hud__streak--hot {
+  color: #f5c842;
+  font-weight: 600;
+}
+
+/* Lives dots */
+.sr-hud__lives {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  position: relative;
+}
+.sr-hud__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent, #ffc83c);
+  transition:
+    opacity 0.2s,
+    background 0.2s;
+}
+.sr-hud__dot--spent {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* BPM control */
+.sr-hud__bpm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sr-hud__bpm-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.sr-hud__bpm-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+.sr-hud__bpm-btn:active {
+  background: rgba(255, 255, 255, 0.16);
+}
+.sr-hud__bpm-val {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent, #ffc83c);
+  min-width: 34px;
+  text-align: center;
+}
+.sr-hud__bpm-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Accuracy chip */
+.sr-hud__acc {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  min-width: 34px;
+  text-align: center;
+}
+
+/* Close button */
+.sr-hud__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.sr-hud__close:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* ─── Sight-reading pause overlay ──────────────────────── */
+
+.sr-pause {
+  pointer-events: auto;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  font-family: var(--font, system-ui, sans-serif);
+}
+.sr-pause__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: #e8e0d0;
+}
+.sr-pause__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+}
+.sr-pause__resume {
+  background: var(--accent, #ffc83c);
+  color: #14120e;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 36px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  transition: filter 0.15s;
+}
+.sr-pause__resume:hover {
+  filter: brightness(1.08);
+}
+.sr-pause__hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.22);
+}
+.sr-pause__kbd {
+  font-size: 10px;
+  opacity: 0.75;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: inherit;
+}
+
+/* ─── Sight-reading end panel ───────────────────────────── */
+
+@keyframes sr-end-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sr-end {
+  pointer-events: auto;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-family: var(--font, system-ui, sans-serif);
+}
+
+.sr-end__card {
+  background: rgba(7, 7, 15, 0.97);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  border-radius: 24px;
+  padding: 32px 36px 28px;
+  min-width: 300px;
+  max-width: 380px;
+  width: calc(100vw - 48px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  color: #e8e0d0;
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.85),
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  animation: sr-end-in 0.3s var(--ease-out, cubic-bezier(0.15, 0.88, 0.35, 1)) both;
+}
+
+/* Grade block */
+.sr-end__grade-block {
+  text-align: center;
+}
+.sr-end__grade {
+  font-size: 80px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.sr-end__subtitle {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.04em;
+}
+
+/* Stats row */
+.sr-end__stats {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+}
+.sr-end__stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.sr-end__stat-glyph {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.35);
+}
+.sr-end__stat-num {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.85);
+}
+.sr-end__stat-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.sr-end__stat--perfect .sr-end__stat-glyph,
+.sr-end__stat--perfect .sr-end__stat-num {
+  color: #50c878;
+}
+.sr-end__stat--good .sr-end__stat-glyph,
+.sr-end__stat--good .sr-end__stat-num {
+  color: #ffb84d;
+}
+.sr-end__stat--miss .sr-end__stat-glyph,
+.sr-end__stat--miss .sr-end__stat-num {
+  color: #dc4646;
+}
+
+/* XP badge */
+.sr-end__xp {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent, #ffc83c);
+  background: rgba(255, 200, 60, 0.1);
+  border: 1px solid rgba(255, 200, 60, 0.2);
+  border-radius: 20px;
+  padding: 4px 14px;
+  letter-spacing: 0.04em;
+}
+
+/* Weak notes */
+.sr-end__weak {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+}
+.sr-end__weak-notes {
+  color: #ffb84d;
+  font-weight: 600;
+}
+
+/* CTA buttons */
+.sr-end__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.sr-end__btn {
+  border-radius: 10px;
+  padding: 11px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  font-family: inherit;
+  border: none;
+  transition:
+    filter 0.15s,
+    background 0.15s;
+}
+.sr-end__btn--primary {
+  background: var(--accent, #ffc83c);
+  color: #14120e;
+}
+.sr-end__btn--primary:hover {
+  filter: brightness(1.08);
+}
+.sr-end__btn--secondary {
+  background: rgba(255, 255, 255, 0.07);
+  color: #e8e0d0;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  font-weight: 500;
+}
+.sr-end__btn--secondary:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+.sr-end__btn--ghost {
+  background: none;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 13px;
+  font-weight: 400;
+  padding: 6px 20px;
+}
+.sr-end__btn--ghost:hover {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ─── Shared SR utility ──────────────────────────────────── */
+
+.sr-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }

@@ -9,6 +9,7 @@ import type { MidiDeviceStatus } from '../midi/MidiInputManager'
 import type { AppMode } from '../store/state'
 import { watch } from '../store/watch'
 import { DragCoachmark } from './DragCoachmark'
+import { FloatingHud } from './FloatingHud'
 import { icons } from './icons'
 import { isLearnCoachmarkSeen, LearnCoachmark } from './LearnCoachmark'
 
@@ -16,7 +17,6 @@ const SKIP_SECONDS = 10
 export const ZOOM_MIN = 80
 export const ZOOM_MAX = 600
 export const ZOOM_DEFAULT = 200
-const IDLE_MS = 2500
 
 // Grouped UI state with field-level reactivity. Each top-level key is read
 // individually in JSX so updates fan out only to the views that actually
@@ -27,7 +27,6 @@ interface UiStoreShape {
   session: { recording: boolean; elapsed: number }
   loop: { state: LiveLooperState; layerCount: number; progressDeg: number }
   metro: { running: boolean; bpm: number }
-  hudOffset: { dx: number; dy: number }
 }
 
 export interface ControlsOptions {
@@ -52,7 +51,6 @@ export interface ControlsOptions {
   onMetronomeToggle?: () => void
   onMetronomeBpmChange?: (bpm: number) => void
   onSessionToggle?: () => void
-  onHudPinChange?: (pinned: boolean) => void
   onChordToggle?: () => void
   onOctaveShift?: (delta: number) => void
 }
@@ -262,9 +260,6 @@ interface HudProps {
   status: () => string
   showPlayHud: () => boolean
   showLiveHud: () => boolean
-  idle: () => boolean
-  dragging: () => boolean
-  pinned: () => boolean
   playing: () => boolean
   instrumentLoading: () => boolean
   sessionRecording: () => boolean
@@ -277,8 +272,6 @@ interface HudProps {
   loopUndoVisible: () => boolean
   metroRunning: () => boolean
   metroBpm: () => number
-  hudDx: () => number
-  hudDy: () => number
   onPlay: () => void
   onSkipBack: () => void
   onSkipFwd: () => void
@@ -294,13 +287,10 @@ interface HudProps {
   onLoopUndo: () => void
   onLoopSave: () => void
   onLoopClear: () => void
-  onPin: () => void
-  onHudDragStart: (e: PointerEvent) => void
   onScrubberInput: () => void
   onScrubberChange: () => void
   onScrubberDown: () => void
   onScrubberTouch: () => void
-  registerHud: (el: HTMLElement) => void
   registerScrubber: (el: HTMLInputElement) => void
   registerTime: (el: HTMLElement) => void
   registerDuration: (el: HTMLElement) => void
@@ -309,49 +299,33 @@ interface HudProps {
   speed: () => number
   speedLabel: () => string
   zoom: () => number
+  wakeRef: (fn: () => void) => void
+  togglePinRef: (fn: () => void) => void
+  onIdleChange: (idle: boolean) => void
+  onHasDragged: () => void
 }
 
 function HudView(props: HudProps) {
   return (
-    <div
+    <FloatingHud
       id="hud"
-      ref={(el) => props.registerHud(el)}
-      classList={{
+      dragBtnId="hud-drag"
+      storageKey="midee.hud"
+      classList={() => ({
         'hud--active': props.showPlayHud() || props.showLiveHud(),
         'hud--playing': props.mode() === 'play' && props.status() === 'playing',
         'hud--exporting': props.status() === 'exporting',
         'hud--live': props.showLiveHud(),
         'hud--play': props.showPlayHud(),
-        'hud--idle': props.idle(),
-        'hud--dragging': props.dragging(),
-      }}
-      style={{
-        '--hud-dx': `${props.hudDx()}px`,
-        '--hud-dy': `${props.hudDy()}px`,
-      }}
+      })}
+      idleEnabled={() => (props.showPlayHud() && props.playing()) || props.showLiveHud()}
+      locked={() => props.sessionRecording() || props.loopActive() || props.metroRunning()}
+      wakeRef={props.wakeRef}
+      togglePinRef={props.togglePinRef}
+      onIdleChange={props.onIdleChange}
+      onHasDragged={props.onHasDragged}
     >
       <div class="hud-bar">
-        <button
-          class="hud-drag-handle"
-          id="hud-drag"
-          type="button"
-          aria-label={t('hud.aria.drag')}
-          data-tip={t('hud.drag')}
-          onPointerDown={(e) => props.onHudDragStart(e)}
-          innerHTML={icons.grip()}
-        />
-        <button
-          class="hud-pin-btn"
-          classList={{ 'hud-pin-btn--on': props.pinned() }}
-          id="hud-pin"
-          type="button"
-          aria-label={t('hud.aria.pin')}
-          aria-pressed={props.pinned() ? 'true' : 'false'}
-          data-tip={t('hud.pin')}
-          onClick={() => props.onPin()}
-          innerHTML={icons.pin()}
-        />
-
         <div class="hud-group hud-group--transport">
           <button
             type="button"
@@ -578,7 +552,7 @@ function HudView(props: HudProps) {
           innerHTML={icons.close()}
         />
       </div>
-    </div>
+    </FloatingHud>
   )
 }
 
@@ -709,7 +683,6 @@ function KeyHintView(props: KeyHintProps) {
 
 export class Controls {
   private topStripEl!: HTMLElement
-  private hudEl!: HTMLElement
   private scrubber!: HTMLInputElement
   private timeDisplay!: HTMLElement
   private durationEl!: HTMLElement
@@ -718,39 +691,23 @@ export class Controls {
 
   private disposeRoot: (() => void) | null = null
 
-  private idleTimer: ReturnType<typeof setTimeout> | null = null
-  private hudActivityLock = false
   private isScrubbing = false
-  // Learn mode owns its own MIDI store separate from `appStore.loadedMidi`,
-  // so the topbar context can't read it via the `store.state.loadedMidi`
-  // watch the way Play does. LearnController pushes the song name through
-  // `updateLearnFileName` whenever its loaded file changes.
   private learnFileName: string | null = null
-  // Cached values for throttling DOM writes — only update when the user would
-  // actually see a difference. Cuts ~180 DOM writes/sec during playback.
   private lastDisplaySec = -1
   private lastFillPct = -1
-  private isDraggingHud = false
-  private hudDragStartX = 0
-  private hudDragStartY = 0
-  private hudDragOriginX = 0
-  private hudDragOriginY = 0
   private unsubs: Array<() => void> = []
 
-  // Reactive state — drives the three JSX views. The six grouped fields
-  // (context/midi/session/loop/metro/hudOffset) live on a single `createStore`
-  // so partial writes (e.g. updating just `loop.progressDeg` at 60 Hz) only
-  // re-fire JSX getters that read that exact field. The remaining flat
-  // signals are independent flags whose updates don't fan out.
+  // Escape hatches into FloatingHud's reactive state.
+  private hudWake: (() => void) | null = null
+  private hudTogglePin: (() => void) | null = null
+
+  // Reactive state — drives the three JSX views.
   private uiStore!: UiStoreShape
   private setUi!: SetStoreFunction<UiStoreShape>
   private readonly setDimTopStrip: (v: boolean) => void
   private readonly setHudIdle: (v: boolean) => void
-  private readonly setHudDragging: (v: boolean) => void
   private readonly setHudHasDragged: (v: boolean) => void
   private readonly hudHasDraggedSig: () => boolean
-  private readonly sigHudPinned: () => boolean
-  private readonly setHudPinnedSig: (v: boolean) => void
   private readonly setInstrumentLoadingSig: (v: boolean) => void
   private readonly setKeyHintCollapsed: (v: boolean) => void
   private readonly setOctave: (v: number) => void
@@ -760,12 +717,11 @@ export class Controls {
 
   // Document-level listeners bound at construction.
   private onMouseMoveDoc = (): void => {
-    if (this.hudEl?.classList.contains('hud--active')) this.wakeUp()
+    const { store } = this.opts.services
+    const m = store.state.mode
+    if (m === 'play' || m === 'live') this.wakeUp()
   }
   private onKeyDownDoc = (e: KeyboardEvent): void => this.handleKey(e)
-  private onPointerMoveDoc = (e: PointerEvent): void => this.handleHudDragMove(e)
-  private onPointerUpDoc = (): void => this.stopHudDrag()
-  private onWindowResize = (): void => this.clampHudOffset()
 
   constructor(private opts: ControlsOptions) {
     const { store } = opts.services
@@ -775,13 +731,11 @@ export class Controls {
     const [hasFile, setHasFile] = createSignal<boolean>(store.state.loadedMidi !== null)
     const [dimTopStrip, setDimTopStrip] = createSignal(false)
     const [hudIdle, setHudIdle] = createSignal(false)
-    const [hudDragging, setHudDragging] = createSignal(false)
     const [hudHasDragged, setHudHasDragged] = createSignal(loadHudHasDragged())
     // Reactive mirror of the learn-coachmark "seen" flag so the drag
     // coachmark's eligibility re-evaluates the moment Learn fires (the
     // localStorage read alone is not reactive).
     const [learnCoachmarkSeen, setLearnCoachmarkSeen] = createSignal(isLearnCoachmarkSeen())
-    const [hudPinned, setHudPinned] = createSignal(false)
     const [instrumentLoading, setInstrumentLoading] = createSignal(false)
     const [keyHintCollapsed, setKeyHintCollapsed] = createSignal(loadKeyHintHidden())
     const [octave, setOctave] = createSignal(4)
@@ -798,7 +752,6 @@ export class Controls {
       session: { recording: false, elapsed: 0 },
       loop: { state: 'idle', layerCount: 0, progressDeg: 0 },
       metro: { running: false, bpm: 120 },
-      hudOffset: { dx: 0, dy: 0 },
     })
     this.uiStore = uiStore
     this.setUi = setUi
@@ -806,11 +759,8 @@ export class Controls {
     void mode
     this.setDimTopStrip = setDimTopStrip
     this.setHudIdle = setHudIdle
-    this.setHudDragging = setHudDragging
     this.setHudHasDragged = setHudHasDragged
     this.hudHasDraggedSig = hudHasDragged
-    this.sigHudPinned = hudPinned
-    this.setHudPinnedSig = setHudPinned
     this.setInstrumentLoadingSig = setInstrumentLoading
     this.setKeyHintCollapsed = setKeyHintCollapsed
     this.setOctave = setOctave
@@ -864,9 +814,6 @@ export class Controls {
             status={status}
             showPlayHud={() => mode() === 'play' && hasFile() && status() !== 'loading'}
             showLiveHud={() => mode() === 'live'}
-            idle={hudIdle}
-            dragging={hudDragging}
-            pinned={hudPinned}
             playing={() => status() === 'playing'}
             instrumentLoading={instrumentLoading}
             sessionRecording={() => uiStore.session.recording}
@@ -891,8 +838,6 @@ export class Controls {
             }}
             metroRunning={() => uiStore.metro.running}
             metroBpm={() => uiStore.metro.bpm}
-            hudDx={() => uiStore.hudOffset.dx}
-            hudDy={() => uiStore.hudOffset.dy}
             onPlay={() => this.handlePlayClick()}
             onSkipBack={() => this.handleSkip(-SKIP_SECONDS)}
             onSkipFwd={() => this.handleSkip(SKIP_SECONDS)}
@@ -921,8 +866,6 @@ export class Controls {
             onLoopUndo={() => opts.onLoopUndo?.()}
             onLoopSave={() => opts.onLoopSave?.()}
             onLoopClear={() => opts.onLoopClear?.()}
-            onPin={() => this.togglePin()}
-            onHudDragStart={(e) => this.startHudDrag(e)}
             onScrubberDown={() => {
               this.isScrubbing = true
               this.wakeUp()
@@ -942,9 +885,6 @@ export class Controls {
               opts.services.clock.seek(t)
               opts.onSeek?.(t)
             }}
-            registerHud={(el) => {
-              this.hudEl = el
-            }}
             registerScrubber={(el) => {
               this.scrubber = el
             }}
@@ -961,6 +901,22 @@ export class Controls {
             speed={speed}
             speedLabel={() => formatSpeed(speed())}
             zoom={zoom}
+            wakeRef={(fn) => {
+              this.hudWake = fn
+            }}
+            togglePinRef={(fn) => {
+              this.hudTogglePin = fn
+            }}
+            onIdleChange={(idle) => {
+              this.setHudIdle(idle)
+              this.setDimTopStrip(idle)
+            }}
+            onHasDragged={() => {
+              if (!this.hudHasDraggedSig()) {
+                this.setHudHasDragged(true)
+                saveHudHasDragged()
+              }
+            }}
           />
           {/* Mounted *after* HudView so the `#hud-drag` anchor exists when
               the coachmark's onMount looks it up. */}
@@ -1068,7 +1024,6 @@ export class Controls {
 
     document.addEventListener('mousemove', this.onMouseMoveDoc)
     document.addEventListener('keydown', this.onKeyDownDoc)
-    window.addEventListener('resize', this.onWindowResize)
 
     this.refreshUi()
   }
@@ -1108,19 +1063,6 @@ export class Controls {
     this.metroBeatEl.classList.remove('hud-metro-beat--tick', 'hud-metro-beat--down')
     void this.metroBeatEl.offsetWidth
     this.metroBeatEl.classList.add(isDownbeat ? 'hud-metro-beat--down' : 'hud-metro-beat--tick')
-  }
-
-  setHudPinned(pinned: boolean): void {
-    this.setHudPinnedSig(pinned)
-    if (pinned) this.clearIdle()
-    else this.scheduleIdle()
-  }
-
-  setHudActivityLock(locked: boolean): void {
-    if (this.hudActivityLock === locked) return
-    this.hudActivityLock = locked
-    if (locked) this.clearIdle()
-    else this.scheduleIdle()
   }
 
   updateLoopState(state: LiveLooperState, layerCount: number): void {
@@ -1165,10 +1107,6 @@ export class Controls {
     this.unsubs = []
     document.removeEventListener('mousemove', this.onMouseMoveDoc)
     document.removeEventListener('keydown', this.onKeyDownDoc)
-    document.removeEventListener('pointermove', this.onPointerMoveDoc)
-    document.removeEventListener('pointerup', this.onPointerUpDoc)
-    window.removeEventListener('resize', this.onWindowResize)
-    this.clearIdle()
     this.disposeRoot?.()
     this.disposeRoot = null
   }
@@ -1207,7 +1145,7 @@ export class Controls {
 
     if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.code === 'KeyP') {
       e.preventDefault()
-      this.togglePin()
+      this.hudTogglePin?.()
       return
     }
 
@@ -1226,7 +1164,7 @@ export class Controls {
       } else if (e.code === 'KeyR' && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
         // Bare R only — leaves Cmd+R / Shift+Cmd+R for the browser's reload
         // shortcuts and avoids hijacking the user's muscle memory.
-        if (!this.hudEl.classList.contains('hud--exporting')) {
+        if (this.opts.services.store.state.status !== 'exporting') {
           this.opts.onRecord?.()
         }
       }
@@ -1274,12 +1212,6 @@ export class Controls {
     }
   }
 
-  private togglePin(): void {
-    const next = !this.sigHudPinned()
-    this.setHudPinned(next)
-    this.opts.onHudPinChange?.(next)
-  }
-
   private bumpBpm(delta: number): void {
     const current = this.uiStore.metro.bpm
     this.opts.onMetronomeBpmChange?.(current + delta)
@@ -1293,14 +1225,6 @@ export class Controls {
     const showLiveHud = mode === 'live'
 
     this.renderContext(mode, store.state.loadedMidi?.name ?? null)
-
-    if ((isPlayMode && status === 'playing') || showLiveHud) {
-      this.scheduleIdle()
-    } else {
-      this.clearIdle()
-    }
-    // Clamp any drag offset whenever the HUD visibility or layout changes.
-    this.clampHudOffset()
   }
 
   private renderContext(mode: AppMode, fileName: string | null): void {
@@ -1365,89 +1289,7 @@ export class Controls {
 
   private wakeUp(): void {
     this.setDimTopStrip(false)
-    this.setHudIdle(false)
-    this.scheduleIdle()
-  }
-
-  private scheduleIdle(): void {
-    this.clearIdle()
-    if (this.sigHudPinned() || this.hudActivityLock) return
-    const mode = this.opts.services.store.state.mode
-    const status = this.opts.services.store.state.status
-    const isPlaying = mode === 'play' && status === 'playing'
-    const isLive = mode === 'live'
-    if (!isPlaying && !isLive) return
-    this.idleTimer = setTimeout(() => {
-      if (!this.isScrubbing) {
-        this.setDimTopStrip(true)
-        this.setHudIdle(true)
-      }
-    }, IDLE_MS)
-  }
-
-  private clearIdle(): void {
-    if (this.idleTimer) {
-      clearTimeout(this.idleTimer)
-      this.idleTimer = null
-    }
-    this.setDimTopStrip(false)
-    this.setHudIdle(false)
-  }
-
-  private startHudDrag(e: PointerEvent): void {
-    e.preventDefault()
-    this.isDraggingHud = true
-    this.hudDragStartX = e.clientX
-    this.hudDragStartY = e.clientY
-    const off = this.uiStore.hudOffset
-    this.hudDragOriginX = off.dx
-    this.hudDragOriginY = off.dy
-    this.setHudDragging(true)
-    if (!this.hudHasDraggedSig()) {
-      this.setHudHasDragged(true)
-      saveHudHasDragged()
-    }
-    document.addEventListener('pointermove', this.onPointerMoveDoc)
-    document.addEventListener('pointerup', this.onPointerUpDoc)
-  }
-
-  private handleHudDragMove(e: PointerEvent): void {
-    if (!this.isDraggingHud) return
-    this.setUi('hudOffset', {
-      dx: this.hudDragOriginX + (e.clientX - this.hudDragStartX),
-      dy: this.hudDragOriginY + (e.clientY - this.hudDragStartY),
-    })
-    this.clampHudOffset()
-  }
-
-  private stopHudDrag(): void {
-    if (!this.isDraggingHud) return
-    this.isDraggingHud = false
-    this.setHudDragging(false)
-    document.removeEventListener('pointermove', this.onPointerMoveDoc)
-    document.removeEventListener('pointerup', this.onPointerUpDoc)
-  }
-
-  private clampHudOffset(): void {
-    if (!this.hudEl) return
-    const hudRect = this.hudEl.getBoundingClientRect()
-    if (hudRect.width === 0 || hudRect.height === 0) return
-
-    const rootStyles = getComputedStyle(document.documentElement)
-    const keyboardHeight = parseFloat(rootStyles.getPropertyValue('--keyboard-h')) || 120
-    const hudGap = parseFloat(rootStyles.getPropertyValue('--hud-gap')) || 14
-    const defaultLeft = (window.innerWidth - hudRect.width) / 2
-    const defaultTop = window.innerHeight - keyboardHeight - hudGap - hudRect.height
-    const topStripBottom = this.topStripEl.getBoundingClientRect().bottom
-    const minLeft = 12
-    const maxLeft = Math.max(minLeft, window.innerWidth - hudRect.width - 12)
-    const minTop = Math.max(topStripBottom + 12, 12)
-    const maxTop = Math.max(minTop, window.innerHeight - keyboardHeight - hudRect.height - 12)
-    const { dx, dy } = this.uiStore.hudOffset
-    const nextLeft = clamp(defaultLeft + dx, minLeft, maxLeft)
-    const nextTop = clamp(defaultTop + dy, minTop, maxTop)
-
-    this.setUi('hudOffset', { dx: nextLeft - defaultLeft, dy: nextTop - defaultTop })
+    this.hudWake?.()
   }
 
   private updateFill(t: number): void {
@@ -1496,10 +1338,6 @@ function formatMMSS(s: number): string {
 function formatSpeed(s: number): string {
   if (s === 1) return '1x'
   return `${s % 1 === 0 ? s : s.toFixed(2).replace(/0+$/, '')}x`
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max)
 }
 
 const KEY_HINT_HIDDEN_KEY = 'midee.keyHintHidden'

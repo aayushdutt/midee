@@ -1,7 +1,8 @@
-import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from 'solid-js'
+import { createEffect, createMemo, onCleanup, onMount, Show } from 'solid-js'
 import { render } from 'solid-js/web'
 import { t } from '../../../i18n'
 import { watch } from '../../../store/watch'
+import { FloatingHud } from '../../../ui/FloatingHud'
 import { icons } from '../../../ui/icons'
 import type { PlayAlongEngine } from './engine'
 
@@ -15,9 +16,6 @@ function fmtTime(t: number): string {
   const r = s % 60
   return `${m}:${r < 10 ? '0' : ''}${r}`
 }
-
-const STORAGE_KEY_PIN = 'midee.learn.pa.pinned'
-const STORAGE_KEY_OFFSET = 'midee.learn.pa.offset'
 
 const PLAY_GLYPH =
   '<svg class="pa-hud__play-icon pa-hud__play-icon--play" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><title>Play</title><path d="M4 3 L13 8 L4 13 Z"/></svg>'
@@ -35,48 +33,13 @@ const RAMP_GLYPH =
 export interface PlayAlongHudOptions {
   engine: PlayAlongEngine
   onCloseExercise: () => void
-  // One handler: drives the mark-style state machine (idle → A → B → clear).
-  // Routed through the exercise so the keyboard shortcut and the button stay
-  // in sync.
   onMarkLoop: () => void
-  // Explicit clear (the small × that appears once a loop is active or
-  // half-marked). Same outcome as a third onMarkLoop call but lets the user
-  // bail out of a half-set state without making a second mark.
   onClearLoop: () => void
 }
 
-function loadPinned(): boolean {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_PIN)
-    return raw ? JSON.parse(raw) === true : false
-  } catch {
-    return false
-  }
-}
-
-function loadOffset(): { x: number; y: number } {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_OFFSET)
-    if (!raw) return { x: 0, y: 0 }
-    const parsed = JSON.parse(raw) as { x?: number; y?: number }
-    return {
-      x: typeof parsed.x === 'number' ? parsed.x : 0,
-      y: typeof parsed.y === 'number' ? parsed.y : 0,
-    }
-  } catch {
-    return { x: 0, y: 0 }
-  }
-}
-
-// Always-visible score panel. The visual language follows §1 of the Learn
-// plan ("whisper, don't shout"): muted chips, no flashes, only a tiny amber
-// tint when streaks are alive. The breakdown trio (perfect/good/errors)
-// disappears on narrow viewports — see `.pa-hud__stats` CSS.
+// Always-visible score panel.
 function LiveStats(props: { engine: PlayAlongEngine }) {
   const { engine } = props
-  // Memo on perfect/good/errors only — NOT heldTicks. heldTicks ticks 60×/sec
-  // while the user holds a chord; pulling it into the HUD reactive path
-  // would re-render the accuracy chip every frame for no visual change.
   const accuracyPct = createMemo(() => {
     const hits = engine.state.perfect + engine.state.good
     const attempts = hits + engine.state.errors
@@ -138,83 +101,20 @@ function LiveStats(props: { engine: PlayAlongEngine }) {
 function PlayAlongHudView(props: PlayAlongHudOptions) {
   const engine = props.engine
 
-  // Drag + pin state. Local to component; persisted to localStorage as
-  // side-effects when they change.
-  const initialOffset = loadOffset()
-  const [offsetX, setOffsetX] = createSignal(initialOffset.x)
-  const [offsetY, setOffsetY] = createSignal(initialOffset.y)
-  const [pinned, setPinned] = createSignal(loadPinned())
-  const [dragging, setDragging] = createSignal(false)
-  const [idle, setIdle] = createSignal(false)
-
-  let rootEl!: HTMLDivElement
   let scrubberEl!: HTMLInputElement
   let timeEl!: HTMLSpanElement
 
-  // Drag scratch state — captured at pointerdown, used during document
-  // pointermove, cleared on pointerup. Module-local because the handlers
-  // are bound on demand (not on mount).
-  let dragStartX = 0
-  let dragStartY = 0
-  let dragOriginX = 0
-  let dragOriginY = 0
-
-  // Scrubber suppression flag: while the user is actively scrubbing, the
-  // clock→scrubber binding must not clobber their drag.
   let scrubbing = false
 
-  let idleTimer: ReturnType<typeof setTimeout> | null = null
+  // Wake the HUD out of idle whenever transport state changes.
+  let hudWake: (() => void) | null = null
 
-  function clearIdleTimer(): void {
-    if (idleTimer !== null) {
-      clearTimeout(idleTimer)
-      idleTimer = null
-    }
-  }
-
-  function scheduleIdleFade(): void {
-    clearIdleTimer()
-    if (pinned()) return
-    idleTimer = setTimeout(() => {
-      if (!pinned() && engine.state.userWantsToPlay) setIdle(true)
-    }, 2600)
-  }
-
-  function wake(): void {
-    setIdle(false)
-    scheduleIdleFade()
-  }
-
-  onMount(() => {
-    applyOffset()
-    wake()
-  })
-
-  onCleanup(() => {
-    clearIdleTimer()
-    window.removeEventListener('resize', onWindowResize)
-    document.removeEventListener('pointermove', onPointerMoveDoc)
-    document.removeEventListener('pointerup', onPointerUpDoc)
-  })
-
-  // Wake on any transport state change so the icon update is visible
-  // before the next idle fade. Equivalent to the old subscribe branch.
   onMount(() => {
     const stop = watch(
       () => engine.state.userWantsToPlay,
-      () => wake(),
+      () => hudWake?.(),
     )
     onCleanup(stop)
-  })
-
-  // Re-arm idle fade when pinned flips off; persist pinned on every flip.
-  createEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PIN, JSON.stringify(pinned()))
-    } catch {
-      // Private mode — best effort.
-    }
-    if (!pinned()) scheduleIdleFade()
   })
 
   // Scrubber max reacts to duration change only (rare event).
@@ -223,10 +123,7 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
     if (scrubberEl) scrubberEl.max = String(d || 1)
   })
 
-  // Scrubber value + time label — driven by the 60 Hz MasterClock directly,
-  // NOT through `engine.state.currentTime` (§2 rule 4). Reading a store field
-  // that's written at 60 Hz re-fires every `createEffect` tracking it, which
-  // is pure scheduler overhead since the DOM writes here are imperative.
+  // Scrubber value + time label driven by 60 Hz MasterClock directly.
   // @reactive-scrubber-forbidden — see docs/done/SOLID_MIGRATION_PLAN.md §2 rule 4
   const tickUnsub = engine.services.clock.subscribe((t) => {
     if (!scrubbing && scrubberEl) {
@@ -238,88 +135,9 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
   })
   onCleanup(tickUnsub)
 
-  // Viewport clamp helpers.
-  const onWindowResize = (): void => clampOffset()
-  const onPointerMoveDoc = (e: PointerEvent): void => {
-    if (!dragging()) return
-    setOffsetX(dragOriginX + (e.clientX - dragStartX))
-    setOffsetY(dragOriginY + (e.clientY - dragStartY))
-    clampOffset()
-  }
-  const onPointerUpDoc = (): void => {
-    if (!dragging()) return
-    setDragging(false)
-    document.removeEventListener('pointermove', onPointerMoveDoc)
-    document.removeEventListener('pointerup', onPointerUpDoc)
-    try {
-      localStorage.setItem(STORAGE_KEY_OFFSET, JSON.stringify({ x: offsetX(), y: offsetY() }))
-    } catch {
-      // Private mode — best effort.
-    }
-  }
-
-  onMount(() => {
-    window.addEventListener('resize', onWindowResize)
-  })
-
-  function applyOffset(): void {
-    if (!rootEl) return
-    rootEl.style.setProperty('--hud-dx', `${offsetX()}px`)
-    rootEl.style.setProperty('--hud-dy', `${offsetY()}px`)
-  }
-
-  createEffect(() => {
-    offsetX()
-    offsetY()
-    applyOffset()
-  })
-
-  function clampOffset(): void {
-    if (!rootEl) return
-    const rect = rootEl.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) {
-      applyOffset()
-      return
-    }
-    const rootStyles = getComputedStyle(document.documentElement)
-    const keyboardHeight = parseFloat(rootStyles.getPropertyValue('--keyboard-h')) || 120
-    const hudGap = parseFloat(rootStyles.getPropertyValue('--hud-gap')) || 14
-    const defaultLeft = (window.innerWidth - rect.width) / 2
-    const defaultTop = window.innerHeight - keyboardHeight - hudGap - rect.height
-    const minLeft = 12
-    const maxLeft = Math.max(minLeft, window.innerWidth - rect.width - 12)
-    const minTop = 80
-    const maxTop = Math.max(minTop, window.innerHeight - keyboardHeight - rect.height - 12)
-    const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v))
-    const nextLeft = clamp(defaultLeft + offsetX(), minLeft, maxLeft)
-    const nextTop = clamp(defaultTop + offsetY(), minTop, maxTop)
-    setOffsetX(nextLeft - defaultLeft)
-    setOffsetY(nextTop - defaultTop)
-  }
-
-  function startDrag(e: PointerEvent): void {
-    e.preventDefault()
-    dragStartX = e.clientX
-    dragStartY = e.clientY
-    dragOriginX = offsetX()
-    dragOriginY = offsetY()
-    setDragging(true)
-    document.addEventListener('pointermove', onPointerMoveDoc)
-    document.addEventListener('pointerup', onPointerUpDoc)
-  }
-
-  function togglePin(): void {
-    setPinned(!pinned())
-    wake()
-  }
-
   const isWaitOn = () => engine.practice.isEnabled
   const isRampOn = () => engine.state.tempoRampEnabled
 
-  // Loop region overlay on the scrubber. Returns CSS custom props so the band
-  // (filled segment between A and B) and the two tick markers can be drawn
-  // via pseudo-elements without re-rendering on every clock tick — the
-  // values only change on mark / clear.
   const loopBandStyle = createMemo<Record<string, string>>(() => {
     const dur = engine.state.duration
     if (dur <= 0) return {}
@@ -341,251 +159,230 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
   })
 
   return (
-    <div
+    <FloatingHud
       class="pa-hud"
-      classList={{
-        'pa-hud--dragging': dragging(),
-        'pa-hud--pinned': pinned(),
-        'pa-hud--idle': idle(),
+      storageKey="midee.learn.pa"
+      idleEnabled={() => engine.state.userWantsToPlay}
+      wakeRef={(fn) => {
+        hudWake = fn
       }}
-      ref={rootEl}
-      onPointerEnter={() => wake()}
-      onPointerMove={() => wake()}
     >
-      <div class="pa-hud__handle">
-        <button
-          class="hud-drag-handle pa-hud__drag"
-          type="button"
-          aria-label={t('learn.pa.drag')}
-          data-tip={t('learn.pa.drag')}
-          onPointerDown={(e) => startDrag(e)}
-          innerHTML={icons.grip(10)}
-        />
-        <button
-          class="hud-pin-btn pa-hud__pin"
-          classList={{ 'hud-pin-btn--on': pinned() }}
-          type="button"
-          aria-label={t('learn.pa.pinAria')}
-          data-tip={t('learn.pa.pinTip')}
-          onClick={() => togglePin()}
-          innerHTML={icons.pin(12)}
-        />
-      </div>
-
-      <div class="pa-hud__transport">
-        <button
-          class="pa-hud__play"
-          classList={{ 'is-playing': engine.state.userWantsToPlay }}
-          type="button"
-          aria-label={
-            engine.state.userWantsToPlay ? t('learn.pa.pauseAria') : t('learn.pa.playAria')
-          }
-          data-tip={t('learn.pa.playTip')}
-          onClick={() => engine.togglePlay()}
-          innerHTML={engine.state.userWantsToPlay ? PAUSE_GLYPH : PLAY_GLYPH}
-        />
-        <div class="pa-hud__scrub">
-          <span class="pa-hud__time" ref={timeEl}>
-            0:00
-          </span>
-          <div
-            class="pa-hud__scrubber-wrap"
-            classList={{
-              'pa-hud__scrubber-wrap--loop': engine.state.loopRegion !== null,
-              'pa-hud__scrubber-wrap--mark':
-                engine.state.loopRegion === null && engine.state.loopMark !== null,
-            }}
-            style={loopBandStyle()}
-          >
-            <input
-              class="pa-hud__scrubber"
-              ref={scrubberEl}
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value="0"
-              aria-label={t('learn.pa.scrubAria')}
-              data-tip={t('learn.pa.scrubTip')}
-              onPointerDown={() => {
-                scrubbing = true
-              }}
-              onInput={(e) => {
-                const el = e.currentTarget
-                const pct = (Number(el.value) / (Number(el.max) || 1)) * 100
-                el.style.setProperty('--pct', `${pct.toFixed(1)}%`)
-                engine.seek(Number(el.value))
-              }}
-              onPointerUp={() => {
-                scrubbing = false
-              }}
-              onPointerCancel={() => {
-                scrubbing = false
-              }}
-              onChange={() => {
-                scrubbing = false
-              }}
-            />
-          </div>
-          <span class="pa-hud__time pa-hud__time--muted">{fmtTime(engine.state.duration)}</span>
-        </div>
-      </div>
-
-      <div class="pa-hud__meta">
-        <LiveStats engine={engine} />
-        <button
-          class="pa-hud__icon-btn pa-hud__close"
-          type="button"
-          aria-label={t('learn.pa.backAria')}
-          data-tip={t('learn.pa.backTip')}
-          onClick={() => props.onCloseExercise()}
-          innerHTML={icons.close(14)}
-        />
-      </div>
-
-      <div class="pa-hud__options">
-        <fieldset class="pa-hud__segmented" aria-label={t('learn.pa.speedAria')}>
-          <span class="pa-hud__seg-label">{t('learn.pa.speedLabel')}</span>
-          <div class="pa-hud__seg-track">
-            {[60, 80, 100].map((pct) => (
-              <button
-                class="pa-hud__seg"
-                classList={{ 'is-active': engine.state.speedPct === pct }}
-                type="button"
-                data-tip={
-                  pct === 60
-                    ? t('learn.pa.speedSlowTip')
-                    : pct === 80
-                      ? t('learn.pa.speedMedTip')
-                      : t('learn.pa.speedFullTip')
-                }
-                aria-label={t('learn.pa.speedPctAria', { pct })}
-                onClick={() => engine.setSpeedPreset(pct)}
-              >
-                {pct}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-
-        <fieldset class="pa-hud__segmented" aria-label={t('learn.pa.handsAria')}>
-          <span class="pa-hud__seg-label">{t('learn.pa.handsLabel')}</span>
-          <div class="pa-hud__seg-track">
-            {(['left', 'right', 'both'] as const).map((h) => (
-              <button
-                class="pa-hud__seg"
-                classList={{ 'is-active': engine.state.hand === h }}
-                type="button"
-                data-tip={
-                  h === 'left'
-                    ? t('learn.pa.handLeftTip')
-                    : h === 'right'
-                      ? t('learn.pa.handRightTip')
-                      : t('learn.pa.handBothTip')
-                }
-                aria-label={
-                  h === 'both'
-                    ? t('learn.pa.handBothAria')
-                    : h === 'left'
-                      ? t('learn.pa.handLeftAria')
-                      : t('learn.pa.handRightAria')
-                }
-                onClick={() => engine.setHand(h)}
-              >
-                {h === 'left'
-                  ? t('learn.pa.handLeftLabel')
-                  : h === 'right'
-                    ? t('learn.pa.handRightLabel')
-                    : t('learn.pa.handBothLabel')}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-
-        <div
-          class="pa-hud__loop"
-          classList={{
-            'pa-hud__loop--on': engine.state.loopRegion !== null,
-            'pa-hud__loop--mark': engine.state.loopMark !== null,
-          }}
-        >
+      <div class="pa-hud__body">
+        <div class="pa-hud__transport">
           <button
-            class="pa-hud__pill pa-hud__pill--loop"
+            class="pa-hud__play"
+            classList={{ 'is-playing': engine.state.userWantsToPlay }}
             type="button"
-            data-tip={
-              engine.state.loopRegion
-                ? t('learn.pa.loopClearTip')
-                : engine.state.loopMark !== null
-                  ? t('learn.pa.loopMarkBTip')
-                  : t('learn.pa.loopMarkATip')
-            }
             aria-label={
-              engine.state.loopRegion
-                ? t('learn.pa.loopClearAria')
-                : engine.state.loopMark !== null
-                  ? t('learn.pa.loopMarkBAria')
-                  : t('learn.pa.loopMarkAAria')
+              engine.state.userWantsToPlay ? t('learn.pa.pauseAria') : t('learn.pa.playAria')
             }
-            aria-pressed={engine.state.loopRegion !== null}
-            onClick={() => props.onMarkLoop()}
-          >
-            <span innerHTML={LOOP_GLYPH} />
-            <span>
-              <Show
-                when={engine.state.loopRegion}
-                fallback={
-                  engine.state.loopMark !== null
-                    ? t('learn.pa.loopMarkBLabel')
-                    : t('learn.pa.loopLabel')
-                }
-              >
-                {t('learn.pa.loopLabel')}
-              </Show>
+            data-tip={t('learn.pa.playTip')}
+            onClick={() => engine.togglePlay()}
+            innerHTML={engine.state.userWantsToPlay ? PAUSE_GLYPH : PLAY_GLYPH}
+          />
+          <div class="pa-hud__scrub">
+            <span class="pa-hud__time" ref={timeEl}>
+              0:00
             </span>
-            <Show when={engine.state.loopRegion}>
-              {(region) => (
-                <span class="pa-hud__pill-sub">
-                  · {(region().end - region().start).toFixed(1)}s
-                </span>
-              )}
-            </Show>
-          </button>
-          <Show when={engine.state.loopRegion !== null || engine.state.loopMark !== null}>
-            <button
-              class="pa-hud__loop-clear"
-              type="button"
-              data-tip={t('learn.pa.loopXClear')}
-              aria-label={t('learn.pa.loopXClear')}
-              onClick={() => props.onClearLoop()}
-              innerHTML={CLOSE_X_GLYPH}
-            />
-          </Show>
+            <div
+              class="pa-hud__scrubber-wrap"
+              classList={{
+                'pa-hud__scrubber-wrap--loop': engine.state.loopRegion !== null,
+                'pa-hud__scrubber-wrap--mark':
+                  engine.state.loopRegion === null && engine.state.loopMark !== null,
+              }}
+              style={loopBandStyle()}
+            >
+              <input
+                class="pa-hud__scrubber"
+                ref={scrubberEl}
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value="0"
+                aria-label={t('learn.pa.scrubAria')}
+                data-tip={t('learn.pa.scrubTip')}
+                onPointerDown={() => {
+                  scrubbing = true
+                }}
+                onInput={(e) => {
+                  const el = e.currentTarget
+                  const pct = (Number(el.value) / (Number(el.max) || 1)) * 100
+                  el.style.setProperty('--pct', `${pct.toFixed(1)}%`)
+                  engine.seek(Number(el.value))
+                }}
+                onPointerUp={() => {
+                  scrubbing = false
+                }}
+                onPointerCancel={() => {
+                  scrubbing = false
+                }}
+                onChange={() => {
+                  scrubbing = false
+                }}
+              />
+            </div>
+            <span class="pa-hud__time pa-hud__time--muted">{fmtTime(engine.state.duration)}</span>
+          </div>
         </div>
 
-        <button
-          class="pa-hud__pill"
-          type="button"
-          aria-pressed={isWaitOn()}
-          data-tip={t('learn.pa.waitTip')}
-          aria-label={t('learn.pa.waitAria')}
-          onClick={() => engine.setWaitEnabled(!isWaitOn())}
-        >
-          <span innerHTML={WAIT_GLYPH} />
-          <span>{t('learn.pa.waitLabel')}</span>
-        </button>
-        <button
-          class="pa-hud__pill"
-          type="button"
-          aria-pressed={isRampOn()}
-          data-tip={t('learn.pa.rampTip')}
-          aria-label={t('learn.pa.rampAria')}
-          onClick={() => engine.setTempoRamp(!isRampOn())}
-        >
-          <span innerHTML={RAMP_GLYPH} />
-          <span>{t('learn.pa.rampLabel')}</span>
-        </button>
+        <div class="pa-hud__meta">
+          <LiveStats engine={engine} />
+          <button
+            class="pa-hud__icon-btn pa-hud__close"
+            type="button"
+            aria-label={t('learn.pa.backAria')}
+            data-tip={t('learn.pa.backTip')}
+            onClick={() => props.onCloseExercise()}
+            innerHTML={icons.close(14)}
+          />
+        </div>
+
+        <div class="pa-hud__options">
+          <fieldset class="pa-hud__segmented" aria-label={t('learn.pa.speedAria')}>
+            <span class="pa-hud__seg-label">{t('learn.pa.speedLabel')}</span>
+            <div class="pa-hud__seg-track">
+              {[60, 80, 100].map((pct) => (
+                <button
+                  class="pa-hud__seg"
+                  classList={{ 'is-active': engine.state.speedPct === pct }}
+                  type="button"
+                  data-tip={
+                    pct === 60
+                      ? t('learn.pa.speedSlowTip')
+                      : pct === 80
+                        ? t('learn.pa.speedMedTip')
+                        : t('learn.pa.speedFullTip')
+                  }
+                  aria-label={t('learn.pa.speedPctAria', { pct })}
+                  onClick={() => engine.setSpeedPreset(pct)}
+                >
+                  {pct}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset class="pa-hud__segmented" aria-label={t('learn.pa.handsAria')}>
+            <span class="pa-hud__seg-label">{t('learn.pa.handsLabel')}</span>
+            <div class="pa-hud__seg-track">
+              {(['left', 'right', 'both'] as const).map((h) => (
+                <button
+                  class="pa-hud__seg"
+                  classList={{ 'is-active': engine.state.hand === h }}
+                  type="button"
+                  data-tip={
+                    h === 'left'
+                      ? t('learn.pa.handLeftTip')
+                      : h === 'right'
+                        ? t('learn.pa.handRightTip')
+                        : t('learn.pa.handBothTip')
+                  }
+                  aria-label={
+                    h === 'both'
+                      ? t('learn.pa.handBothAria')
+                      : h === 'left'
+                        ? t('learn.pa.handLeftAria')
+                        : t('learn.pa.handRightAria')
+                  }
+                  onClick={() => engine.setHand(h)}
+                >
+                  {h === 'left'
+                    ? t('learn.pa.handLeftLabel')
+                    : h === 'right'
+                      ? t('learn.pa.handRightLabel')
+                      : t('learn.pa.handBothLabel')}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <div
+            class="pa-hud__loop"
+            classList={{
+              'pa-hud__loop--on': engine.state.loopRegion !== null,
+              'pa-hud__loop--mark': engine.state.loopMark !== null,
+            }}
+          >
+            <button
+              class="pa-hud__pill pa-hud__pill--loop"
+              type="button"
+              data-tip={
+                engine.state.loopRegion
+                  ? t('learn.pa.loopClearTip')
+                  : engine.state.loopMark !== null
+                    ? t('learn.pa.loopMarkBTip')
+                    : t('learn.pa.loopMarkATip')
+              }
+              aria-label={
+                engine.state.loopRegion
+                  ? t('learn.pa.loopClearAria')
+                  : engine.state.loopMark !== null
+                    ? t('learn.pa.loopMarkBAria')
+                    : t('learn.pa.loopMarkAAria')
+              }
+              aria-pressed={engine.state.loopRegion !== null}
+              onClick={() => props.onMarkLoop()}
+            >
+              <span innerHTML={LOOP_GLYPH} />
+              <span>
+                <Show
+                  when={engine.state.loopRegion}
+                  fallback={
+                    engine.state.loopMark !== null
+                      ? t('learn.pa.loopMarkBLabel')
+                      : t('learn.pa.loopLabel')
+                  }
+                >
+                  {t('learn.pa.loopLabel')}
+                </Show>
+              </span>
+              <Show when={engine.state.loopRegion}>
+                {(region) => (
+                  <span class="pa-hud__pill-sub">
+                    · {(region().end - region().start).toFixed(1)}s
+                  </span>
+                )}
+              </Show>
+            </button>
+            <Show when={engine.state.loopRegion !== null || engine.state.loopMark !== null}>
+              <button
+                class="pa-hud__loop-clear"
+                type="button"
+                data-tip={t('learn.pa.loopXClear')}
+                aria-label={t('learn.pa.loopXClear')}
+                onClick={() => props.onClearLoop()}
+                innerHTML={CLOSE_X_GLYPH}
+              />
+            </Show>
+          </div>
+
+          <button
+            class="pa-hud__pill"
+            type="button"
+            aria-pressed={isWaitOn()}
+            data-tip={t('learn.pa.waitTip')}
+            aria-label={t('learn.pa.waitAria')}
+            onClick={() => engine.setWaitEnabled(!isWaitOn())}
+          >
+            <span innerHTML={WAIT_GLYPH} />
+            <span>{t('learn.pa.waitLabel')}</span>
+          </button>
+          <button
+            class="pa-hud__pill"
+            type="button"
+            aria-pressed={isRampOn()}
+            data-tip={t('learn.pa.rampTip')}
+            aria-label={t('learn.pa.rampAria')}
+            onClick={() => engine.setTempoRamp(!isRampOn())}
+          >
+            <span innerHTML={RAMP_GLYPH} />
+            <span>{t('learn.pa.rampLabel')}</span>
+          </button>
+        </div>
       </div>
-    </div>
+    </FloatingHud>
   )
 }
 

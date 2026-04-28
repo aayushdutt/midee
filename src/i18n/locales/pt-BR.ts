@@ -222,6 +222,9 @@ const ptBR: Messages = {
   'learn.exercise.playAlong.title': 'Tocar junto',
   'learn.exercise.playAlong.blurb':
     'Solte um MIDI e toque junto. O modo de espera pausa em cada acorde até você acertar as notas.',
+  'learn.exercise.sightReading.title': 'Leitura à primeira vista',
+  'learn.exercise.sightReading.blurb':
+    'As notas rolam pela linha — leia a pauta e pressione a tecla certa no tempo.',
 
   'learn.intervals.kicker': 'Treino auditivo',
   'learn.intervals.title': 'Intervalos',

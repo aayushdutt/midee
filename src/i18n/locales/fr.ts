@@ -226,6 +226,9 @@ const fr: Messages = {
   'learn.exercise.playAlong.title': 'Jouer ensemble',
   'learn.exercise.playAlong.blurb':
     "Déposez un MIDI et jouez avec. Le mode attente s'arrête à chaque accord jusqu'à ce que vous trouviez les bonnes notes.",
+  'learn.exercise.sightReading.title': 'Lecture à vue',
+  'learn.exercise.sightReading.blurb':
+    'Les notes défilent vers la ligne — lisez la portée et appuyez sur la bonne touche en rythme.',
 
   'learn.intervals.kicker': "Entraînement de l'oreille",
   'learn.intervals.title': 'Intervalles',
