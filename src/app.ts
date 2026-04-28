@@ -224,6 +224,7 @@ export class App {
           void this.loadSample(sampleId)
         }
       },
+      () => this.store.setState('mode', 'learn'),
     )
 
     this.controls = new Controls({

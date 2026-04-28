@@ -113,4 +113,14 @@ describe('ramp', () => {
     expect(ramp(3, [60, 80, 100], 3)).toBe(80)
     expect(ramp(9, [60, 80, 100], 3)).toBe(100)
   })
+
+  it('returns 100 for an empty presets array', () => {
+    expect(ramp(0, [])).toBe(100)
+    expect(ramp(5, [])).toBe(100)
+  })
+
+  it('treats negative passes the same as zero — returns the first preset', () => {
+    expect(ramp(-1)).toBe(60)
+    expect(ramp(-99)).toBe(60)
+  })
 })

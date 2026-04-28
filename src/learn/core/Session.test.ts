@@ -112,6 +112,53 @@ describe('Session', () => {
     expect(s.duration_s).toBeCloseTo(1)
   })
 
+  it('duration_s reflects elapsed time before end() is called', () => {
+    const c = mockClock()
+    const s = new Session(c.now)
+    s.start()
+    c.advance(3000)
+    // end() not called yet — should still report the live elapsed value.
+    expect(s.duration_s).toBeCloseTo(3)
+  })
+
+  it('duration_s freezes after the first end() call — second end() is a no-op', () => {
+    const c = mockClock()
+    const s = new Session(c.now)
+    s.start()
+    c.advance(2000)
+    s.end()
+    const d1 = s.duration_s
+    c.advance(5000) // time keeps moving — should not affect frozen duration
+    s.end()
+    expect(s.duration_s).toBeCloseTo(d1)
+  })
+
+  it('second pause() is a no-op — does not double-count paused time', () => {
+    const c = mockClock()
+    const s = new Session(c.now)
+    s.start()
+    c.advance(1000)
+    s.pause()
+    c.advance(2000) // paused for 2 s
+    s.pause() // second call must be ignored
+    c.advance(1000) // still paused
+    s.resume()
+    s.end()
+    // Active: 1 s before pause + 0 s after resume (ended immediately).
+    // Paused: 3 s total (the 2+1 since first pause).
+    expect(s.duration_s).toBeCloseTo(1)
+  })
+
+  it('resume() without a prior pause() is a no-op — does not corrupt the accumulator', () => {
+    const c = mockClock()
+    const s = new Session(c.now)
+    s.start()
+    c.advance(2000)
+    s.resume() // no matching pause — must be ignored
+    s.end()
+    expect(s.duration_s).toBeCloseTo(2)
+  })
+
   it('start() resets every counter', () => {
     const c = mockClock()
     const s = new Session(c.now)

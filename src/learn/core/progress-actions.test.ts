@@ -146,6 +146,15 @@ describe('applyExerciseCompletion', () => {
   })
 })
 
+describe('applyStreak — edge cases', () => {
+  it('is a no-op when today is an empty string (guard against missing date)', () => {
+    const prev = { days: 5, lastDay: '2026-04-22' }
+    const { next, extended } = applyStreak(prev, '')
+    expect(extended).toBe(false)
+    expect(next).toBe(prev) // same reference — nothing mutated
+  })
+})
+
 describe('commitResult', () => {
   it('composes streak + XP + heatmap + exercise stats in a single pass', () => {
     const prev = emptyProgress()
@@ -164,5 +173,16 @@ describe('commitResult', () => {
       lastSeen: '2026-04-23',
     })
     expect(next.exercises['play-along']?.completions).toBe(1)
+  })
+
+  it('clamps negative XP in the result to zero — xpGained is never negative', () => {
+    const { xpGained, next } = commitResult(emptyProgress(), result({ xp: -10 }), '2026-04-23')
+    expect(xpGained).toBe(0)
+    expect(next.xp.total).toBe(0)
+  })
+
+  it('xpGained is 0 for a zero-XP result', () => {
+    const { xpGained } = commitResult(emptyProgress(), result({ xp: 0 }), '2026-04-23')
+    expect(xpGained).toBe(0)
   })
 })

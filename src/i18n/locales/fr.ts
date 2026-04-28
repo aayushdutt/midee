@@ -11,6 +11,8 @@ const fr: Messages = {
     'Ouvrez un fichier MIDI pour le visualiser, ou jouez en direct avec votre clavier, votre souris, ou un contrôleur MIDI.',
   'home.cta.openMidi': 'Ouvrir MIDI',
   'home.cta.playLive': 'Jouer en direct',
+  'home.cta.learn.title': 'Pratiquer et apprendre',
+  'home.cta.learn.sub': 'Exercices guidés · morceaux à jouer',
   'home.samples.label': 'ou explorez un exemple',
   'home.dropHint.html':
     "Déposez un <code>.mid</code> n'importe où · jouez avec <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>…",

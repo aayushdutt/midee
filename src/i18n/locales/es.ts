@@ -8,6 +8,8 @@ const es: Messages = {
     'Abre un archivo MIDI para visualizarlo, o toca en vivo con tu teclado, ratón o un controlador MIDI.',
   'home.cta.openMidi': 'Abrir MIDI',
   'home.cta.playLive': 'Tocar en vivo',
+  'home.cta.learn.title': 'Practicar y aprender',
+  'home.cta.learn.sub': 'Ejercicios guiados · piezas para practicar',
   'home.samples.label': 'o explora un ejemplo',
   'home.dropHint.html':
     'Suelta un <code>.mid</code> en cualquier parte · toca con <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>…',

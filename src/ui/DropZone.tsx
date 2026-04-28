@@ -28,6 +28,7 @@ function hasFiles(e: DragEvent): boolean {
 interface DropZoneProps {
   onDrop: DropHandler
   onLiveMode?: (() => void) | undefined
+  onLearnMode?: (() => void) | undefined
   onSample?: SampleHandler | undefined
   hidden: () => boolean
   midiStatus: () => { status: MidiDeviceStatus; deviceName: string }
@@ -147,6 +148,20 @@ function DropZoneView(props: DropZoneProps) {
               </button>
             )}
           </Show>
+          <Show when={props.onLearnMode}>
+            {(cb) => (
+              <button
+                class="home-secondary-btn home-secondary-btn--learn"
+                id="home-learn"
+                type="button"
+                onClick={() => cb()()}
+              >
+                <span innerHTML={icons.practice(13)} />
+                <span>{t('home.cta.learn.title')}</span>
+                <span class="home-learn-badge">New</span>
+              </button>
+            )}
+          </Show>
         </div>
 
         <div class="home-samples">
@@ -220,6 +235,7 @@ export class DropZone {
     onDrop: DropHandler,
     onLiveMode?: () => void,
     onSample?: SampleHandler,
+    onLearnMode?: () => void,
   ) {
     const [hidden, setHidden] = createSignal(false)
     const [status, setStatus] = createSignal<{
@@ -237,6 +253,7 @@ export class DropZone {
         <DropZoneView
           onDrop={onDrop}
           onLiveMode={onLiveMode}
+          onLearnMode={onLearnMode}
           onSample={onSample}
           hidden={hidden}
           midiStatus={status}

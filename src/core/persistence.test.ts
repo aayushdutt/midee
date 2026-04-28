@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { jsonPersisted } from './persistence'
+import { booleanPersisted, indexPersisted, jsonPersisted, numberPersisted } from './persistence'
 
 // Vitest runs in Node — no real DOM. Shim just enough of Storage for these
 // tests; reverted in afterAll so this file doesn't leak globals into others.
@@ -87,5 +87,113 @@ describe('jsonPersisted', () => {
       throw new Error('bad shape')
     })
     expect(store.load()).toEqual({ ok: true })
+  })
+})
+
+// booleanPersisted / numberPersisted / indexPersisted each have distinct
+// parse logic. jsdom provides localStorage; clear between each test.
+
+describe('booleanPersisted', () => {
+  const key = 'midee.test.bool'
+  beforeEach(() => localStorage.clear())
+
+  it('round-trips true', () => {
+    const s = booleanPersisted(key, false)
+    s.save(true)
+    expect(s.load()).toBe(true)
+  })
+
+  it('round-trips false', () => {
+    const s = booleanPersisted(key, true)
+    s.save(false)
+    expect(s.load()).toBe(false)
+  })
+
+  it('returns the fallback when the key is missing', () => {
+    expect(booleanPersisted(key, true).load()).toBe(true)
+    expect(booleanPersisted(key, false).load()).toBe(false)
+  })
+
+  it('treats only the exact string "true" as truthy — "1" and "yes" return false', () => {
+    // save() serialises via String(value), so only 'true'/'false' are ever
+    // written by this module. The parse guard protects against external edits.
+    localStorage.setItem(key, '1')
+    expect(booleanPersisted(key, true).load()).toBe(false)
+    localStorage.setItem(key, 'yes')
+    expect(booleanPersisted(key, true).load()).toBe(false)
+  })
+})
+
+describe('numberPersisted', () => {
+  const key = 'midee.test.num'
+  beforeEach(() => localStorage.clear())
+
+  it('round-trips a value in range', () => {
+    const s = numberPersisted(key, 50, 0, 100)
+    s.save(75)
+    expect(s.load()).toBe(75)
+  })
+
+  it('rounds fractional values on load', () => {
+    // save() writes String(value); Number('75.7') is 75.7 → Math.round → 76.
+    localStorage.setItem(key, '75.7')
+    expect(numberPersisted(key, 50, 0, 100).load()).toBe(76)
+  })
+
+  it('returns the fallback for values above max', () => {
+    localStorage.setItem(key, '101')
+    expect(numberPersisted(key, 50, 0, 100).load()).toBe(50)
+  })
+
+  it('returns the fallback for values below min', () => {
+    localStorage.setItem(key, '-1')
+    expect(numberPersisted(key, 50, 0, 100).load()).toBe(50)
+  })
+
+  it('returns the fallback for NaN', () => {
+    localStorage.setItem(key, 'NaN')
+    expect(numberPersisted(key, 50, 0, 100).load()).toBe(50)
+  })
+
+  it('accepts exact boundary values', () => {
+    const s = numberPersisted(key, 50, 0, 100)
+    s.save(0)
+    expect(s.load()).toBe(0)
+    s.save(100)
+    expect(s.load()).toBe(100)
+  })
+})
+
+describe('indexPersisted', () => {
+  const key = 'midee.test.idx'
+  beforeEach(() => localStorage.clear())
+
+  it('round-trips a valid index', () => {
+    const s = indexPersisted(key, 0, 5)
+    s.save(3)
+    expect(s.load()).toBe(3)
+  })
+
+  it('accepts 0 and maxExclusive-1 as the valid boundaries', () => {
+    const s = indexPersisted(key, 0, 5)
+    s.save(0)
+    expect(s.load()).toBe(0)
+    s.save(4)
+    expect(s.load()).toBe(4)
+  })
+
+  it('returns the fallback for maxExclusive itself (out of range)', () => {
+    localStorage.setItem(key, '5')
+    expect(indexPersisted(key, 0, 5).load()).toBe(0)
+  })
+
+  it('returns the fallback for negative values', () => {
+    localStorage.setItem(key, '-1')
+    expect(indexPersisted(key, 2, 5).load()).toBe(2)
+  })
+
+  it('returns the fallback for non-integers', () => {
+    localStorage.setItem(key, '2.5')
+    expect(indexPersisted(key, 0, 5).load()).toBe(0)
   })
 })

@@ -301,3 +301,82 @@ describe('PracticeEngine step building and peekNextStep', () => {
     expect(engine.peekNextStep()).toBeNull()
   })
 })
+
+function midiWithTwoTracks(): MidiFile {
+  return {
+    name: 'two.mid',
+    duration: 10,
+    bpm: 120,
+    timeSignature: [4, 4],
+    tracks: [
+      {
+        id: 'rh',
+        name: 'Right',
+        channel: 0,
+        instrument: 0,
+        isDrum: false,
+        color: 0xffffff,
+        colorIndex: 0,
+        notes: [{ pitch: 60, time: 2, duration: 0.5, velocity: 1 }],
+      },
+      {
+        id: 'lh',
+        name: 'Left',
+        channel: 1,
+        instrument: 0,
+        isDrum: false,
+        color: 0xffffff,
+        colorIndex: 1,
+        notes: [{ pitch: 48, time: 4, duration: 0.5, velocity: 1 }],
+      },
+    ],
+  }
+}
+
+describe('PracticeEngine.setVisibleTracks', () => {
+  it('filters steps to only the visible track', () => {
+    const { engine } = makeEngine(midiWithTwoTracks())
+    engine.setVisibleTracks(['rh'])
+    const step = engine.peekNextStep()
+    expect(step?.pitches.has(60)).toBe(true) // rh pitch
+    expect(step?.pitches.has(48)).toBe(false) // lh pitch excluded
+  })
+
+  it('setVisibleTracks(null) restores all tracks', () => {
+    const { engine } = makeEngine(midiWithTwoTracks())
+    engine.setVisibleTracks(['rh'])
+    engine.setVisibleTracks(null)
+    // Both steps should be present — rh at t=2 is first.
+    const first = engine.peekNextStep()
+    expect(first?.pitches.has(60)).toBe(true)
+  })
+
+  it('switching to a different track while not waiting recomputes steps without engaging wait', () => {
+    const { clock, engine, onWaitStart } = makeEngine(midiWithTwoTracks())
+    clock.emit(0.5) // well before either note
+    engine.setVisibleTracks(['lh'])
+    expect(engine.isWaiting).toBe(false)
+    expect(onWaitStart).not.toHaveBeenCalled()
+    // Next step is now lh's note at t=4.
+    expect(engine.peekNextStep()?.pitches.has(48)).toBe(true)
+  })
+})
+
+describe('PracticeEngine.toggle and dispose', () => {
+  it('toggle() alternates enabled state and returns the new value', () => {
+    const { engine } = makeEngine()
+    expect(engine.isEnabled).toBe(true)
+    expect(engine.toggle()).toBe(false)
+    expect(engine.isEnabled).toBe(false)
+    expect(engine.toggle()).toBe(true)
+    expect(engine.isEnabled).toBe(true)
+  })
+
+  it('dispose() stops the clock subscription — ticks no longer engage wait', () => {
+    const { clock, engine, onWaitStart } = makeEngine()
+    engine.dispose()
+    clock.emit(2.01)
+    expect(engine.isWaiting).toBe(false)
+    expect(onWaitStart).not.toHaveBeenCalled()
+  })
+})

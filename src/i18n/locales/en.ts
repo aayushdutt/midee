@@ -25,6 +25,8 @@ export const en = {
     'Open a MIDI file to animate it, or go live and play with your keyboard, mouse, or a MIDI controller.',
   'home.cta.openMidi': 'Open MIDI',
   'home.cta.playLive': 'Play live',
+  'home.cta.learn.title': 'Practice & learn',
+  'home.cta.learn.sub': 'Guided exercises · play-along pieces',
   'home.samples.label': 'or explore a sample',
   'home.dropHint.html':
     'Drop <code>.mid</code> anywhere · play with <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>…',
