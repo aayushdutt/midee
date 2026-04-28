@@ -62,6 +62,95 @@ function makeEngine(midi: MidiFile = midiWithNotes([{ pitch: 60, time: 2 }])) {
   return { clock, engine, onWaitStart, onWaitEnd }
 }
 
+describe('PracticeEngine.notePressed outcome types', () => {
+  it('returns "duplicate" for a re-strike of an already-accepted pitch while the chord is still pending', () => {
+    const { clock, engine } = makeEngine(
+      midiWithNotes([
+        { pitch: 60, time: 2 },
+        { pitch: 64, time: 2 },
+      ]),
+    )
+    clock.emit(2.01)
+    expect(engine.notePressed(60).kind).toBe('accepted') // 60 → accepted, 64 still pending
+    // Re-strike the accepted pitch — not 'rejected' (that would bump errors)
+    // and not 'advanced' (chord not cleared yet).
+    expect(engine.notePressed(60).kind).toBe('duplicate')
+  })
+
+  it('measures articulationMs as wall-clock span from first to last pitch on a chord', () => {
+    const { clock, engine } = makeEngine(
+      midiWithNotes([
+        { pitch: 60, time: 2 },
+        { pitch: 64, time: 2 },
+      ]),
+    )
+    let nowMs = 0
+    ;(engine as unknown as { nowMs: () => number }).nowMs = () => nowMs
+    clock.emit(2.01)
+    nowMs = 1000
+    engine.notePressed(60) // first pitch → chordStartMs = 1000
+    nowMs = 1300
+    const outcome = engine.notePressed(64) // second pitch → chord clears, articulationMs = 300
+    expect(outcome.kind).toBe('advanced')
+    if (outcome.kind === 'advanced') {
+      expect(outcome.articulationMs).toBeCloseTo(300)
+    }
+  })
+
+  it('does not bleed chordStartMs from a cleared step into the next step', () => {
+    // If advancePastCurrentStep doesn't reset chordStartMs, the second chord's
+    // articulationMs would be measured from the first chord's first press —
+    // thousands of ms — instead of the second chord's own span.
+    const { clock, engine } = makeEngine(
+      midiWithNotes([
+        { pitch: 60, time: 2 },
+        { pitch: 64, time: 2 },
+        { pitch: 67, time: 5 },
+        { pitch: 71, time: 5 },
+      ]),
+    )
+    let nowMs = 0
+    ;(engine as unknown as { nowMs: () => number }).nowMs = () => nowMs
+
+    // Clear step 1 quickly (40 ms articulation).
+    clock.emit(2.01)
+    nowMs = 0
+    engine.notePressed(60)
+    nowMs = 40
+    engine.notePressed(64) // clears step 1 → chordStartMs reset to null
+
+    // Engage step 2. chordStartMs must start fresh on the first press here.
+    clock.emit(5.01)
+    nowMs = 5000
+    engine.notePressed(67) // chordStartMs = 5000
+    nowMs = 5200
+    const outcome = engine.notePressed(71) // articulationMs = 200
+    expect(outcome.kind).toBe('advanced')
+    if (outcome.kind === 'advanced') {
+      // If the bleed were present this would be ~5160 ms — far larger than 200.
+      expect(outcome.articulationMs).toBeCloseTo(200, 0)
+    }
+  })
+
+  it('notifySeek while waiting clears the wait state completely', () => {
+    const { clock, engine } = makeEngine(
+      midiWithNotes([
+        { pitch: 60, time: 2 },
+        { pitch: 64, time: 2 },
+      ]),
+    )
+    clock.emit(2.01) // engage wait
+    expect(engine.isWaiting).toBe(true)
+    expect(engine.status.value.pending.size).toBeGreaterThan(0)
+
+    engine.notifySeek(0)
+    // Check the published status (what the HUD reads), not the internal field.
+    expect(engine.status.value.waiting).toBe(false)
+    expect(engine.status.value.pending.size).toBe(0)
+    expect(engine.status.value.accepted.size).toBe(0)
+  })
+})
+
 describe('PracticeEngine early note acceptance', () => {
   it('accepts the next step when played slightly before the target time', () => {
     const { clock, engine, onWaitStart, onWaitEnd } = makeEngine()
@@ -128,5 +217,87 @@ describe('PracticeEngine early note acceptance', () => {
 
     expect(engine.isWaiting).toBe(false)
     expect(onWaitStart).not.toHaveBeenCalled()
+  })
+
+  it('accepts a note at exactly the EARLY_ACCEPT_SEC boundary (boundary is inclusive)', () => {
+    // EARLY_ACCEPT_SEC = 0.12; note at t=2; lower boundary = 2.0 - 0.12 = 1.88.
+    // Guard: `time < step.time - EARLY_ACCEPT_SEC` → `1.88 < 1.88` → false → not rejected.
+    // In IEEE 754, `2.0 - 0.12` and `1.88` share the same bit pattern, so the
+    // comparison is equality and the `<` keeps it inclusive.
+    const { clock, engine } = makeEngine()
+    clock.emit(1.88)
+    expect(engine.notePressed(60).kind).toBe('advanced')
+  })
+
+  it('rejects a note pressed one step before the EARLY_ACCEPT_SEC boundary', () => {
+    const { clock, engine } = makeEngine()
+    clock.emit(1.879) // 1.879 < 1.88 → strictly outside the window
+    expect(engine.notePressed(60).kind).toBe('rejected')
+  })
+})
+
+describe('PracticeEngine.setEnabled while waiting', () => {
+  it('silently drops wait state without calling onWaitEnd', () => {
+    // Firing onWaitEnd here would ask the caller to resume playback while
+    // they are actively trying to stop — the comment in setEnabled explains
+    // the contract. A future refactor that calls onWaitEnd "for symmetry"
+    // would bleed audio on mode exit.
+    const { clock, engine, onWaitEnd } = makeEngine()
+    clock.emit(2.01)
+    expect(engine.isWaiting).toBe(true)
+    engine.setEnabled(false)
+    expect(engine.isWaiting).toBe(false)
+    expect(onWaitEnd).not.toHaveBeenCalled()
+  })
+})
+
+describe('PracticeEngine step building and peekNextStep', () => {
+  it('excludes drum tracks — drum hits never create a wait step', () => {
+    const drumMidi: MidiFile = {
+      name: 'drums.mid',
+      duration: 10,
+      bpm: 120,
+      timeSignature: [4, 4],
+      tracks: [
+        {
+          id: 'dr',
+          name: 'Drums',
+          channel: 9,
+          instrument: 0,
+          isDrum: true,
+          color: 0xffffff,
+          colorIndex: 0,
+          notes: [{ pitch: 36, time: 2, duration: 0.1, velocity: 1 }],
+        },
+      ],
+    }
+    const { clock, engine, onWaitStart } = makeEngine(drumMidi)
+    clock.emit(2.01)
+    expect(engine.isWaiting).toBe(false)
+    expect(onWaitStart).not.toHaveBeenCalled()
+  })
+
+  it('peekNextStep returns the upcoming step before it is cleared', () => {
+    const { engine } = makeEngine()
+    const step = engine.peekNextStep()
+    expect(step).not.toBeNull()
+    expect(step?.pitches.has(60)).toBe(true)
+  })
+
+  it('peekNextStep returns null after the last step is cleared', () => {
+    const { clock, engine } = makeEngine()
+    clock.emit(2.01)
+    engine.notePressed(60)
+    expect(engine.peekNextStep()).toBeNull()
+  })
+
+  it('peekNextStep returns null when no MIDI is loaded', () => {
+    const clock = makeClock()
+    const engine = new PracticeEngine(clock as unknown as MasterClock, {
+      onWaitStart: vi.fn(),
+      onWaitEnd: vi.fn(),
+    })
+    engine.setEnabled(true)
+    expect(engine.peekNextStep()).toBeNull()
   })
 })

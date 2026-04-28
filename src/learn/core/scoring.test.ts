@@ -1,5 +1,42 @@
 import { describe, expect, it } from 'vitest'
-import { accuracy, classifyArticulation, classifyTiming, computeXp, matchChord } from './scoring'
+import {
+  accuracy,
+  classifyArticulation,
+  classifyTiming,
+  computeXp,
+  GOOD_WINDOW_SEC,
+  LATE_HIT_WINDOW_SEC,
+  matchChord,
+  PERFECT_WINDOW_SEC,
+} from './scoring'
+
+describe('classifyTiming boundary conditions', () => {
+  // Float arithmetic is the enemy here: `1.05 - 1.0` is NOT exactly `0.05`
+  // (it is 0.050000000000000044). Using `scheduledTime = 0` with the constant
+  // directly means the subtraction is exact — both sides of `<=` hold the
+  // same IEEE-754 representation of the constant.
+  it('treats a press exactly at PERFECT_WINDOW_SEC (50 ms) as "perfect" — boundary is inclusive', () => {
+    expect(classifyTiming(PERFECT_WINDOW_SEC, 0)).toBe('perfect') // +50 ms exact
+    expect(classifyTiming(-PERFECT_WINDOW_SEC, 0)).toBe('perfect') // -50 ms exact
+  })
+
+  it('treats a press exactly at GOOD_WINDOW_SEC (150 ms) as "good" — boundary is inclusive', () => {
+    expect(classifyTiming(GOOD_WINDOW_SEC, 0)).toBe('good') // +150 ms exact
+    expect(classifyTiming(-GOOD_WINDOW_SEC, 0)).toBe('good') // -150 ms exact
+  })
+
+  it('treats a press exactly at LATE_HIT_WINDOW_SEC (300 ms) as a directional hit, not a miss', () => {
+    // `if (abs > late) return 'miss'` — equality is NOT a miss. A press at
+    // exactly the outer edge is still caught as 'early'/'late'.
+    expect(classifyTiming(LATE_HIT_WINDOW_SEC, 0)).toBe('late') // +300 ms exact
+    expect(classifyTiming(-LATE_HIT_WINDOW_SEC, 0)).toBe('early') // -300 ms exact
+  })
+
+  it('returns "miss" one epsilon past LATE_HIT_WINDOW_SEC', () => {
+    expect(classifyTiming(LATE_HIT_WINDOW_SEC + 0.001, 0)).toBe('miss')
+    expect(classifyTiming(-(LATE_HIT_WINDOW_SEC + 0.001), 0)).toBe('miss')
+  })
+})
 
 describe('classifyTiming', () => {
   it('returns "perfect" for presses inside ±50 ms of the scheduled time', () => {

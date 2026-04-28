@@ -517,3 +517,176 @@ describe('PlayAlongEngine', () => {
     expect(engine.state.errors).toBe(1)
   })
 })
+
+describe('PlayAlongEngine transport invariants', () => {
+  it('auto-pauses at the end of the piece and seeks to the exact duration', () => {
+    // onTick: `if (dur > 0 && time >= dur && isPlaying)` — the only thing
+    // stopping the transport at song end. A broken condition leaves the engine
+    // stuck playing silence past the last note.
+    const { services, clock, learnState } = makeServices()
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(makeMidi()) // duration = 60
+    engine.play()
+
+    clock.emit(60.01) // one tick past the end
+    expect(learnState.state.status).toBe('paused')
+    expect(engine.state.userWantsToPlay).toBe(false)
+    expect(clock.currentTime).toBe(60) // seeked to exact end, not past it
+  })
+
+  it('seek() during a wait-mode pause does not resume the clock', () => {
+    // The gate is `clock.playing`, not `userWantsToPlay`. During wait-mode,
+    // both are diverged: user intends to play (userWantsToPlay=true) but the
+    // clock is halted (clock.playing=false). If the guard were swapped to
+    // userWantsToPlay, every scrub during a wait would bleed audio.
+    const { services, clock, learnState } = makeServices()
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(makeMidi())
+    engine.setWaitEnabled(true)
+    engine.play() // userWantsToPlay = true, clock.playing = true
+
+    clock.emit(2.01) // engage wait → onWaitStart → clock.pause() → clock.playing = false
+    expect(engine.state.userWantsToPlay).toBe(true)
+    expect(clock.playing).toBe(false)
+
+    engine.seek(0) // wasPlaying = clock.playing = false → should NOT resume
+    expect(clock.playing).toBe(false)
+  })
+
+  it('seek() while genuinely playing resumes the clock after the seek', () => {
+    const { services, clock, learnState } = makeServices()
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(makeMidi())
+    engine.play() // clock.playing = true, no wait engaged
+
+    engine.seek(1) // wasPlaying = true → resumes
+    expect(clock.playing).toBe(true)
+  })
+
+  it('play() recomputes the practice step from the current clock position', () => {
+    // play() calls practice.notifySeek(clock.currentTime) before starting the
+    // clock. Without it, nextStepIdx stays stale after a manual rewind and the
+    // first chord on the replayed section is silently skipped.
+    const { services, clock, learnState } = makeServices()
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(makeMidi()) // chords at t=2 and t=4
+    engine.setWaitEnabled(true)
+    engine.play()
+
+    // Clear the t=2 chord → practice advances nextStepIdx to t=4.
+    clock.emit(2.01)
+    engine.onNoteOn({ pitch: 60, velocity: 1, clockTime: 2.01, source: 'midi' })
+    engine.onNoteOn({ pitch: 64, velocity: 1, clockTime: 2.01, source: 'midi' })
+    engine.onNoteOn({ pitch: 67, velocity: 1, clockTime: 2.01, source: 'midi' })
+
+    // Rewind the clock externally — bypassing engine.seek so practice.notifySeek
+    // is NOT called and nextStepIdx stays pointing at t=4.
+    engine.pause()
+    clock.seek(1.5)
+
+    // play() must notifySeek the practice engine so it rediscovers the t=2 chord.
+    engine.play()
+    clock.emit(2.01)
+    expect(engine.practice.isWaiting).toBe(true) // wait re-engages at t=2
+  })
+})
+
+describe('PlayAlongEngine held-tick eligibility clearing', () => {
+  it('loop wrap clears held eligibility so ticks do not bleed across passes', () => {
+    // onTick: tickHeldBonus fires first, then heldEligible.clear() inside the
+    // wrap block. Post-wrap ticks must not accumulate even while pitches are held.
+    const { services, clock, learnState } = makeServices()
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(makeMidi()) // chord at t=2, latestEnd=2.5, eligible until 2.55
+    engine.setWaitEnabled(true)
+
+    // Short loop [2, 2.3] — wraps well before the eligibility window expires.
+    engine.markLoopPoint(2)
+    engine.markLoopPoint(2.3)
+
+    clock.emit(2.01)
+    engine.onNoteOn({ pitch: 60, velocity: 1, clockTime: 2.01, source: 'midi' })
+    engine.onNoteOn({ pitch: 64, velocity: 1, clockTime: 2.01, source: 'midi' })
+    engine.onNoteOn({ pitch: 67, velocity: 1, clockTime: 2.01, source: 'midi' })
+    // All three pitches held; heldEligible = {60,64,67: expiry 2.55}
+
+    clock.emit(2.15) // ticks accumulate (before wrap, before expiry)
+    expect(engine.state.heldTicks).toBeGreaterThan(0)
+
+    // Wrap fires at 2.295 (region.end - epsilon). tickHeldBonus runs first
+    // at this tick, then heldEligible.clear().
+    clock.emit(2.301)
+    const ticksAfterWrap = engine.state.heldTicks
+
+    // Post-wrap tick: heldEligible empty → no further accumulation.
+    clock.emit(2.05)
+    expect(engine.state.heldTicks).toBe(ticksAfterWrap)
+  })
+
+  it('seek() clears held eligibility so a jump does not earn ticks for pre-jump chords', () => {
+    const { services, clock, learnState } = makeServices()
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(makeMidi())
+    engine.setWaitEnabled(true)
+
+    clock.emit(2.01)
+    engine.onNoteOn({ pitch: 60, velocity: 1, clockTime: 2.01, source: 'midi' })
+    engine.onNoteOn({ pitch: 64, velocity: 1, clockTime: 2.01, source: 'midi' })
+    engine.onNoteOn({ pitch: 67, velocity: 1, clockTime: 2.01, source: 'midi' })
+
+    clock.emit(2.2) // confirm accumulation before seek
+    expect(engine.state.heldTicks).toBeGreaterThan(0)
+
+    engine.seek(0) // heldEligible.clear()
+    const ticksAfterSeek = engine.state.heldTicks
+
+    clock.emit(2.2) // still inside the old eligibility window — but cleared
+    expect(engine.state.heldTicks).toBe(ticksAfterSeek)
+  })
+
+  it('setHand() clears held eligibility so ticks stop after a hand switch', () => {
+    const { services, clock, learnState } = makeServices()
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(makeSplitHandMidi()) // LH: pitch 48 at t=2, eligible until 2.55
+    engine.setWaitEnabled(true)
+
+    clock.emit(2.01)
+    engine.onNoteOn({ pitch: 48, velocity: 1, clockTime: 2.01, source: 'midi' })
+
+    clock.emit(2.2) // 48 held → ticks accumulate
+    expect(engine.state.heldTicks).toBeGreaterThan(0)
+
+    engine.setHand('right') // applyHand → heldEligible.clear()
+    const ticksAfterSwitch = engine.state.heldTicks
+
+    clock.emit(2.3) // 48 still in pressedPitches but heldEligible empty
+    expect(engine.state.heldTicks).toBe(ticksAfterSwitch)
+  })
+})
+
+describe('PlayAlongEngine error scoring rules', () => {
+  it('wrong pitch when wait is disabled is a no-op — errors stay at 0', () => {
+    // errors only increment when `practice.isWaiting`. With wait off this is
+    // free-play mode; penalizing wrong notes would break the free-play contract.
+    const { services, clock, learnState } = makeServices()
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(makeMidi())
+    engine.setWaitEnabled(false)
+
+    clock.emit(2.01) // clock past the chord, but no wait was engaged
+    engine.onNoteOn({ pitch: 99, velocity: 1, clockTime: 2.01, source: 'midi' })
+    expect(engine.state.errors).toBe(0)
+  })
+
+  it('wrong pitch between steps (wait enabled but not currently waiting) is also a no-op', () => {
+    // The clock hasn't reached the first chord yet — practice is armed but not
+    // waiting. Penalizing between-step presses would make the exercise unplayable.
+    const { services, learnState } = makeServices()
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(makeMidi())
+    engine.setWaitEnabled(true)
+
+    engine.onNoteOn({ pitch: 99, velocity: 1, clockTime: 0, source: 'midi' })
+    expect(engine.state.errors).toBe(0)
+  })
+})
