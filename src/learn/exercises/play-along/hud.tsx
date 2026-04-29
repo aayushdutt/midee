@@ -4,7 +4,7 @@ import { watch } from '../../../store/watch'
 import { FloatingHud } from '../../../ui/FloatingHud'
 import { icons } from '../../../ui/icons'
 import { createMountHandle } from '../../ui/mountComponent'
-import type { PlayAlongEngine } from './engine'
+import { DEFAULT_SPEED_PRESETS, type PlayAlongEngine } from './engine'
 
 // Streak ≥ this is "hot" — saturated chip background. Below is "warm"
 // (visible but quieter). Below 1 the chip is hidden entirely.
@@ -243,7 +243,7 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
           <fieldset class="pa-hud__segmented" aria-label={t('learn.pa.speedAria')}>
             <span class="pa-hud__seg-label">{t('learn.pa.speedLabel')}</span>
             <div class="pa-hud__seg-track">
-              {[60, 80, 100].map((pct) => (
+              {DEFAULT_SPEED_PRESETS.map((pct) => (
                 <button
                   class="pa-hud__seg"
                   classList={{ 'is-active': engine.state.speedPct === pct }}

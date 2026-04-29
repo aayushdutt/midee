@@ -11,6 +11,7 @@ import { t } from '../../../i18n'
 import { watch } from '../../../store/watch'
 import type { Exercise, ExerciseDescriptor } from '../../core/Exercise'
 import type { ExerciseContext } from '../../core/ExerciseContext'
+import { isKeyboardShortcutIgnored } from '../../core/keyboard'
 import type { ExerciseResult } from '../../core/Result'
 import { computeXp } from '../../core/scoring'
 import { DEFAULT_SPEED_PRESETS, PlayAlongEngine } from './engine'
@@ -205,9 +206,7 @@ class PlayAlongExercise implements Exercise {
   // ── Local helpers ─────────────────────────────────────────────────────
 
   private onKeyDown = (e: KeyboardEvent): void => {
-    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
-    const target = e.target as HTMLElement | null
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+    if (e.shiftKey || isKeyboardShortcutIgnored(e)) return
     if (e.code === 'KeyL') {
       e.preventDefault()
       this.markLoop()
@@ -232,12 +231,8 @@ class PlayAlongExercise implements Exercise {
   }
 
   private stepSpeed(delta: number): void {
-    // Widen `DEFAULT_SPEED_PRESETS` from the `as const` tuple type to `number[]`
-    // here — `indexOf` on a mutable-looking copy is the clean path even though
-    // the values are readonly in the source.
-    const presets: number[] = [...DEFAULT_SPEED_PRESETS]
-    const idx = presets.indexOf(this.engine.state.speedPct)
-    const next = presets[Math.max(0, Math.min(presets.length - 1, idx + delta))]
+    const idx = (DEFAULT_SPEED_PRESETS as readonly number[]).indexOf(this.engine.state.speedPct)
+    const next = idx >= 0 ? DEFAULT_SPEED_PRESETS[idx + delta] : undefined
     if (next !== undefined) this.engine.setSpeedPreset(next)
   }
 

@@ -1,11 +1,11 @@
-import { createMemo, For, onCleanup, onMount, Show } from 'solid-js'
+import { createMemo, For, Show } from 'solid-js'
 import { t } from '../../i18n'
 import type { ExerciseCategory, ExerciseDescriptor } from '../core/Exercise'
 import type { LearnState } from '../core/LearnState'
 import type { LearnProgressStore } from '../core/progress'
 import { ComingSoonCardView, ExerciseCardView } from '../ui/ExerciseCard'
 import { createMountHandle } from '../ui/mountComponent'
-import { StreakRow } from '../ui/StreakRow'
+import { StreakRowView } from '../ui/StreakRow'
 import { CATALOG } from './catalog'
 
 // Looked up by ExerciseDescriptor.category. Returns the localised label —
@@ -167,19 +167,13 @@ function Grid(props: { launchExercise: (d: ExerciseDescriptor) => void }) {
 }
 
 function LearnHubView(props: LearnHubOptions) {
-  let streakHost!: HTMLDivElement
-  onMount(() => {
-    const row = new StreakRow(props.progress)
-    row.mount(streakHost)
-    onCleanup(() => row.unmount())
-  })
   return (
     <div class="learn-hub">
       <div class="learn-hub__glow" aria-hidden="true" />
-      {/* Topbar is just the streak — the global topbar's active "Learn" pill
-          already names the surface, no need to repeat the title + subtitle. */}
       <header class="learn-hub__topbar">
-        <div class="learn-hub__streak" ref={streakHost} />
+        <div class="learn-hub__streak">
+          <StreakRowView progress={props.progress} />
+        </div>
       </header>
       <div class="learn-hub__scroll">
         <div class="learn-hub__inner">

@@ -7,6 +7,7 @@
 import { t } from '../../../i18n'
 import type { Exercise, ExerciseDescriptor } from '../../core/Exercise'
 import type { ExerciseContext } from '../../core/ExerciseContext'
+import { isKeyboardShortcutIgnored } from '../../core/keyboard'
 import type { ExerciseResult } from '../../core/Result'
 import { computeXp } from '../../core/scoring'
 import { IntervalsEngine } from './engine'
@@ -56,7 +57,7 @@ class IntervalsExercise implements Exercise {
     }
   }
 
-  async mount(host: HTMLElement): Promise<void> {
+  mount(host: HTMLElement): void {
     // Ear training has no scheduled MIDI — clear whatever the renderer was
     // showing so the background stays quiet. The LearnOverlay is unused for
     // this exercise (no target zone, no loop band); leaving it present is
@@ -120,9 +121,7 @@ class IntervalsExercise implements Exercise {
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
-    if (e.ctrlKey || e.metaKey || e.altKey) return
-    const target = e.target as HTMLElement | null
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+    if (isKeyboardShortcutIgnored(e)) return
 
     if (e.code === 'Space') {
       e.preventDefault()

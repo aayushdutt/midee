@@ -9,6 +9,7 @@ import type { BusNoteEvent } from '../../../core/input/InputBus'
 import { t } from '../../../i18n'
 import type { Exercise, ExerciseDescriptor } from '../../core/Exercise'
 import type { ExerciseContext } from '../../core/ExerciseContext'
+import { isKeyboardShortcutIgnored } from '../../core/keyboard'
 import type { ExerciseResult } from '../../core/Result'
 import { computeXp } from '../../core/scoring'
 import { SightReadingEngine } from './engine'
@@ -127,7 +128,7 @@ class SightReadingExercise implements Exercise {
 
     // Escape → pause/resume. [ / ] → tempo −5 / +5 while paused.
     this.onEscKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (isKeyboardShortcutIgnored(e)) return
       if (e.code === 'Escape') {
         e.preventDefault()
         if (this.engine.paused) this.engine.resume()
