@@ -199,7 +199,10 @@ export class SightReadLayer implements RenderLayer {
   }
 
   update(ctx: RenderContext): void {
-    // Advance engine
+    // The renderer owns the engine tick because the session needs per-frame
+    // delta for smooth BPM ramping and frame-accurate note spawning. Pausing
+    // the renderer (e.g. when the stage is hidden) naturally pauses the
+    // exercise — no canvas, no session, which is the desired behaviour.
     this.engine.tick(ctx.dt)
 
     // Fire onDone once when phase transitions to a terminal state.

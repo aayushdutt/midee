@@ -3,11 +3,11 @@
 // - EndPanel: result card when phase is 'complete' or 'knockedOut'
 
 import { createMemo, createSignal, For, Show } from 'solid-js'
-import { render } from 'solid-js/web'
 import { t } from '../../../i18n'
 import { FloatingHud } from '../../../ui/FloatingHud'
 import { icons } from '../../../ui/icons'
-import { accuracy, computeXp } from '../../core/scoring'
+import { computeXp } from '../../core/scoring'
+import { createMountHandle } from '../../ui/mountComponent'
 import type { SightReadingEngine } from './engine'
 import { gradeFromAccuracy, KNOCKOUT_THRESHOLD } from './engine'
 import { noteNameInKey } from './music'
@@ -56,13 +56,15 @@ interface WeakNote {
 
 function computeWeakNotes(engine: SightReadingEngine, keySignature: string): WeakNote[] {
   const results: WeakNote[] = []
-  for (const [midi, { hits, misses }] of engine.noteStats) {
-    const total = hits + misses
-    if (total >= 5 && misses > 0) {
+  for (const spot of engine.weakSpots) {
+    const stat = engine.noteStats.get(spot.pitch)
+    if (!stat) continue
+    const total = stat.hits + stat.misses
+    if (total >= 5) {
       results.push({
-        midi,
-        name: noteNameInKey(midi, keySignature),
-        missRate: misses / total,
+        midi: spot.pitch,
+        name: noteNameInKey(spot.pitch, keySignature),
+        missRate: spot.count / total,
       })
     }
   }
@@ -87,7 +89,7 @@ function SrControlBar(props: SightReadHudOptions) {
     const { perfect, good, missed } = engine.state
     const total = perfect + good + missed
     if (total < 5) return null
-    return Math.round((100 * (perfect + good)) / total)
+    return Math.round((engine.hitAccuracy ?? 0) * 100)
   })
 
   const streakClass = createMemo(() => {
@@ -276,12 +278,7 @@ function EndPanel(props: SightReadHudOptions) {
   const { engine } = props
   const isKnockedOut = () => engine.state.phase === 'knockedOut'
 
-  const acc = createMemo(() => {
-    const { perfect, good, missed } = engine.state
-    const total = perfect + good + missed
-    if (total === 0) return null
-    return accuracy(perfect + good, total)
-  })
+  const acc = createMemo(() => engine.hitAccuracy)
 
   const grade = createMemo(() => (acc() !== null ? gradeFromAccuracy(acc()!) : null))
   const gradeColor = createMemo(() => (grade() ? GRADE_COLOR[grade()!] : 'rgba(255,255,255,0.25)'))
@@ -402,22 +399,8 @@ function SightReadHudRoot(props: SightReadHudOptions) {
 
 // ── Public class ─────────────────────────────────────────────────────────────
 
-export class SightReadHud {
-  private dispose: (() => void) | null = null
-  private container: HTMLDivElement | null = null
-
-  mount(host: HTMLElement, opts: SightReadHudOptions): void {
-    const div = document.createElement('div')
+export function createSightReadHud() {
+  return createMountHandle(SightReadHudRoot, (div) => {
     div.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:10'
-    host.appendChild(div)
-    this.container = div
-    this.dispose = render(() => <SightReadHudRoot {...opts} />, div)
-  }
-
-  unmount(): void {
-    this.dispose?.()
-    this.container?.remove()
-    this.dispose = null
-    this.container = null
-  }
+  })
 }

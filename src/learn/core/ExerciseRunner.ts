@@ -208,6 +208,7 @@ export class ExerciseRunner {
     return {
       hit: (_pitch) => session.hit(),
       miss: (pitch, expected) => session.miss(pitch, expected),
+      error: () => session.error(),
       // Free-form escape hatch for exercise-specific events not in the typed
       // registry. Prefixed so they're trivially filterable in PostHog.
       event: (name, data) =>

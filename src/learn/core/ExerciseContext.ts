@@ -44,6 +44,7 @@ export interface ExerciseContext {
 export interface ExerciseLog {
   hit(pitch: number): void
   miss(pitch: number, expected?: number): void
+  error(): void
   event(name: string, data?: Record<string, unknown>): void
 }
 

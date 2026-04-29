@@ -1,3 +1,9 @@
+// Intervals ear-training exercise — Exercise integration class.
+// Presents an ascending two-note interval, asks the user to identify it from
+// the active pool, and reports accuracy + streak at the end. Keyboard-driven
+// (Space replay, 1-4 pick answer, Enter next). No MIDI file required — the
+// synth is the entire sound source.
+
 import { t } from '../../../i18n'
 import type { Exercise, ExerciseDescriptor } from '../../core/Exercise'
 import type { ExerciseContext } from '../../core/ExerciseContext'
@@ -5,7 +11,7 @@ import type { ExerciseResult } from '../../core/Result'
 import { computeXp } from '../../core/scoring'
 import { IntervalsEngine } from './engine'
 import { BEGINNER_SET } from './theory'
-import { IntervalsUi } from './ui'
+import { createIntervalsUi, type IntervalsUiOptions } from './ui'
 
 // Question count for a standard session. Small enough that a single run is
 // sub-3-minutes, large enough that the accuracy signal is meaningful. The
@@ -27,15 +33,11 @@ export const intervalsDescriptor: ExerciseDescriptor = {
   factory: (ctx) => new IntervalsExercise(ctx),
 }
 
-// C1 from the learn-mode plan. Presents an ascending two-note interval,
-// asks the user to identify it from the active pool, and reports accuracy
-// + streak at the end. No MIDI file required — the synth is the entire
-// sound source. Keyboard shortcuts (Space replay, 1-N pick answer, Enter
-// next) keep the flow snappy; the UI can be driven entirely by keyboard.
 class IntervalsExercise implements Exercise {
   readonly descriptor = intervalsDescriptor
   private engine: IntervalsEngine
-  private ui: IntervalsUi
+  private ui: ReturnType<typeof createIntervalsUi>
+  private readonly uiOpts: IntervalsUiOptions
   private onKeyDown = (e: KeyboardEvent): void => this.handleKeyDown(e)
 
   constructor(private ctx: ExerciseContext) {
@@ -44,13 +46,14 @@ class IntervalsExercise implements Exercise {
       questionCount: QUESTION_COUNT,
       set: BEGINNER_SET,
     })
-    this.ui = new IntervalsUi({
+    this.ui = createIntervalsUi()
+    this.uiOpts = {
       engine: this.engine,
       answerSet: BEGINNER_SET,
       onCloseExercise: () => this.requestClose(),
       onAnswered: (correct) => this.onAnswered(correct),
       onFinished: () => this.requestFinish(),
-    })
+    }
   }
 
   async mount(host: HTMLElement): Promise<void> {
@@ -62,7 +65,7 @@ class IntervalsExercise implements Exercise {
     // Prime the synth as early as possible so the first playCurrent() call
     // inside the UI doesn't lose the first ~30ms of attack to context warmup.
     this.ctx.services.synth.primeLiveInput()
-    this.ui.mount(host)
+    this.ui.mount(host, this.uiOpts)
   }
 
   start(): void {

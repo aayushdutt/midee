@@ -1,3 +1,10 @@
+// Play-along exercise — Exercise integration class.
+// Composes PracticeEngine (wait-mode), LoopRegion helpers (loop set/clear +
+// wrap + ramp), and a shared LearnOverlay (target zone + loop band) against
+// the Exercise interface consumed by the learn runner. Reads the MIDI from
+// LearnState (loaded before launch); the hub gates the start-card when none
+// is loaded.
+
 import { getContext } from 'tone'
 import type { BusNoteEvent } from '../../../core/input/InputBus'
 import { t } from '../../../i18n'
@@ -7,7 +14,7 @@ import type { ExerciseContext } from '../../core/ExerciseContext'
 import type { ExerciseResult } from '../../core/Result'
 import { computeXp } from '../../core/scoring'
 import { DEFAULT_SPEED_PRESETS, PlayAlongEngine } from './engine'
-import { PlayAlongHud } from './hud'
+import { createPlayAlongHud, type PlayAlongHudOptions } from './hud'
 
 // Aggressive Tone scheduler headroom while Play-Along is active — 5 ms,
 // roughly an order of magnitude below Tone's 100 ms default. Pairs with
@@ -41,7 +48,8 @@ export const playAlongDescriptor: ExerciseDescriptor = {
 class PlayAlongExercise implements Exercise {
   readonly descriptor = playAlongDescriptor
   private engine: PlayAlongEngine
-  private hud: PlayAlongHud
+  private hud: ReturnType<typeof createPlayAlongHud>
+  private readonly hudOpts: PlayAlongHudOptions
   // Snapshot of `getContext().lookAhead` taken on `start()` and restored on
   // `stop()`. Null means "no override active right now". Stored so a
   // mid-session error doesn't leak the tighter value into Play / Live.
@@ -57,16 +65,17 @@ class PlayAlongExercise implements Exercise {
       learnState: ctx.learnState,
       onCleanPass: () => this.onCleanPass(),
     })
-    this.hud = new PlayAlongHud({
+    this.hud = createPlayAlongHud()
+    this.hudOpts = {
       engine: this.engine,
       onCloseExercise: () => this.ctx.onClose('abandoned'),
       onMarkLoop: () => this.markLoop(),
       onClearLoop: () => this.clearLoop(),
-    })
+    }
   }
 
   mount(host: HTMLElement): void {
-    this.hud.mount(host)
+    this.hud.mount(host, this.hudOpts)
     const midi = this.ctx.learnState.state.loadedMidi
     if (midi) {
       // Re-render the loaded MIDI on the roll — LearnController's `enter`
@@ -158,7 +167,12 @@ class PlayAlongExercise implements Exercise {
   }
 
   onNoteOn(evt: BusNoteEvent): void {
-    this.engine.onNoteOn(evt)
+    const kind = this.engine.onNoteOn(evt)
+    if (kind === 'advanced') {
+      this.ctx.log.hit(evt.pitch)
+    } else if (kind === 'rejected') {
+      this.ctx.log.error()
+    }
     if (this.engine.practice.isWaiting === false) {
       // A press that advanced past the wait or landed without one is "good":
       // pulse the target zone in the accent color.
@@ -176,21 +190,15 @@ class PlayAlongExercise implements Exercise {
     const { perfect, good, errors } = this.engine.state
     const hits = perfect + good
     const attempts = hits + errors
-    // No meaningful session without attempts — runner will still count the
-    // time against abandonment analytics but won't commit progress.
     if (attempts === 0) return null
     const accuracy = hits / attempts
-    // Coarse per-pitch weak-spot summary isn't available from PracticeEngine
-    // today (it tracks "pending pitches" not "which pitch missed"), so we
-    // report zero weak spots for Play-Along; the Phase 2 exercises that do
-    // per-note classification will populate this.
     return {
       exerciseId: this.descriptor.id,
-      duration_s: 0, // runner computes real duration from Session
+      duration_s: 0, // runner computes from Session
       accuracy,
       xp: computeXp({ accuracy, duration_s: 60, difficultyWeight: 1 }),
       weakSpots: [],
-      completed: true,
+      completed: true, // play-along sessions are always "complete" on close
     }
   }
 

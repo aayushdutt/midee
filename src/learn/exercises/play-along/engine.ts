@@ -1,6 +1,7 @@
 import { batch } from 'solid-js'
 import { createStore, type SetStoreFunction } from 'solid-js/store'
 import type { BusNoteEvent } from '../../../core/input/InputBus'
+import type { MidiFile } from '../../../core/midi/types'
 import type { AppServices } from '../../../core/services'
 import { watch } from '../../../store/watch'
 import type { LearnState } from '../../core/LearnState'
@@ -71,7 +72,7 @@ export class PlayAlongEngine {
   private active = false
   // Cached so `setHand` can re-apply filters without touching PracticeEngine
   // internals.
-  private currentMidi: import('../../../core/midi/types').MidiFile | null = null
+  private currentMidi: MidiFile | null = null
 
   // Pitches currently held across all input sources, maintained by
   // `onNoteOn`/`onNoteOff`. Intersection with `heldEligible` drives the
@@ -123,7 +124,7 @@ export class PlayAlongEngine {
     })
   }
 
-  attach(midi: import('../../../core/midi/types').MidiFile | null): void {
+  attach(midi: MidiFile | null): void {
     this.active = true
     this.currentMidi = midi
     const { services, learnState } = this.opts
@@ -230,8 +231,8 @@ export class PlayAlongEngine {
     }
   }
 
-  onNoteOn(evt: BusNoteEvent): void {
-    if (!this.active) return
+  onNoteOn(evt: BusNoteEvent): 'advanced' | 'rejected' | 'none' {
+    if (!this.active) return 'none'
     this.pressedPitches.add(evt.pitch)
     const outcome = this.practice.notePressed(evt.pitch)
     if (outcome.kind === 'advanced') {
@@ -248,7 +249,9 @@ export class PlayAlongEngine {
         }
         this.setState('streak', this.state.streak + 1)
       })
-    } else if (outcome.kind === 'rejected' && this.practice.isWaiting) {
+      return 'advanced'
+    }
+    if (outcome.kind === 'rejected' && this.practice.isWaiting) {
       batch(() => {
         this.setState({
           errors: this.state.errors + 1,
@@ -256,11 +259,9 @@ export class PlayAlongEngine {
           cleanPasses: 0,
         })
       })
+      return 'rejected'
     }
-    // `'duplicate'` and `'accepted'` are no-ops by design: a re-strike of
-    // an already-cleared pitch isn't an error, and partial-chord progress
-    // surfaces via PracticeEngine's `pending`/`accepted` signal — not the
-    // score.
+    return 'none'
   }
 
   onNoteOff(evt: BusNoteEvent): void {

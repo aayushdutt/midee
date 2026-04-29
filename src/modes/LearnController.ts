@@ -8,9 +8,9 @@ import { createLearnState, type LearnState, type LearnStatus } from '../learn/co
 import { createLearnProgressStore, type LearnProgressStore } from '../learn/core/progress'
 import { playAlongDescriptor } from '../learn/exercises/play-along'
 import { findExercise } from '../learn/hub/catalog'
-import { LearnHub } from '../learn/hub/LearnHub'
+import { createLearnHub, type LearnHubOptions } from '../learn/hub/LearnHub'
 import { LearnOverlay } from '../learn/overlays/LearnOverlay'
-import { SessionSummary } from '../learn/ui/SessionSummary'
+import { createSessionSummary } from '../learn/ui/SessionSummary'
 import { createEventSignal } from '../store/eventSignal'
 import { watch } from '../store/watch'
 import { track, trackEvent } from '../telemetry'
@@ -33,7 +33,8 @@ export class LearnController {
   readonly learnState: LearnState = createLearnState()
   private readonly progress: LearnProgressStore = createLearnProgressStore()
 
-  private hub: LearnHub
+  private hub: ReturnType<typeof createLearnHub>
+  private readonly hubOpts: LearnHubOptions
   private runner: ExerciseRunner | null = null
   // Cinematic overlay shared across exercises. Instantiated lazily (mounts
   // into the PixiJS stage on first enter so tests don't need a renderer)
@@ -57,12 +58,13 @@ export class LearnController {
   private pendingMidi: MidiFile | null = null
 
   constructor(private ctx: ModeContext) {
-    this.hub = new LearnHub({
+    this.hub = createLearnHub()
+    this.hubOpts = {
       progress: this.progress,
       learnState: this.learnState,
       launchExercise: (descriptor) => void this.launchExercise(descriptor),
       onOpenFilePicker: () => this.openLearnFilePicker(),
-    })
+    }
   }
 
   enter(): void {
@@ -91,7 +93,7 @@ export class LearnController {
 
     this.mountHostElements(overlay)
     this.showHubView()
-    this.hub.mount(this.hubHost!)
+    this.hub.mount(this.hubHost!, this.hubOpts)
     this.overlay = new LearnOverlay()
     services.renderer.addLayer(this.overlay)
 
@@ -269,7 +271,7 @@ export class LearnController {
     if (result && lastDescriptor) {
       // Compute post-close deltas so the summary reads "+X XP, streak +1"
       // regardless of which internals changed.
-      const summary = new SessionSummary({
+      const summary = createSessionSummary({
         onAgain: () => {
           if (lastMidi && lastDescriptor === playAlongDescriptor.id) {
             void this.consumeMidi(lastMidi)

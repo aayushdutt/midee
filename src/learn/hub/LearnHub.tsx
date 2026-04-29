@@ -1,10 +1,10 @@
 import { createMemo, For, onCleanup, onMount, Show } from 'solid-js'
-import { render } from 'solid-js/web'
 import { t } from '../../i18n'
 import type { ExerciseCategory, ExerciseDescriptor } from '../core/Exercise'
 import type { LearnState } from '../core/LearnState'
 import type { LearnProgressStore } from '../core/progress'
 import { ComingSoonCardView, ExerciseCardView } from '../ui/ExerciseCard'
+import { createMountHandle } from '../ui/mountComponent'
 import { StreakRow } from '../ui/StreakRow'
 import { CATALOG } from './catalog'
 
@@ -196,26 +196,4 @@ function LearnHubView(props: LearnHubOptions) {
   )
 }
 
-// Imperative shell preserved for LearnController (mounts into `hubHost`).
-// T2b inlines this into <LearnMode/> once LearnController dissolves.
-export class LearnHub {
-  private dispose: (() => void) | null = null
-  private wrapper: HTMLDivElement | null = null
-
-  constructor(private opts: LearnHubOptions) {}
-
-  mount(container: HTMLElement): void {
-    this.unmount()
-    const wrapper = document.createElement('div')
-    container.appendChild(wrapper)
-    this.wrapper = wrapper
-    this.dispose = render(() => <LearnHubView {...this.opts} />, wrapper)
-  }
-
-  unmount(): void {
-    this.dispose?.()
-    this.dispose = null
-    this.wrapper?.remove()
-    this.wrapper = null
-  }
-}
+export const createLearnHub = () => createMountHandle(LearnHubView)

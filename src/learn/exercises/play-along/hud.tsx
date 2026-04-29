@@ -1,9 +1,9 @@
 import { createEffect, createMemo, onCleanup, onMount, Show } from 'solid-js'
-import { render } from 'solid-js/web'
 import { t } from '../../../i18n'
 import { watch } from '../../../store/watch'
 import { FloatingHud } from '../../../ui/FloatingHud'
 import { icons } from '../../../ui/icons'
+import { createMountHandle } from '../../ui/mountComponent'
 import type { PlayAlongEngine } from './engine'
 
 // Streak ≥ this is "hot" — saturated chip background. Below is "warm"
@@ -386,24 +386,6 @@ function PlayAlongHudView(props: PlayAlongHudOptions) {
   )
 }
 
-export class PlayAlongHud {
-  private dispose: (() => void) | null = null
-  private wrapper: HTMLDivElement | null = null
-
-  constructor(private opts: PlayAlongHudOptions) {}
-
-  mount(host: HTMLElement): void {
-    this.unmount()
-    const wrapper = document.createElement('div')
-    host.appendChild(wrapper)
-    this.wrapper = wrapper
-    this.dispose = render(() => <PlayAlongHudView {...this.opts} />, wrapper)
-  }
-
-  unmount(): void {
-    this.dispose?.()
-    this.dispose = null
-    this.wrapper?.remove()
-    this.wrapper = null
-  }
+export function createPlayAlongHud() {
+  return createMountHandle(PlayAlongHudView)
 }

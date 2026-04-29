@@ -224,6 +224,17 @@ export const icons = {
     `<path d="M7 11v4.5c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5V11"/>` +
     `<path d="M21 8.5V14"/>` +
     `</svg>`,
+
+  // Replay / loop-back — used by the intervals quiz to hear a question again.
+  replay: (size: Size = 12): string =>
+    svgStroke(
+      size,
+      `<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>`,
+      1.8,
+    ),
+
+  // Forward chevron — used by the intervals quiz next/finish button.
+  next: (size: Size = 12): string => svgStroke(size, `<polyline points="9 6 15 12 9 18"/>`, 1.8),
 }
 
 export type IconName = keyof typeof icons

@@ -1,6 +1,8 @@
 // Sight-reading exercise — Exercise integration class.
 // Wires the SightReadingEngine, SightReadLayer, and SightReadHud together
-// and implements the Exercise interface consumed by the learn runner.
+// against the Exercise interface consumed by the learn runner. Each session
+// streams notes from a `generateNoteSource` (weighted random pitch pool);
+// the renderer owns the per-frame engine tick via `SightReadLayer.update()`.
 
 import { batch } from 'solid-js'
 import type { BusNoteEvent } from '../../../core/input/InputBus'
@@ -8,12 +10,12 @@ import { t } from '../../../i18n'
 import type { Exercise, ExerciseDescriptor } from '../../core/Exercise'
 import type { ExerciseContext } from '../../core/ExerciseContext'
 import type { ExerciseResult } from '../../core/Result'
-import { accuracy, computeXp } from '../../core/scoring'
+import { computeXp } from '../../core/scoring'
 import { SightReadingEngine } from './engine'
 import { generateNoteSource, TIER_CONFIGS } from './generator'
 import { SightReadLayer } from './renderer'
 import type { ClefMode, TierConfig, TierKey } from './types'
-import { SightReadHud } from './ui'
+import { createSightReadHud } from './ui'
 
 export function poolForClef(clef: ClefMode, tier: TierConfig): number[] {
   if (clef === 'treble') return [...tier.pitchPool].sort((a, b) => a - b)
@@ -48,7 +50,7 @@ class SightReadingExercise implements Exercise {
 
   private engine: SightReadingEngine
   private staffLayer: SightReadLayer
-  private hud: SightReadHud
+  private hud: ReturnType<typeof createSightReadHud>
   private tierKey: TierKey
   private onEscKey: ((e: KeyboardEvent) => void) | null = null
 
@@ -73,7 +75,7 @@ class SightReadingExercise implements Exercise {
       showLabels: false,
     })
 
-    this.hud = new SightReadHud()
+    this.hud = createSightReadHud()
   }
 
   mount(host: HTMLElement): void {
@@ -85,19 +87,12 @@ class SightReadingExercise implements Exercise {
     // Register PixiJS layer.
     this.ctx.services.renderer.addLayer(this.staffLayer)
 
-    // Wire the done callback — navigate back when the session ends.
-    this.staffLayer.onDone = (reason) => {
-      // Keep the HUD visible (end panel) — the user triggers close themselves.
-      // We do NOT call onClose here; the end panel CTAs drive that.
-      void reason // used by end panel display, not for navigation
-    }
-
     // Mount the HUD.
     this.hud.mount(host, {
       engine: this.engine,
       tier,
       onPlayAgain: () => this._restart(),
-      onPracticeWeak: (pitches) => this._restartWithFocus(pitches),
+      onPracticeWeak: (pitches) => this._restart(pitches),
       onClose: () => this.ctx.onClose('abandoned'),
       onRestart: () => this._restart(),
       onClefChange: (clef) => {
@@ -183,32 +178,21 @@ class SightReadingExercise implements Exercise {
   }
 
   result(): ExerciseResult | null {
-    const { totalPlayed, perfect, good, missed, phase } = this.engine.state
+    const { totalPlayed, phase } = this.engine.state
     if (totalPlayed < 3) return null
-    const acc = accuracy(perfect + good, perfect + good + missed)
+    const acc = this.engine.hitAccuracy
+    if (acc === null) return null
     return {
       exerciseId: sightReadingDescriptor.id,
       duration_s: 0, // runner computes from Session
       accuracy: acc,
       xp: computeXp({ accuracy: acc, duration_s: 60, difficultyWeight: 1.0 }),
-      weakSpots: this._computeWeakSpots(),
+      weakSpots: this.engine.weakSpots,
       completed: phase === 'complete',
     }
   }
 
-  // ── Private helpers ─────────────────────────────────────────────────────────
-
-  private _computeWeakSpots() {
-    const spots: Array<{ pitch: number; count: number }> = []
-    for (const [pitch, { misses }] of this.engine.noteStats) {
-      if (misses > 0) {
-        spots.push({ pitch, count: misses })
-      }
-    }
-    return spots.sort((a, b) => b.count - a.count).slice(0, 5)
-  }
-
-  private _restart(): void {
+  private _restart(focusPitches?: number[]): void {
     const tier = TIER_CONFIGS[this.tierKey]
     const clef = this.staffLayer.currentClef()
     const pool = poolForClef(clef, tier)
@@ -219,24 +203,7 @@ class SightReadingExercise implements Exercise {
         generateNoteSource({
           pitchPool: pool,
           sessionLength: tier.sessionLength,
-        }),
-      )
-      this.engine.start()
-    })
-  }
-
-  private _restartWithFocus(pitches: number[]): void {
-    const tier = TIER_CONFIGS[this.tierKey]
-    const clef = this.staffLayer.currentClef()
-    const pool = poolForClef(clef, tier)
-    this.staffLayer.resetDone()
-    this.staffLayer.activeKeys.clear()
-    batch(() => {
-      this.engine.attach(
-        generateNoteSource({
-          pitchPool: pool,
-          sessionLength: tier.sessionLength,
-          weakNoteFocus: pitches,
+          ...(focusPitches && { weakNoteFocus: focusPitches }),
         }),
       )
       this.engine.start()

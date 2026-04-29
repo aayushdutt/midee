@@ -1,41 +1,25 @@
 import { createEffect, For, on, onCleanup, onMount, Show } from 'solid-js'
-import { render } from 'solid-js/web'
 import { type MessageKey, t } from '../../../i18n'
 import { icons } from '../../../ui/icons'
+import { createMountHandle } from '../../ui/mountComponent'
 import type { IntervalsEngine } from './engine'
 import { getInterval, getIntervalsByIds } from './theory'
 
-// Localised name for an interval id (e.g. `M3` → `Major 3rd`). Falls back to
-// the id itself if the key is missing — should never happen in production
-// but keeps `getInterval` returning useful labels in tests.
+const PLAY_GLYPH = icons.play(20)
+const REPLAY_GLYPH = icons.replay(12)
+const NEXT_GLYPH = icons.next(12)
+
 function intervalFullName(id: string): string {
   return t(`learn.interval.${id}` as MessageKey)
 }
-
-// Card UI for the Intervals quiz. Single centered card — no piano roll behind
-// it, no moveable panel. Ear training benefits from a focused, quiet surface
-// so the user's attention stays on the sound. Reuses design tokens from the
-// Learn hub (hero-card, pill buttons) so the visual language is consistent.
 
 export interface IntervalsUiOptions {
   engine: IntervalsEngine
   answerSet: readonly string[]
   onCloseExercise: () => void
-  // Fired whenever the user chooses. The controller uses this to flash the
-  // shared overlay (celebrationSwell on hit, no-op on miss — the UI itself
-  // renders the miss feedback inline).
   onAnswered?: (correct: boolean) => void
-  // Fired once at the end so the LearnController can transition into the
-  // session summary. The card itself stays mounted until `unmount()`.
   onFinished?: () => void
 }
-
-const PLAY_GLYPH =
-  '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><title>Play</title><path d="M7 5 L19 12 L7 19 Z"/></svg>'
-const REPLAY_GLYPH =
-  '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><title>Replay</title><path d="M3 8a5 5 0 1 1 2 4"/><path d="M3 12v-4h4"/></svg>'
-const NEXT_GLYPH =
-  '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><title>Next</title><path d="M5 3l5 5-5 5"/></svg>'
 
 function IntervalsCard(props: IntervalsUiOptions) {
   const engine = props.engine
@@ -220,24 +204,6 @@ function IntervalsCard(props: IntervalsUiOptions) {
   )
 }
 
-export class IntervalsUi {
-  private dispose: (() => void) | null = null
-  private wrapper: HTMLDivElement | null = null
-
-  constructor(private opts: IntervalsUiOptions) {}
-
-  mount(host: HTMLElement): void {
-    this.unmount()
-    const wrapper = document.createElement('div')
-    host.appendChild(wrapper)
-    this.wrapper = wrapper
-    this.dispose = render(() => <IntervalsCard {...this.opts} />, wrapper)
-  }
-
-  unmount(): void {
-    this.dispose?.()
-    this.dispose = null
-    this.wrapper?.remove()
-    this.wrapper = null
-  }
+export function createIntervalsUi() {
+  return createMountHandle(IntervalsCard)
 }

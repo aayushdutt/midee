@@ -1,6 +1,7 @@
 // Note generator and MIDI file source for sight-reading exercises.
-// `generateNoteSource` returns a weighted random stream respecting stepwise-
-// motion bias and weak-note focus. `MidiFileSource` plays back a fixed list.
+// `generateNoteSource` returns a weighted random stream with stepwise-motion
+// bias and weak-note focus. `MidiFileSource` plays back a fixed pitch list
+// (primarily used in tests, also available for deterministic playback).
 
 import type { NoteSource, TierConfig, TierKey } from './types'
 

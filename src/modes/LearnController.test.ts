@@ -39,18 +39,13 @@ vi.mock('../learn/core/ExerciseRunner', () => ({
 // Mocking it keeps the test hermetic (no stray Solid roots to clean up) and
 // avoids a dependency on the full catalog / i18n surface.
 vi.mock('../learn/hub/LearnHub', () => ({
-  LearnHub: class {
-    mount() {}
-    unmount() {}
-  },
+  createLearnHub: () => ({ mount: () => {}, unmount: () => {} }),
 }))
 
 // SessionSummary renders HTML into the hub host after an exercise closes.
 // Not exercised by these tests; mocking prevents stray DOM side-effects.
 vi.mock('../learn/ui/SessionSummary', () => ({
-  SessionSummary: class {
-    show() {}
-  },
+  createSessionSummary: () => ({ show: () => {}, dismiss: () => {} }),
 }))
 
 vi.mock('../telemetry', () => ({

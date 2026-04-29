@@ -1,5 +1,6 @@
 import { batch } from 'solid-js'
 import { createStore, type SetStoreFunction } from 'solid-js/store'
+import type { WeakSpot } from '../../core/Result'
 import { classifyTiming, GOOD_WINDOW_SEC, LATE_HIT_WINDOW_SEC } from '../../core/scoring'
 import type { EngineConfig, NoteSource, SessionScore, StreamNote } from './types'
 
@@ -303,6 +304,25 @@ export class SightReadingEngine {
   stop(): void {
     this.started = false
     this.paused = false
+  }
+
+  /** Accuracy from the engine's own counters (perfect, good, missed). Null when no data yet. */
+  get hitAccuracy(): number | null {
+    const { perfect, good, missed } = this.state
+    const total = perfect + good + missed
+    if (total === 0) return null
+    return (perfect + good) / total
+  }
+
+  /** Per-pitch weakness sorted by miss count, used for progress heatmap. */
+  get weakSpots(): WeakSpot[] {
+    const spots: WeakSpot[] = []
+    for (const [pitch, { misses }] of this.noteStats) {
+      if (misses > 0) {
+        spots.push({ pitch, count: misses })
+      }
+    }
+    return spots.sort((a, b) => b.count - a.count).slice(0, 5)
   }
 }
 

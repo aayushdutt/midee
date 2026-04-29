@@ -1,16 +1,8 @@
 import { onCleanup, Show } from 'solid-js'
-import { render } from 'solid-js/web'
 import { t } from '../../i18n'
 import type { ExerciseResult } from '../core/Result'
+import { createMountHandle } from './mountComponent'
 
-// Quiet end-of-session surface. Slides up from the bottom, displays accuracy
-// + XP + streak-extended hint (if applicable), gives Again / Next buttons,
-// then fades itself after a timeout. Deliberately not a modal — it doesn't
-// block interaction and doesn't steal focus.
-//
-// The public surface stays imperative (`new SessionSummary(...); show(...)`)
-// because LearnController mounts it from its own class body. T12/T8b wrap-up
-// will replace this with a Solid signal inside <LearnMode/>.
 export interface SessionSummaryOptions {
   onAgain: () => void
   onNext: () => void
@@ -78,45 +70,28 @@ function SessionSummaryView(props: ViewProps) {
   )
 }
 
-export class SessionSummary {
-  private dispose: (() => void) | null = null
-  private wrapper: HTMLDivElement | null = null
+export function createSessionSummary(opts: SessionSummaryOptions) {
+  const handle = createMountHandle(SessionSummaryView)
+  const autoFadeMs = opts.autoFadeMs
 
-  constructor(private opts: SessionSummaryOptions) {}
-
-  show(
-    host: HTMLElement,
-    result: ExerciseResult,
-    extras: { streakExtended: boolean; xpGained: number },
-  ): void {
-    this.dismiss()
-    // Solid's render() replaces contents of its mount node — give it a
-    // dedicated wrapper so we don't clobber the hub or exercise DOM that
-    // already lives in `host`.
-    const wrapper = document.createElement('div')
-    host.appendChild(wrapper)
-    this.wrapper = wrapper
-    const autoFadeMs = this.opts.autoFadeMs
-    this.dispose = render(
-      () => (
-        <SessionSummaryView
-          onAgain={this.opts.onAgain}
-          onNext={this.opts.onNext}
-          {...(autoFadeMs !== undefined ? { autoFadeMs } : {})}
-          result={result}
-          streakExtended={extras.streakExtended}
-          xpGained={extras.xpGained}
-          onDismiss={() => this.dismiss()}
-        />
-      ),
-      wrapper,
-    )
-  }
-
-  dismiss(): void {
-    this.dispose?.()
-    this.dispose = null
-    this.wrapper?.remove()
-    this.wrapper = null
+  return {
+    show(
+      host: HTMLElement,
+      result: ExerciseResult,
+      extras: { streakExtended: boolean; xpGained: number },
+    ): void {
+      handle.mount(host, {
+        onAgain: opts.onAgain,
+        onNext: opts.onNext,
+        ...(autoFadeMs !== undefined ? { autoFadeMs } : {}),
+        result,
+        streakExtended: extras.streakExtended,
+        xpGained: extras.xpGained,
+        onDismiss: () => handle.unmount(),
+      })
+    },
+    dismiss(): void {
+      handle.unmount()
+    },
   }
 }
