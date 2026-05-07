@@ -1,119 +1,125 @@
 ---
-title: How to turn a MIDI file into an MP4 video (free, in your browser)
-description: How to turn a .mid file into a shareable MP4 — free, no install, no upload. Piano-roll visualization in 1080p, TikTok/Reels, or square aspect.
+title: MIDI to MP4: convert a MIDI file to video for free
+description: Convert a .mid file into a shareable MP4 piano-roll video in your browser. Free, no install, no upload, no watermark, with 1080p and vertical export.
 path: /midi-to-mp4/
 type: page
+modified: 2026-05-07
 ---
 
-# How to turn a MIDI file into an MP4 video
+# MIDI to MP4: convert a MIDI file to video
 
-If you've got a `.mid` file and want a shareable MP4 video — piano-roll visualization, audio baked in, ready for YouTube or TikTok — you've got a few options, and most of them are more complicated than they need to be.
+The fastest free way to convert a MIDI file to MP4 is to open [midee](/), drop in your `.mid`, choose a look, and export a piano-roll video directly from your browser. There is no account, no upload, no watermark, and no screen recorder to set up.
 
-This page walks through the fastest way: open [midee](/), drop the MIDI in, hit export. Free, no account, no upload.
+This guide is for anyone who wants to turn a MIDI into a shareable video for YouTube, TikTok, Reels, Instagram, Discord, a lesson page, or a portfolio. If you just want to listen to a MIDI file without exporting, see the [free online MIDI player](/online-midi-player/).
 
-## The short version
+## Quick steps
 
 1. Open [midee.app](/) in Chrome, Safari, or Firefox.
 2. Drag your `.mid` file anywhere on the page.
-3. Pick a theme, instrument, and particle style if you care (defaults look fine).
-4. Click **Export** in the top right.
-5. Pick a resolution: 720p, 1080p, vertical for TikTok/Reels, square, or native.
-6. Click **Start**. Wait a few seconds to a minute depending on length.
-7. An MP4 downloads to your device. Share, post, done.
+3. Press play to preview the piano-roll visualization.
+4. Pick a theme, instrument, and particle style if you want a specific mood.
+5. Click **Export** in the top right.
+6. Choose 720p, 1080p, vertical, square, or native resolution.
+7. Click **Start**. The MP4 downloads to your device when rendering finishes.
 
-That's it. The rest of this page explains how it works and what options exist if the defaults aren't what you want.
+That is the whole MIDI-to-MP4 workflow. Everything happens locally in the browser tab.
+
+## What you get
+
+| Feature | midee |
+| --- | --- |
+| Input | Standard `.mid` / `.midi` files |
+| Output | H.264 MP4 with audio baked in |
+| Export sizes | 720p, 1080p, vertical 9:16, square 1:1, native |
+| Watermark | None |
+| Upload required | No |
+| Account required | No |
+| Install required | No |
+| Best for | Piano-roll videos, Shorts/Reels/TikToks, demos, quick sharing |
+
+## Why convert MIDI to MP4?
+
+MIDI files are great for music software, but terrible for sharing. Most people cannot preview a `.mid` in a social feed, and many phones do not know what to do with one. An MP4 is different: it plays everywhere, embeds cleanly, uploads to every major platform, and lets people see the notes as they hear them.
+
+That is why piano-roll videos work so well. They turn a sequence of MIDI notes into a visual performance: falling notes, glowing keys, track colors, particles, and audio in sync.
 
 ## Why most other options are slower
 
-**Screen recording:** Open Synthesia or MIDIano, capture with OBS or QuickTime, trim in iMovie. Works, but you're now managing three tools, and the audio syncs poorly unless you're careful about frame rates.
+**Screen recording:** Open Synthesia or MIDIano, capture with OBS or QuickTime, trim the start and end, check the audio, export again. It works, but now you are managing multiple tools and hoping the frame rate stays clean.
 
-**Upload-to-render services (midi2vidi, etc.):** Upload a MIDI, wait for a server to process it, download. Fine for one-off renders but slow, privacy-unfriendly, and the output aesthetic is dated.
+**Upload-to-render services:** Upload a MIDI, wait for a server, download a video. Fine for a one-off render, but not ideal for private arrangements, unreleased music, or quick experiments.
 
-**Pay for native software (SeeMusic, etc.):** Works beautifully if you pay the license fee. If you're rendering occasionally, it's overkill.
+**Paid native software:** SeeMusic and similar apps can make beautiful videos, but they are more than many people need for an occasional MIDI export.
 
-midee exists because none of the above were quick, free, and didn't involve uploading your MIDI somewhere.
+midee exists for the simple case: drop in a MIDI, make a clean video, keep your file on your own device.
 
 ## Picking the right aspect ratio
 
-midee exports in five aspect ratios. Match the ratio to where you're posting:
+Match the export size to where you plan to post:
 
 | Destination | Pick | Resolution |
 | --- | --- | --- |
-| YouTube (landscape) | 1080p or 720p | 1920×1080 / 1280×720 |
-| YouTube Shorts, TikTok, Reels, Stories | Vertical | 1080×1920 |
-| Instagram feed (square) | Square | 1080×1080 |
-| Embedding in a blog post | 720p or native | 1280×720 or your window's native ratio |
+| YouTube landscape | 1080p | 1920 x 1080 |
+| YouTube Shorts | Vertical | 1080 x 1920 |
+| TikTok | Vertical | 1080 x 1920 |
+| Instagram Reels / Stories | Vertical | 1080 x 1920 |
+| Instagram feed | Square | 1080 x 1080 |
+| Blog embed / Discord / portfolio | 720p or 1080p | 1280 x 720 or 1920 x 1080 |
 
-If you're unsure, pick 1080p. YouTube, Twitter, Discord, and blog embeds all handle 16:9 1080p beautifully.
+If you are unsure, choose 1080p for YouTube and vertical for short-form platforms.
 
-## Picking a theme
+## Make the video look intentional
 
-Each theme changes the overall palette and mood. Click the theme button in the top HUD to cycle. The five options:
+Small choices change the feel of a MIDI video:
 
-- **Dark** — classic black background, high-contrast notes. Readable on any device.
-- **Midnight** — deep blues, softer contrast. Good for melancholy pieces.
-- **Neon** — saturated accents, high-energy. Pairs with electronic tracks and upbeat pop covers.
-- **Sunset** — warm oranges/reds. The community favorite for classical and film-score pieces.
-- **Ocean** — teals and aquamarines. Calming, great for ambient or minimalist MIDIs.
+- **Theme:** Dark is clear and classic. Neon suits electronic tracks. Sunset works well for emotional piano and film-score pieces. Ocean feels calm and ambient.
+- **Instrument:** The sampled piano is the safest default for piano music. Rhodes, pad, pluck, strings, guitar, flute, and other voices can make non-piano MIDIs feel less mechanical.
+- **Particles:** Sparks and embers make note attacks more lively. Turn particles off if you want a cleaner teaching-style video.
+- **Tracks:** If a MIDI has many parts, hide tracks you do not want in the final visual.
 
-Your theme persists across reloads, so you can set it once and forget it.
+The goal is not to overproduce. A clean piano-roll video that exports quickly is often better than a heavily edited render that never gets posted.
 
-## Picking an instrument
+## How midee exports MP4 in the browser
 
-By default midee uses a sampled Salamander Grand piano (the samples are about 15 MB and load on first note). The other three instruments are synthesized and load instantly:
+When you start an export, midee renders the piano-roll scene frame by frame with WebGL, encodes the video with the browser's WebCodecs `VideoEncoder`, renders audio offline, and muxes the result into an MP4 file. The technical result is a normal H.264 MP4 that uploads cleanly to social platforms.
 
-- **Rhodes** — electric piano, warm and mellow. Great for ballads and jazz.
-- **Pad** — sustained synth pad. Works for ambient and slow pieces.
-- **Pluck** — short, percussive. Good for arpeggios and fast runs.
+The important part: your MIDI file, rendered frames, audio, and final MP4 stay on your machine. There is no server-side render queue.
 
-For piano pieces, stick with the sampled Grand. For anything else, experiment — the synthesized instruments are lightweight and load in a few hundred milliseconds.
+If you want the engineering story, read [why midee replaced ffmpeg.wasm with WebCodecs](/blog/why-i-replaced-ffmpeg-wasm-with-webcodecs/).
 
-## Particle styles
+## MIDI to MP4 vs other workflows
 
-Particles bloom on every note-on. Click the particles button in the HUD to cycle through the styles. There's no wrong choice — it's mostly personal taste. Embers and Sparks are the most popular.
+| Workflow | Good for | Tradeoff |
+| --- | --- | --- |
+| midee | Fast browser export, no upload, no watermark | Fewer cinematic controls than paid desktop tools |
+| Screen recording | Capturing any existing app | Manual setup, trimming, possible sync issues |
+| SeeMusic | Highly polished creator workflows | Paid, native app, more setup |
+| Synthesia + recorder | Learning-focused visuals | No built-in MP4 export |
+| Upload converter | Occasional server-side render | Requires uploading your MIDI |
 
-## How the export actually works
+## Common questions
 
-When you click Start, midee:
+**Can I convert MIDI to MP4 for free?**
+Yes. midee exports MP4 videos for free. There is no paid tier, no export watermark, and no account requirement.
 
-1. Rewinds the MIDI to time zero and walks through it frame by frame at your target frame rate (60fps by default).
-2. At each frame, renders the piano-roll scene onto an HTML canvas (PixiJS does the heavy lifting via WebGL).
-3. Hands the canvas to the browser's [WebCodecs `VideoEncoder`](https://developer.mozilla.org/en-US/docs/Web/API/VideoEncoder), which encodes it to H.264 — using your GPU's hardware encoder when available.
-4. In parallel, renders the audio through [Tone.js](https://tonejs.github.io/)'s offline audio context — which runs ~30× faster than realtime, so audio is done before video usually finishes.
-5. Muxes the video and audio streams into an MP4 container using [Mediabunny](https://mediabunny.dev/) (ISOBMFF / MP4 writer; tree-shaken in the export path).
-6. Offers the finished MP4 as a download.
+**Does midee upload my MIDI file?**
+No. Playback, visualization, audio rendering, video encoding, and MP4 creation happen in your browser.
 
-All of this happens in your browser tab. No server sees your MIDI, your rendered frames, or the final video. The entire pipeline is local, hardware-accelerated, and open source.
+**Can I make vertical MIDI videos for TikTok or Reels?**
+Yes. Choose the vertical export preset for a 9:16 video.
 
-If you're curious about the technical decisions, there's a [longer blog post](/blog/why-i-replaced-ffmpeg-wasm-with-webcodecs/) on why midee uses WebCodecs instead of the more common `ffmpeg.wasm` approach.
+**Will the MP4 include audio?**
+Yes. The exported MP4 includes the rendered instrument audio, so you can upload it directly.
 
-## Troubleshooting
+**Can I use copyrighted MIDI files?**
+midee will open standard MIDI files, but you are responsible for rights and platform rules when sharing the resulting video.
 
-**"It's slow on my machine."**
-Export speed depends on your GPU's video encoder and your CPU. On a modern laptop, a 60-second MIDI typically exports in 2-6 seconds. If it's taking significantly longer: close other tabs; WebCodecs falls back to software encoding on older GPUs, which is 10-20× slower.
+**Is this the same as converting MIDI to audio?**
+Not exactly. midee creates a video with audio. If you only need an audio file, use a MIDI-to-audio renderer. If you want a visual piano-roll video, use MIDI to MP4.
 
-**"The audio sounds thin."**
-The default Salamander piano samples are realistic but opinionated. Try a different instrument (Rhodes or Pad both have a warmer character) or layer multiple tracks if your MIDI has them.
-
-**"Firefox export doesn't start."**
-Firefox's WebCodecs `VideoEncoder` shipped in Firefox 130 (Sept 2024). If you're on an older version, upgrade, or use Chrome/Safari.
-
-**"My MIDI has a lot of tracks and the colors overlap."**
-midee assigns each track a distinct color automatically. Toggle tracks in the Tracks panel (top-right) to hide/show individual ones before exporting.
-
-**"Is there a way to trim or edit the MIDI before exporting?"**
-Not yet — midee plays and renders what's in the `.mid`. For light trimming, tools like [MidiEditor](https://www.midieditor.org/) (free, cross-platform) work well upstream.
-
-## Try it with the demo MIDIs
-
-If you don't have a MIDI handy, midee ships with three public-domain pieces on the home screen:
-
-- Bach — Prelude in C (BWV 846), 1:30 — sparkles, instantly recognizable.
-- Erik Satie — Gnossienne No. 1, 3:12 — slow, proves sustained notes shine.
-- Chopin — Nocturne in E♭ major, Op. 9 No. 2, 4:30 — dramatic, tests multi-voice.
-
-Click any of them on the home screen to load and autoplay. Then click Export in the top right to try a render end-to-end.
+**Can I just play the MIDI without exporting?**
+Yes. midee also works as an [online MIDI player](/online-midi-player/) and [MIDI visualizer](/midi-visualizer/).
 
 ## Try it
 
-[Open midee](/), drop a MIDI, hit Export. If it's useful, tell someone. midee is open source on [GitHub](https://github.com/aayushdutt/midee) — stars and issues welcome.
+[Open midee](/), drop a `.mid`, preview it, and export a clean MP4. Start with 1080p for landscape videos or vertical for Shorts, TikTok, and Reels.

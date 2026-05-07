@@ -1,18 +1,19 @@
 ---
-title: A free, open-source alternative to Synthesia
-description: Honest comparison of Synthesia and midee — a free, open-source, browser-based piano-roll visualizer. When to use each, and what's different.
+title: midee vs Synthesia: honest comparison
+description: Compare Synthesia and midee for MIDI playback, falling notes, wait-mode practice, live MIDI, looping, sight reading, and MP4 export.
 path: /vs/synthesia/
 type: page
+modified: 2026-05-07
 ---
 
-# A free, open-source alternative to Synthesia
+# midee vs Synthesia: honest comparison
 
 If you've searched for "Synthesia alternative" you probably want one of two things:
 
 1. A free tool to watch MIDI files play on a piano roll without paying for Synthesia's custom-song unlock.
-2. A way to turn a MIDI into a nice-looking video you can post online.
+2. A browser-based way to practice, play live, loop ideas, or turn a MIDI into a nice-looking video.
 
-Synthesia is great at what it does, but it's a native Windows/Mac/iOS/Android app focused on learning. For visualizing and sharing, there's a simpler option: **[midee](/)**, a free, open-source MIDI visualizer that runs entirely in your browser.
+Synthesia is great at what it does, but it's a native Windows/Mac/iOS/Android app focused on learning. **[midee](/)** is the browser-native alternative: a free, open-source MIDI player, visualizer, live instrument, practice trainer, loop station, recorder, and MP4 exporter.
 
 This page is a genuine comparison, not a hatchet job — Synthesia is the right choice for plenty of people. Here's how the two differ and when each makes sense.
 
@@ -21,11 +22,14 @@ This page is a genuine comparison, not a hatchet job — Synthesia is the right 
 |  | Synthesia | midee |
 | --- | --- | --- |
 | Platform | Windows, macOS, iOS, Android | Any browser (Chrome, Safari, Firefox) |
-| Cost | Free with 150 built-in songs; **$29** one-time to unlock custom MIDIs on desktop | **Free, forever** |
+| Cost | Free built-in songs; paid desktop unlock for custom MIDIs | **Free, forever** |
 | Open source | No | Yes, MIT license |
 | Install required | Yes | No — just visit the URL |
-| Primary focus | Learning to play the piano | Visualizing and exporting MIDI |
+| Primary focus | Learning to play the piano | Browser MIDI playback, live play, learning, looping, and export |
 | Falling-notes display | Yes | Yes |
+| Wait-mode play-along | Yes | Yes |
+| Sight-reading trainer | No dedicated equivalent | Yes |
+| Ear-training exercises | No dedicated equivalent | Yes, intervals |
 | MP4 video export | No (requires third-party screen recording) | Yes, built-in (1080p, TikTok/Reels aspect ratios) |
 | Live play from a MIDI keyboard | Yes | Yes |
 | Loop station / recording | No | Yes, bar-snapped |
@@ -50,7 +54,8 @@ midee didn't start as a Synthesia clone — it started because there was no brow
 
 - **Zero install.** Open [midee.app](/) and it's running. No account, no download. If you want to share a link with a friend who's never heard of it, they can try it in five seconds.
 - **Built-in MP4 export.** This is the thing Synthesia doesn't do. Hit record inside midee and you get a frame-accurate 1080p MP4 with audio baked in. 720p, 1080p, vertical for TikTok and Reels, square, or native resolution. Rendered locally in your browser via WebCodecs — no server, no upload.
-- **Beautiful out of the box.** Five themes (Dark, Midnight, Neon, Sunset, Ocean), four instruments (sampled Salamander Grand piano, Rhodes, pad, pluck), and a rotating roster of particle styles. Your picks persist across reloads.
+- **Beautiful out of the box.** Five themes (Dark, Midnight, Neon, Sunset, Ocean), sampled piano plus multiple synth and acoustic voices, and a rotating roster of particle styles. Your picks persist across reloads.
+- **Learn mode.** Drop a MIDI into play-along practice, turn on wait mode, slow it down, focus hands, loop hard sections, and track accuracy. Learn also includes sight reading and interval training.
 - **Free and open source.** MIT-licensed. No paywall, no unlock code for custom MIDIs. The [source code is on GitHub](https://github.com/aayushdutt/midee) and PRs are welcome.
 - **Live mode + loop station.** Plug in a MIDI keyboard (Web MIDI) or use your laptop keyboard. Loop a phrase bar-snapped to the metronome. Record a session and export to `.mid` or straight to video.
 - **Fully client-side.** Your MIDI file and the rendered video never leave your browser. There's no server to store, mine, or leak them.
@@ -67,6 +72,8 @@ Use **midee** if:
 
 - You want to turn a MIDI into a shareable video for YouTube, TikTok, Reels, or Instagram.
 - You want to watch a MIDI file play beautifully without installing software.
+- You want Synthesia-style wait-mode practice in a browser.
+- You want a sight-reading trainer and interval practice alongside MIDI playback.
 - You're on a Chromebook, a locked-down work machine, or any platform where you can't install apps.
 - You value open source, no watermark, no account, fully client-side.
 - You want to jam on your MIDI controller without firing up a DAW.
@@ -81,6 +88,12 @@ Really free. MIT licensed. There's no paid tier, no custom-song unlock, no expor
 **Can I use the MIDI files I bought for Synthesia?**
 Yes. midee reads any standard `.mid` or `.midi` file. Drag it into the browser window.
 
+**Does midee have wait mode like Synthesia?**
+Yes. Learn mode's play-along exercise can pause at each chord until you play the expected notes.
+
+**Can midee train sight reading?**
+Yes. Learn mode includes a sight-reading trainer with scrolling staff notes, clef controls, tempo controls, accuracy, streaks, and weak-note practice.
+
 **Does midee upload my MIDI to a server?**
 No. Everything runs in your browser. The MIDI file is parsed locally; audio and video are rendered locally; the exported MP4 is produced locally. Nothing is uploaded to midee at any point.
 
@@ -92,4 +105,4 @@ Different aesthetic. SeeMusic leans cinematic and heavy; midee leans design-forw
 
 ## Try it
 
-midee is one URL away. [Open it](/), drop in a `.mid`, and see whether it earns a spot next to Synthesia in your workflow.
+midee is one URL away. [Open it](/), drop in a `.mid`, try Live and Learn, and see whether it earns a spot next to Synthesia in your workflow.

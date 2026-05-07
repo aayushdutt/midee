@@ -229,7 +229,37 @@ function writeBlogIndex(results) {
     return `<li><a href="${p.path}">${escapeHtml(p.title)}</a><br/><span class="post-meta-inline">${pretty}</span><p>${escapeHtml(p.description)}</p></li>`
   }).join('\n')
 
-  const body = `<h1>Blog</h1>\n<p class="lede">Writing about midee — how it is built, technical decisions, and how to get more out of it.</p>\n<ul class="post-list">\n${listHtml}\n</ul>`
+  const guideOrder = [
+    '/online-midi-player/',
+    '/midi-visualizer/',
+    '/midi-to-mp4/',
+    '/piano-roll-video-maker/',
+    '/synthesia-alternative/',
+    '/play-along-piano/',
+    '/sight-reading-trainer/',
+    '/live-midi-keyboard/',
+    '/midi-loop-station/',
+    '/best-midi-visualizers/',
+    '/no-upload-midi-visualizer/',
+    '/vs/synthesia/',
+    '/vs/seemusic/',
+    '/vs/sightread-dev/',
+  ]
+
+  const guideRank = new Map(guideOrder.map((path, idx) => [path, idx]))
+  const guideLinks = results
+    .filter(p => p.type === 'page')
+    .sort((a, b) =>
+      (guideRank.get(a.path) ?? Number.MAX_SAFE_INTEGER) -
+      (guideRank.get(b.path) ?? Number.MAX_SAFE_INTEGER)
+    )
+    .map(p => [p.path, p.title])
+
+  const guidesHtml = guideLinks
+    .map(([href, label]) => `<a href="${href}">${escapeHtml(label)}</a>`)
+    .join(' · ')
+
+  const body = `<h1>Blog</h1>\n<p class="lede">Writing about midee — how it is built, technical decisions, and how to get more out of the browser MIDI player, visualizer, live mode, and Learn mode.</p>\n<h2>Latest posts</h2>\n<ul class="post-list">\n${listHtml}\n</ul>\n<details>\n<summary class="post-meta-inline">More midee guides</summary>\n<p class="post-meta-inline">${guidesHtml}</p>\n</details>`
 
   const indexData = { title: 'Blog', description: 'Writing about midee — how it is built, technical decisions, and how to get more out of the MIDI visualizer.', path: '/blog/' }
   const breadcrumb = JSON.stringify({

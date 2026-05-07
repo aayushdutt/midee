@@ -4,9 +4,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>midee - free MIDI visualizer · jam, loop, record, export MP4</title>
+  <title>midee - Free Online MIDI Player & Synthesia Alternative</title>
   <meta name="description"
-    content="Free MIDI visualizer - play any .mid on a full piano roll, jam, loop, record, export 1080p MP4. Fully client-side, no upload, no account." />
+    content="Open any MIDI file in your browser. Play it, visualize falling notes, practice with Learn mode, jam with a MIDI controller, loop ideas, and export MP4." />
   <meta name="theme-color" content="#06060e" />
   <meta name="color-scheme" content="dark light" />
   <meta name="keywords"
@@ -25,9 +25,9 @@
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="midee" />
   <meta property="og:locale" content="en_US" />
-  <meta property="og:title" content="midee - free MIDI visualizer in your browser" />
+  <meta property="og:title" content="midee - Free Online MIDI Player & Synthesia Alternative" />
   <meta property="og:description"
-    content="Drop a MIDI and watch it play on a full 88-key piano with cascading notes, glow, and particles. Play live, jam, loop, record, export as 1080p MP4. Free, open source, fully client-side." />
+    content="Open any MIDI file in your browser. Play it, visualize falling notes, practice with Learn mode, jam with a MIDI controller, loop ideas, and export MP4." />
   <meta property="og:url" content="https://midee.app" />
   <meta property="og:image" content="https://midee.app/og.png" />
   <meta property="og:image:width" content="1200" />
@@ -36,9 +36,9 @@
     content="midee - a free MIDI visualizer in the browser, with cascading notes, glowing keys, and particle bursts." />
 
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="midee - free MIDI visualizer in your browser" />
+  <meta name="twitter:title" content="midee - Free Online MIDI Player & Synthesia Alternative" />
   <meta name="twitter:description"
-    content="Drop a MIDI, play live, jam, loop, record, export as 1080p MP4. Free, open source, client-side." />
+    content="Play MIDI files, visualize falling notes, practice with Learn mode, go live with a MIDI controller, loop ideas, and export MP4." />
   <meta name="twitter:image" content="https://midee.app/og.png" />
   <meta name="twitter:image:alt"
     content="midee - a free MIDI visualizer in the browser, with cascading notes, glowing keys, and particle bursts." />
@@ -67,7 +67,7 @@
       "@type": "SoftwareApplication",
       "name": "midee",
       "alternateName": ["midee MIDI visualizer", "midee - free MIDI visualizer", "midee piano roll"],
-      "description": "Free, open-source MIDI visualizer in the browser. A Synthesia-style piano-roll visualizer that plays any .mid file across a full 88-key piano with cascading notes, glow, and particles. Also a live MIDI instrument, loop station, and session recorder - jam with a MIDI controller or your laptop keyboard, loop bar-snapped phrases, record takes, and export the result as a 1080p MP4. Fully client-side, no upload, no server, no watermark. A free, web-native alternative to SeeMusic, Synthesia, and MIDIano.",
+      "description": "Free, open-source online MIDI player, MIDI visualizer, and MIDI-to-MP4 exporter in the browser. Play any .mid file across a full 88-key piano roll with cascading notes, glow, and particles. Also a live MIDI instrument, loop station, and session recorder - jam with a MIDI controller or your laptop keyboard, loop bar-snapped phrases, record takes, and export the result as a 1080p MP4. Fully client-side, no upload, no server, no watermark. A free, web-native alternative to SeeMusic, Synthesia, and MIDIano.",
       "applicationCategory": "MultimediaApplication",
       "applicationSubCategory": "Music",
       "operatingSystem": "Web",
@@ -85,6 +85,9 @@
         "Live play from Web MIDI controllers or QWERTY keyboard",
         "Loop station with bar-snapped layering",
         "Session recording and .mid export",
+        "Learn mode with wait-mode play-along practice",
+        "Sight-reading trainer with clef, tempo, accuracy, and weak-note practice",
+        "Interval ear-training exercises",
         "1080p MP4 export via WebCodecs (client-side, no server)",
         "Multiple themes, instruments, and particle styles"
       ]
@@ -100,8 +103,8 @@
   <noscript>
     <div
       style="max-width:720px;margin:4rem auto;padding:2rem;font-family:system-ui,sans-serif;color:#e8e8f0;background:#0b0b10;border-radius:12px;line-height:1.55;">
-      <h1>midee - free MIDI visualizer in your browser</h1>
-      <p>midee is a free, open-source MIDI visualizer that runs entirely in your browser. Drop a <strong>.mid</strong>
+      <h1>midee - free online MIDI player and Synthesia alternative</h1>
+      <p>midee is a free, open-source online MIDI player, visualizer, and practice app that runs entirely in your browser. Drop a <strong>.mid</strong>
         file and it plays on a full 88-key piano roll with cascading notes, glow halos, and particle bursts - a
         Synthesia-style piano-roll visualizer, but web-native, design-forward, and free.</p>
       <p>It's also a live MIDI instrument and a simple loop station. Plug in a MIDI keyboard (Web MIDI), or play from
@@ -113,12 +116,13 @@
       <ul>
         <li><strong>Play MIDI files</strong> in the browser - multi-track, per-track color, full 88 keys.</li>
         <li><strong>Live MIDI play</strong> from Web MIDI controllers or your laptop keyboard (FL Studio layout).</li>
+        <li><strong>Learn mode</strong> - play-along wait mode, sight reading, interval training, accuracy, streaks, and weak-note practice.</li>
         <li><strong>Loop station</strong> - bar-snapped to the metronome, layerable, undo stack, export as .mid.</li>
         <li><strong>Session recording</strong> - capture a live performance and bounce to .mid or video.</li>
         <li><strong>MP4 export</strong> - 720p, 1080p, vertical (TikTok, Reels), square, or native. Frame-accurate,
           audio baked in, rendered locally via WebCodecs.</li>
-        <li><strong>Themes, instruments, particles</strong> - five themes, sampled Salamander Grand piano plus Rhodes,
-          pad, and pluck, cycleable particle styles.</li>
+        <li><strong>Themes, instruments, particles</strong> - five themes, sampled piano plus multiple synth and acoustic
+          voices, cycleable particle styles.</li>
         <li><strong>Free and open source</strong> - MIT-licensed, 100% client-side, no upload, no account, no watermark.
         </li>
       </ul>
@@ -130,10 +134,10 @@
       </p>
 
       <h2>How midee compares</h2>
-      <p>If you've looked at <strong>SeeMusic</strong> (beautiful but paid, native app), <strong>Synthesia</strong>
-        (learn-to-play focus, paid for custom MIDIs), or <strong>MIDIano</strong> / <strong>midi2vidi</strong> (free but
-        dated), midee is the web-native, open-source alternative - with frame-accurate 1080p MP4 export built in, no
-        server round-trip, and no watermark.</p>
+      <p>If you've looked at <strong>Synthesia</strong> (native piano learning), <strong>SeeMusic</strong> (paid video
+        visualization), <strong>sightread.dev</strong> (focused browser practice), or <strong>MIDIano</strong> /
+        <strong>midi2vidi</strong> (simple MIDI tools), midee is the web-native, open-source alternative - with MIDI
+        playback, live mode, Learn mode, looping, recording, and frame-accurate MP4 export in one place.</p>
 
       <h2>Common questions</h2>
       <p><strong>Is it really free?</strong> Yes. MIT-licensed. No account, no paywall, no watermark.</p>
@@ -146,7 +150,18 @@
 
       <h2>Read more</h2>
       <ul>
+        <li><a href="/synthesia-alternative/">Free Synthesia alternative in your browser</a></li>
+        <li><a href="/online-midi-player/">Free online MIDI player</a></li>
+        <li><a href="/midi-visualizer/">Free online MIDI visualizer</a></li>
+        <li><a href="/live-midi-keyboard/">Play live with a MIDI keyboard in your browser</a></li>
+        <li><a href="/midi-loop-station/">Free MIDI loop station in your browser</a></li>
+        <li><a href="/play-along-piano/">Play-along piano trainer with wait mode</a></li>
+        <li><a href="/sight-reading-trainer/">Free sight-reading trainer for piano</a></li>
+        <li><a href="/vs/sightread-dev/">midee vs. sightread.dev - professional learn mode alternative</a></li>
         <li><a href="/midi-to-mp4/">How to turn a MIDI file into an MP4 video</a></li>
+        <li><a href="/piano-roll-video-maker/">Free piano roll video maker for MIDI files</a></li>
+        <li><a href="/best-midi-visualizers/">Best free online MIDI visualizers</a></li>
+        <li><a href="/no-upload-midi-visualizer/">Private MIDI visualizer with no upload</a></li>
         <li><a href="/vs/synthesia/">midee vs. Synthesia - free, open-source alternative</a></li>
         <li><a href="/vs/seemusic/">midee vs. SeeMusic - the browser-native option</a></li>
         <li><a href="/blog/why-i-replaced-ffmpeg-wasm-with-webcodecs/">Why I replaced ffmpeg.wasm with WebCodecs</a>

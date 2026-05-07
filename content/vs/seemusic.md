@@ -1,13 +1,14 @@
 ---
-title: A free, open-source alternative to SeeMusic
-description: Honest comparison of SeeMusic and midee — when to pick which, what's different, and why midee may be all you need for MIDI-to-video.
+title: midee vs SeeMusic: honest comparison
+description: Compare SeeMusic and midee for MIDI visualization, MP4 export, live MIDI, looping, privacy, platform support, and cost.
 path: /vs/seemusic/
 type: page
+modified: 2026-05-07
 ---
 
-# A free, open-source alternative to SeeMusic
+# midee vs SeeMusic: honest comparison
 
-SeeMusic is the best-known MIDI visualizer among music educators and serious piano YouTubers. It's a paid, native desktop app for Windows and macOS, made by Visual Musical Minds. If you've found your way here, you're probably wondering:
+SeeMusic is one of the best-known MIDI visualizers among music educators and serious piano YouTubers. It's a paid, native desktop app for Windows and macOS, made by Visual Musical Minds. If you've found your way here, you're probably wondering:
 
 - "Do I actually need to pay for SeeMusic, or is there a free version that's good enough?"
 - "Can I do this in a browser instead of installing another desktop app?"
@@ -19,7 +20,7 @@ SeeMusic is the best-known MIDI visualizer among music educators and serious pia
 |  | SeeMusic | midee |
 | --- | --- | --- |
 | Platform | Windows, macOS (native) | Any modern browser |
-| Cost | Paid (tiered: free with watermark, paid for full export) | **Free, forever** |
+| Cost | Paid tiers / paid export features | **Free, forever** |
 | Open source | No | Yes, MIT license |
 | Install required | Yes, ~500 MB | No |
 | MP4 export | Yes (watermarked on free tier) | **Yes, never watermarked** |
@@ -58,7 +59,7 @@ midee is the browser-first, design-forward, open-source option for everyone who 
 Use **SeeMusic** if:
 
 - You render 20 videos a month and need every visual parameter tuned precisely.
-- You're already on Windows or macOS and a $50 one-time license is fine with you.
+- You're already on Windows or macOS and a paid license is fine with you.
 - You need features midee doesn't yet have: score overlay with fingering, per-instrument animated characters, very specific camera cinematography.
 
 Use **midee** if:
