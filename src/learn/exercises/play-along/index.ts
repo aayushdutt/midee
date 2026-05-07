@@ -11,9 +11,10 @@ import { t } from '../../../i18n'
 import { watch } from '../../../store/watch'
 import type { Exercise, ExerciseDescriptor } from '../../core/Exercise'
 import type { ExerciseContext } from '../../core/ExerciseContext'
+import { createExerciseHarness } from '../../core/exerciseHarness'
 import { isKeyboardShortcutIgnored } from '../../core/keyboard'
 import type { ExerciseResult } from '../../core/Result'
-import { computeXp } from '../../core/scoring'
+import { standardResult } from '../../core/resultHelpers'
 import { DEFAULT_SPEED_PRESETS, PlayAlongEngine } from './engine'
 import { createPlayAlongHud, type PlayAlongHudOptions } from './hud'
 
@@ -51,13 +52,8 @@ class PlayAlongExercise implements Exercise {
   private engine: PlayAlongEngine
   private hud: ReturnType<typeof createPlayAlongHud>
   private readonly hudOpts: PlayAlongHudOptions
-  // Snapshot of `getContext().lookAhead` taken on `start()` and restored on
-  // `stop()`. Null means "no override active right now". Stored so a
-  // mid-session error doesn't leak the tighter value into Play / Live.
+  private harness: ReturnType<typeof createExerciseHarness>
   private prevLookAhead: number | null = null
-  // Signal subscriptions owned for the lifetime of a single mount → stop
-  // cycle. Flushed on stop so a relaunch doesn't accumulate dangling refs
-  // to a previous overlay / engine.
   private unsubs: Array<() => void> = []
 
   constructor(private ctx: ExerciseContext) {
@@ -73,25 +69,23 @@ class PlayAlongExercise implements Exercise {
       onMarkLoop: () => this.markLoop(),
       onClearLoop: () => this.clearLoop(),
     }
+    this.harness = createExerciseHarness({
+      hud: this.hud,
+      hudOpts: this.hudOpts,
+      onKeyDown: this.onKeyDown,
+    })
   }
 
   mount(host: HTMLElement): void {
-    this.hud.mount(host, this.hudOpts)
+    this.harness.mountHud(host)
     const midi = this.ctx.learnState.state.loadedMidi
     if (midi) {
-      // Re-render the loaded MIDI on the roll — LearnController's `enter`
-      // cleared it, so Play-Along restores it on launch.
       this.ctx.services.renderer.loadMidi(midi)
     }
-    // Paint the target zone right away so the visual language is established
-    // before the first note arrives.
     this.ctx.overlay.pulseTargetZone(this.ctx.services.renderer.currentTheme.nowLine)
   }
 
   start(): void {
-    // Tighten Tone scheduler headroom for this session only — see the
-    // PracticeEngine comment on ENGAGE_LEAD_SEC. Try/catch is defensive in
-    // case a future Tone version exposes lookAhead read-only.
     try {
       const ctx = getContext()
       this.prevLookAhead = ctx.lookAhead
@@ -101,13 +95,7 @@ class PlayAlongExercise implements Exercise {
     }
     const midi = this.ctx.learnState.state.loadedMidi
     this.engine.attach(midi)
-    // Wait mode is default-on for Play-Along.
     this.engine.setWaitEnabled(true)
-    // Fold the engine's loop region into the overlay band whenever it
-    // changes. Kept here rather than inside the engine so the engine stays
-    // DOM/PixiJS-free. Subscription is tracked so `stop` can tear it down —
-    // without that, a relaunch leaks a subscriber pointing at a
-    // torn-down overlay.
     this.ctx.overlay.drawLoopBand(null)
     this.unsubs.push(
       watch(
@@ -119,7 +107,7 @@ class PlayAlongExercise implements Exercise {
             this.ctx.overlay.drawLoopBand({
               startTime: region.start,
               endTime: region.end,
-              color: 0xf3c36c, // amber
+              color: 0xf3c36c,
             })
           }
         },
@@ -132,25 +120,16 @@ class PlayAlongExercise implements Exercise {
         this.ctx.services.renderer.setPracticeHints(status.pending, status.accepted)
       }),
     )
-    // Auto-start the transport after subscribers are wired — the user landed
-    // here from a "start practice" click, so they expect playback to begin.
-    // Wait-mode may halt on the first synchronous clock tick, so hint listeners
-    // must be ready before play().
     this.engine.play()
-    // Keyboard shortcuts. Kept local to the exercise — removed on stop so
-    // they don't bleed into the hub or other modes.
-    window.addEventListener('keydown', this.onKeyDown)
+    this.harness.attachKeys()
   }
 
   stop(): void {
-    window.removeEventListener('keydown', this.onKeyDown)
+    this.harness.detachKeys()
     for (const off of this.unsubs) off()
     this.unsubs = []
     this.ctx.services.renderer.setPracticeHints(null, null)
     this.engine.detach()
-    // Restore Tone lookAhead so Play / Live get back their default scheduling
-    // headroom. Skipped (with the null check) when start() couldn't read it
-    // in the first place, e.g. a non-browser test harness.
     if (this.prevLookAhead !== null) {
       try {
         getContext().lookAhead = this.prevLookAhead
@@ -162,7 +141,7 @@ class PlayAlongExercise implements Exercise {
   }
 
   unmount(): void {
-    this.hud.unmount()
+    this.harness.unmountHud()
     this.ctx.overlay.drawLoopBand(null)
     this.ctx.services.renderer.setPracticeHints(null, null)
   }
@@ -188,19 +167,13 @@ class PlayAlongExercise implements Exercise {
   }
 
   result(): ExerciseResult | null {
-    const { perfect, good, errors } = this.engine.state
-    const hits = perfect + good
-    const attempts = hits + errors
-    if (attempts === 0) return null
-    const accuracy = hits / attempts
-    return {
+    return standardResult({
       exerciseId: this.descriptor.id,
-      duration_s: 0, // runner computes from Session
-      accuracy,
-      xp: computeXp({ accuracy, duration_s: 60, difficultyWeight: 1 }),
-      weakSpots: [],
-      completed: true, // play-along sessions are always "complete" on close
-    }
+      hits: this.engine.state.perfect + this.engine.state.good,
+      misses: this.engine.state.errors,
+      difficultyWeight: 1,
+      completed: true,
+    })
   }
 
   // ── Local helpers ─────────────────────────────────────────────────────

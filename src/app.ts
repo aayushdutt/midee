@@ -2,8 +2,13 @@ import { Metronome } from './audio/Metronome'
 import { INSTRUMENTS, SynthEngine } from './audio/SynthEngine'
 import { MasterClock } from './core/clock/MasterClock'
 import { type BusNoteEvent, InputBus } from './core/input/InputBus'
+import { lazyHandle } from './core/lazyHandle'
 import { parseMidiFile } from './core/midi/parser'
 import { detectChord } from './core/music/ChordDetector'
+import {
+  createLivePerformanceBus,
+  type LivePerformanceBus,
+} from './core/performance/LivePerformanceBus'
 import { booleanPersisted, indexPersisted, numberPersisted } from './core/persistence'
 import { fetchSampleMidi, getSample } from './core/samples'
 import type { AppServices } from './core/services'
@@ -14,6 +19,7 @@ import { ENABLE_LEARN_MODE } from './env'
 // heavy VideoExporter chunk (see Promise.all removal below).
 import type { VideoExporter } from './export/VideoExporter'
 import { setLocale, t } from './i18n'
+import { CaptureFanout } from './midi/CaptureFanout'
 import { ComputerKeyboardInput } from './midi/ComputerKeyboardInput'
 import { LiveLooper, type LiveLooperState } from './midi/LiveLooper'
 import { LiveNoteStore } from './midi/LiveNoteStore'
@@ -39,11 +45,10 @@ import { DropZone } from './ui/DropZone'
 // picker, post-session card) are dynamic-imported in ensureXModal() helpers
 // below so their JSX stays out of the initial bundle. The static side keeps
 // the type imports for signatures.
-import type { ExportModal, ExportResolution, ExportSettings } from './ui/ExportModal'
+import type { ExportResolution, ExportSettings } from './ui/ExportModal'
 import { InstrumentMenu } from './ui/InstrumentMenu'
 import { KeyboardResizer } from './ui/KeyboardResizer'
-import type { MidiPickerModal } from './ui/MidiPickerModal'
-import type { PostSessionModal, SessionAction } from './ui/PostSessionModal'
+import type { SessionAction } from './ui/PostSessionModal'
 import { showError, showSuccess } from './ui/Toast'
 import { TrackPanel } from './ui/TrackPanel'
 import { installViewportClassSync } from './ui/utils'
@@ -61,20 +66,36 @@ export class App {
   private liveLooper!: LiveLooper
   private metronome = new Metronome()
   private sessionRec!: SessionRecorder
-  // Lazy modals: nullable until first open. The paired `*Load` promise gates
-  // concurrent ensures so we never construct twice.
-  private postSessionModal: PostSessionModal | null = null
-  private postSessionModalLoad: Promise<PostSessionModal> | null = null
+  private capture!: CaptureFanout
+  // Lazy modals: race-safe lazy initialisation via lazyHandle — each is
+  // constructed at most once, even under concurrent get() calls.
+  private postSessionHandle = lazyHandle(() =>
+    import('./ui/PostSessionModal').then(({ PostSessionModal }) => {
+      const m = new PostSessionModal(this.overlay)
+      m.onAction = (action) => void this.handleSessionAction(action)
+      return m
+    }),
+  )
   private pendingSession: { events: CapturedEvent[]; duration: number } | null = null
   private instrumentMenu!: InstrumentMenu
   private activeMouseNote: number | null = null
   dropzone!: DropZone
-  private midiPicker: MidiPickerModal | null = null
-  private midiPickerLoad: Promise<MidiPickerModal> | null = null
+  private midiPickerHandle = lazyHandle(() =>
+    import('./ui/MidiPickerModal').then(({ MidiPickerModal }) => {
+      const m = new MidiPickerModal(this.overlay)
+      return m
+    }),
+  )
   private controls!: Controls
   trackPanel!: TrackPanel
-  private exportModal: ExportModal | null = null
-  private exportModalLoad: Promise<ExportModal> | null = null
+  private exportHandle = lazyHandle(() =>
+    import('./ui/ExportModal').then(({ ExportModal }) => {
+      const m = new ExportModal(this.overlay)
+      m.onStart = (settings) => void this.startExport(settings)
+      m.onCancel = () => this.cancelExport()
+      return m
+    }),
+  )
   // Captured in init() so the lazy ensureXModal() helpers can construct
   // without re-querying the DOM.
   private overlay!: HTMLElement
@@ -96,8 +117,12 @@ export class App {
   // Learn module graph (LearnHub, ExerciseRunner, IntervalsEngine, …) into
   // the bundle, so we defer construction to first use. The mode context is
   // captured at boot so the lazy constructor doesn't need to re-derive it.
-  private learnController: LearnController | null = null
-  private learnControllerLoad: Promise<LearnController> | null = null
+  private learnControllerHandle = lazyHandle(() =>
+    import('./modes/LearnController').then(({ LearnController }) => {
+      const c = new LearnController(this.modeContext)
+      return c
+    }),
+  )
   private modeContext!: ModeContext
   private loadingEl: HTMLElement | null = null
   private currentExporter: VideoExporter | null = null
@@ -123,16 +148,10 @@ export class App {
   private loopArmedLogged = false
   private loopRecordedLogged = false
   private prevLooperState: LiveLooperState = 'idle'
-  // Sustain pedal state. When `pedalDown`, note-offs are added to
-  // `sustainedPitches` and the audio release is deferred until pedal-up.
-  // Visual/recording paths still fire on key-up so the roll reflects
-  // what the player's hands actually did.
-  // Two independent sources (hardware CC64 + spacebar stand-in) are merged
-  // with an OR so either can engage sustain without fighting the other.
-  private pedalDown = false
-  private midiPedalDown = false
-  private keyPedalDown = false
-  private sustainedPitches = new Set<number>()
+  // Sustain pedal state managed by LivePerformanceBus — keyboard OR MIDI
+  // sources merged with an OR. The bus owns sustained-pitches bookkeeping,
+  // repress-release logic, and subscriber fan-out.
+  private performanceBus!: LivePerformanceBus
   private onVisibilityChange = (): void => {
     if (document.hidden) this.releaseAllLiveNotes()
   }
@@ -196,6 +215,14 @@ export class App {
 
     this.sessionRec = new SessionRecorder(this.clock)
 
+    // Fan-out that routes capture events to both looper and sessionRec in
+    // a single call. Eliminates the duplicated call pairs below.
+    this.capture = new CaptureFanout(this.liveLooper, this.sessionRec)
+
+    // LivePerformanceBus owns pedal merge (keyboard OR MIDI), sustained-pitch
+    // bookkeeping, and subscriber fan-out for live performance events.
+    this.performanceBus = createLivePerformanceBus()
+
     this.services = {
       store: this.store,
       clock: this.clock,
@@ -204,6 +231,34 @@ export class App {
       renderer: this.renderer,
       input: this.inputBus,
     }
+
+    // Wire the LivePerformanceBus fan-out sinks. Audio and visual-key
+    // feedback fire unconditionally (every mode). Capture-mode sinks
+    // (looper + session + particles) gate on MODE_CAPTURES_LIVE.
+    this.unsubs.push(
+      this.performanceBus.subscribeNotes(
+        // Audio + visual: always fire so every key-press is heard and seen.
+        (evt) => {
+          this.synth.liveNoteOn(evt.pitch, evt.velocity)
+          this.liveNotes.press(evt.pitch, evt.velocity, evt.clockTime)
+        },
+        (evt) => {
+          this.synth.liveNoteOff(evt.pitch)
+        },
+      ),
+      // Capture-mode note-off subscriber: looper + session recorder capture
+      // every note-off (including pedal-sustained releases). Mode-gated so
+      // Learn-mode practice doesn't pollute recordings.
+      this.performanceBus.subscribeNotes(
+        () => {},
+        (evt) => {
+          if (!MODE_CAPTURES_LIVE[this.store.state.mode]) return
+          // Synthetic pedal-up uses clockTime -1; SessionRecorder needs wall times.
+          const t = evt.clockTime >= 0 ? evt.clockTime : this.clock.currentTime
+          this.capture.captureNoteOff(evt.pitch, t)
+        },
+      ),
+    )
 
     // Dropzone is shared across modes; its callbacks dispatch by the active
     // mode so Learn keeps its MIDI isolated from Play's.
@@ -465,7 +520,7 @@ export class App {
     // Each source re-publishes into the shared InputBus so downstream
     // consumers (the live-note handler here, and later exercise runners)
     // see one fan-out point instead of three. Pedal sources are kept
-    // per-source because App merges them with an OR in applyPedalState.
+    // per-source because the bus merges them with an OR.
     this.unsubs.push(
       this.midiInput.noteOn.subscribe((evt) => {
         if (evt) this.inputBus.emitNoteOn(evt, 'midi')
@@ -475,8 +530,15 @@ export class App {
       }),
       this.midiInput.pedal.subscribe((down) => {
         this.inputBus.emitPedal(down, 'midi')
-        this.midiPedalDown = down
-        this.applyPedalState('midi')
+        if (down) {
+          this.performanceBus.routePedalDown('midi')
+          if (!this.firstPedalLogged) {
+            this.firstPedalLogged = true
+            track('pedal_used', { source: 'midi' })
+          }
+        } else {
+          this.performanceBus.routePedalUp('midi')
+        }
       }),
       this.keyboardInput.noteOn.subscribe((evt) => {
         if (evt) this.inputBus.emitNoteOn(evt, 'keyboard')
@@ -486,8 +548,15 @@ export class App {
       }),
       this.keyboardInput.pedal.subscribe((down) => {
         this.inputBus.emitPedal(down, 'keyboard')
-        this.keyPedalDown = down
-        this.applyPedalState('keyboard')
+        if (down) {
+          this.performanceBus.routePedalDown('keyboard')
+          if (!this.firstPedalLogged) {
+            this.firstPedalLogged = true
+            track('pedal_used', { source: 'keyboard' })
+          }
+        } else {
+          this.performanceBus.routePedalUp('keyboard')
+        }
       }),
       this.keyboardInput.octave.subscribe((o) => this.controls.updateOctave(o)),
       this.inputBus.noteOn.subscribe((evt) => {
@@ -554,18 +623,9 @@ export class App {
     const now = this.clock.currentTime
     this.liveNotes.releaseAll(now)
     this.synth.liveReleaseAll()
-    // Any pedal-sustained pitches have open note-ons in the loop/session
-    // streams. Close them at `now` (tab-hide / blur time) — otherwise the
-    // next time the player comes back, the next note-off closes the wrong
-    // event and the recorded phrase has an impossible duration.
-    for (const pitch of this.sustainedPitches) {
-      this.liveLooper.captureNoteOff(pitch, now)
-      this.sessionRec.captureNoteOff(pitch, now)
-    }
-    this.sustainedPitches.clear()
-    this.pedalDown = false
-    this.midiPedalDown = false
-    this.keyPedalDown = false
+    // Emergency reset: clear all pedal state and release sustained pitches
+    // so the bus doesn't think the pedal is still held when the user returns.
+    this.performanceBus.forceReleaseAll(now)
   }
 
   // Called whenever a new MIDI is loaded so the telemetry flags scoped to
@@ -600,8 +660,6 @@ export class App {
     if (this.store.state.status === 'exporting') return
     const mode = this.store.state.mode
     const captures = MODE_CAPTURES_LIVE[mode]
-    // Home → first note dissolves into live mode. Play mode plays-along alongside
-    // whatever scheduled MIDI is running (or paused), which is the point.
     if (mode === 'home') this.enterLiveMode(false)
 
     if (!this.firstLiveNoteLogged) {
@@ -610,42 +668,20 @@ export class App {
       trackActivation('live_note')
     }
 
-    // Re-pressing a pitch that was pedal-sustained: the new attack takes
-    // over. Emit the sustained note's note-off into loop/session first so
-    // their streams don't end up with overlapping note-ons for one pitch,
-    // and clear the sustain flag so pedal-up later doesn't fire a stale
-    // release on a note that's currently ringing. Modes that don't capture
-    // live performance (Learn) skip the capture calls and only reset the flag.
-    if (this.sustainedPitches.has(evt.pitch)) {
-      if (captures) {
-        this.liveLooper.captureNoteOff(evt.pitch, evt.clockTime)
-        this.sessionRec.captureNoteOff(evt.pitch, evt.clockTime)
-      }
-      this.sustainedPitches.delete(evt.pitch)
-    }
-
-    // Audio feedback always — even in Learn mode the user expects to hear
-    // the note they pressed (right or wrong).
-    this.synth.liveNoteOn(evt.pitch, evt.velocity)
-
-    // Always register the press in the live-note store so the on-screen
-    // keyboard highlights the pressed pitch — this is how users see that
-    // their input registered. The renderer separately decides whether to
-    // also draw the upward falling-note sprites; Learn suppresses those
-    // via `setLiveNotesVisible(false)` on enter.
-    this.liveNotes.press(evt.pitch, evt.velocity, evt.clockTime)
+    // Route through the bus: repress-release (note-off sinks, then on),
+    // sustained-pitches bookkeeping, and note-on fan-out to audio+visual sinks.
+    // Capture uses the bus's note-off path only — no duplicate captureNoteOff
+    // here (routeNoteOn already fans off to subscribers).
+    this.performanceBus.routeNoteOn(evt)
 
     // Looper + session captures are live-performance concerns — practice
-    // key-presses (Learn) should not pollute a saved session recording or
-    // overdub onto a live loop.
+    // key-presses (Learn) should not pollute a saved session recording.
     if (captures) {
       this.renderer.burstParticleAt(evt.pitch)
-      this.liveLooper.captureNoteOn(evt.pitch, evt.velocity, evt.clockTime)
-      this.sessionRec.captureNoteOn(evt.pitch, evt.velocity, evt.clockTime)
+      this.capture.captureNoteOn(evt.pitch, evt.velocity, evt.clockTime)
     }
 
-    // Live mode's "tap a note to start the session" shortcut — don't hijack
-    // play-mode or learn-mode transport, which the user drives explicitly.
+    // Live mode's "tap a note to start the session" shortcut.
     if (mode === 'live') {
       const s = this.store.state.status
       if (s === 'idle' || s === 'ready' || s === 'paused') {
@@ -656,55 +692,17 @@ export class App {
   }
 
   private handleLiveNoteOff(evt: BusNoteEvent): void {
-    // Gate matches `handleLiveNoteOn`: we never emit live audio in home mode
-    // (the first press dissolves home → live before any off event fires).
     const mode = this.store.state.mode
     if (mode === 'home') return
-    const captures = MODE_CAPTURES_LIVE[mode]
 
-    // The visual piano-roll reflects actual hand motion — key-up is key-up,
-    // even while the audio keeps ringing under the pedal.
+    // Visual key-up always fires — the roll reflects hand motion even while
+    // audio keeps ringing under the pedal.
     this.liveNotes.release(evt.pitch, evt.clockTime)
-    if (this.pedalDown) {
-      // Pedal held: defer audio release AND the loop/session note-off so
-      // the recorded duration matches what the player actually heard.
-      // Both stream-captures fire together at pedal-up (or at a re-press).
-      this.sustainedPitches.add(evt.pitch)
-    } else {
-      this.synth.liveNoteOff(evt.pitch)
-      if (captures) {
-        this.liveLooper.captureNoteOff(evt.pitch, evt.clockTime)
-        this.sessionRec.captureNoteOff(evt.pitch, evt.clockTime)
-      }
-    }
-  }
 
-  private applyPedalState(source: 'midi' | 'keyboard'): void {
-    const down = this.midiPedalDown || this.keyPedalDown
-    if (down === this.pedalDown) return
-    this.pedalDown = down
-    if (down) {
-      if (!this.firstPedalLogged) {
-        this.firstPedalLogged = true
-        track('pedal_used', { source })
-      }
-      return
-    }
-    // Pedal-up: release everything the damper was holding. Still-held keys
-    // aren't in this set, so they keep ringing as expected. Fire the
-    // loop/session note-offs here too — their durations are pedal-informed,
-    // so the captured streams match what the player heard. Modes that don't
-    // capture live performance (Learn) skip those captures.
-    const now = this.clock.currentTime
-    const captures = MODE_CAPTURES_LIVE[this.store.state.mode]
-    for (const pitch of this.sustainedPitches) {
-      this.synth.liveNoteOff(pitch)
-      if (captures) {
-        this.liveLooper.captureNoteOff(pitch, now)
-        this.sessionRec.captureNoteOff(pitch, now)
-      }
-    }
-    this.sustainedPitches.clear()
+    // Route through the bus. When pedal is down the bus bookmarks the pitch;
+    // when pedal lifts, bus subscribers fire for audio+visual release and
+    // captures. When pedal is not down, subscribers fire immediately.
+    this.performanceBus.routeNoteOff(evt)
   }
 
   private onCanvasPointerDown = (e: PointerEvent): void => {
@@ -880,7 +878,7 @@ export class App {
     // startExport only fires from ExportModal's onStart callback, so the
     // modal exists. Capture the live ref once so progress/close calls below
     // don't need optional-chaining ceremony.
-    const exportModal = this.exportModal
+    const exportModal = this.exportHandle.peek()
     if (!exportModal) return
 
     const exportStartedAt = performance.now()
@@ -1059,7 +1057,7 @@ export class App {
   openFilePicker(target?: 'play' | 'learn'): void {
     const resolveTarget = (): 'play' | 'learn' =>
       target ?? (this.store.state.mode === 'learn' ? 'learn' : 'play')
-    void this.ensureMidiPicker().then((modal) => {
+    void this.midiPickerHandle.get().then((modal) => {
       modal.open({
         onFile: (file) => {
           if (resolveTarget() === 'learn') {
@@ -1079,67 +1077,15 @@ export class App {
     })
   }
 
-  // Lazy LearnController. Pulls the whole Learn module graph (LearnHub,
-  // exercises, runners, overlay) only when the user actually enters Learn
-  // for the first time. Same Promise-gating pattern as the modal ensures so
-  // a Solid onMount + DropZone race resolves to one instance.
+  // Thin delegation wrapper — AppCtx exposes this method so callers
+  // (createApp.ts, Solid mode components) don't need to know about the
+  // lazyHandle indirection.
   ensureLearnController(): Promise<LearnController> {
-    if (this.learnController) return Promise.resolve(this.learnController)
-    if (!this.learnControllerLoad) {
-      this.learnControllerLoad = import('./modes/LearnController').then(({ LearnController }) => {
-        const c = new LearnController(this.modeContext)
-        this.learnController = c
-        return c
-      })
-    }
-    return this.learnControllerLoad
-  }
-
-  // Lazy modal helpers. Each one dynamic-imports the module (cached after
-  // first call), constructs the modal once, wires its callbacks, and caches
-  // the synchronous reference. The Promise field gates concurrent ensures so
-  // a click + idle-warm race never produces two instances.
-  private ensureExportModal(): Promise<ExportModal> {
-    if (this.exportModal) return Promise.resolve(this.exportModal)
-    if (!this.exportModalLoad) {
-      this.exportModalLoad = import('./ui/ExportModal').then(({ ExportModal }) => {
-        const m = new ExportModal(this.overlay)
-        m.onStart = (settings) => void this.startExport(settings)
-        m.onCancel = () => this.cancelExport()
-        this.exportModal = m
-        return m
-      })
-    }
-    return this.exportModalLoad
-  }
-
-  private ensurePostSessionModal(): Promise<PostSessionModal> {
-    if (this.postSessionModal) return Promise.resolve(this.postSessionModal)
-    if (!this.postSessionModalLoad) {
-      this.postSessionModalLoad = import('./ui/PostSessionModal').then(({ PostSessionModal }) => {
-        const m = new PostSessionModal(this.overlay)
-        m.onAction = (action) => void this.handleSessionAction(action)
-        this.postSessionModal = m
-        return m
-      })
-    }
-    return this.postSessionModalLoad
-  }
-
-  private ensureMidiPicker(): Promise<MidiPickerModal> {
-    if (this.midiPicker) return Promise.resolve(this.midiPicker)
-    if (!this.midiPickerLoad) {
-      this.midiPickerLoad = import('./ui/MidiPickerModal').then(({ MidiPickerModal }) => {
-        const m = new MidiPickerModal(this.overlay)
-        this.midiPicker = m
-        return m
-      })
-    }
-    return this.midiPickerLoad
+    return this.learnControllerHandle.get()
   }
 
   private openExportModal(): void {
-    void this.ensureExportModal().then((m) => m.open())
+    void this.exportHandle.get().then((m) => m.open())
   }
 
   // Play-mode sample loader. Learn has its own via LearnController.loadSample.
@@ -1182,8 +1128,9 @@ export class App {
       // Re-clicking Learn while already inside an exercise pops back to the
       // hub. closeActiveExercise is idempotent (no-op when no runner) so this
       // is safe to call regardless of prior state.
-      if (this.store.state.mode === 'learn' && this.learnController) {
-        this.learnController.closeActiveExercise('abandoned')
+      const lc = this.learnControllerHandle.peek()
+      if (this.store.state.mode === 'learn' && lc) {
+        lc.closeActiveExercise('abandoned')
         return
       }
       // When VITE_ENABLE_LEARN_MODE is off, ModeSwitch shows the
@@ -1261,14 +1208,14 @@ export class App {
     // a .mid, flipping into file mode to visualize + export MP4, or tossing it.
     this.pendingSession = { events, duration }
     const noteCount = events.reduce((n, e) => n + (e.type === 'on' ? 1 : 0), 0)
-    void this.ensurePostSessionModal().then((m) => m.open(duration, noteCount))
+    void this.postSessionHandle.get().then((m) => m.open(duration, noteCount))
     track('session_recorded', { duration_s: Math.round(duration), notes: noteCount })
   }
 
   private async handleSessionAction(action: SessionAction): Promise<void> {
     const pending = this.pendingSession
     // onAction only fires from inside the modal; if it ran, the modal exists.
-    this.postSessionModal?.close()
+    this.postSessionHandle.peek()?.close()
     if (!pending) return
 
     track('session_action', { action, duration_s: Math.round(pending.duration) })
@@ -1433,9 +1380,9 @@ export class App {
   // hidden. Popovers (instrument menu, customize) close themselves on the
   // outside click that triggered the transition.
   private closeTransientOverlays(): void {
-    this.exportModal?.close()
-    this.postSessionModal?.close()
-    this.midiPicker?.close()
+    this.exportHandle.peek()?.close()
+    this.postSessionHandle.peek()?.close()
+    this.midiPickerHandle.peek()?.close()
   }
 
   primeInteractiveAudio(): void {

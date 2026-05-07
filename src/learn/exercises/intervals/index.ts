@@ -7,9 +7,10 @@
 import { t } from '../../../i18n'
 import type { Exercise, ExerciseDescriptor } from '../../core/Exercise'
 import type { ExerciseContext } from '../../core/ExerciseContext'
+import { createExerciseHarness, type Huddable } from '../../core/exerciseHarness'
 import { isKeyboardShortcutIgnored } from '../../core/keyboard'
 import type { ExerciseResult } from '../../core/Result'
-import { computeXp } from '../../core/scoring'
+import { standardResult } from '../../core/resultHelpers'
 import { IntervalsEngine } from './engine'
 import { BEGINNER_SET } from './theory'
 import { createIntervalsUi, type IntervalsUiOptions } from './ui'
@@ -39,6 +40,7 @@ class IntervalsExercise implements Exercise {
   private engine: IntervalsEngine
   private ui: ReturnType<typeof createIntervalsUi>
   private readonly uiOpts: IntervalsUiOptions
+  private harness: ReturnType<typeof createExerciseHarness>
   private onKeyDown = (e: KeyboardEvent): void => this.handleKeyDown(e)
 
   constructor(private ctx: ExerciseContext) {
@@ -55,51 +57,40 @@ class IntervalsExercise implements Exercise {
       onAnswered: (correct) => this.onAnswered(correct),
       onFinished: () => this.requestFinish(),
     }
+    this.harness = createExerciseHarness({
+      hud: this.ui as Huddable,
+      hudOpts: this.uiOpts,
+      onKeyDown: this.onKeyDown,
+    })
   }
 
   mount(host: HTMLElement): void {
-    // Ear training has no scheduled MIDI — clear whatever the renderer was
-    // showing so the background stays quiet. The LearnOverlay is unused for
-    // this exercise (no target zone, no loop band); leaving it present is
-    // harmless since its Graphics are empty until imperatively drawn.
     this.ctx.services.renderer.clearMidi()
-    // Prime the synth as early as possible so the first playCurrent() call
-    // inside the UI doesn't lose the first ~30ms of attack to context warmup.
     this.ctx.services.synth.primeLiveInput()
-    this.ui.mount(host, this.uiOpts)
+    this.harness.mountHud(host)
   }
 
   start(): void {
     this.engine.start()
-    window.addEventListener('keydown', this.onKeyDown)
+    this.harness.attachKeys()
   }
 
   stop(): void {
-    window.removeEventListener('keydown', this.onKeyDown)
+    this.harness.detachKeys()
   }
 
   unmount(): void {
-    this.ui.unmount()
+    this.harness.unmountHud()
   }
 
   result(): ExerciseResult | null {
-    const hits = this.engine.state.hits
-    const misses = this.engine.state.misses
-    const attempts = hits + misses
-    if (attempts === 0) return null
-    const accuracy = hits / attempts
-    return {
+    return standardResult({
       exerciseId: this.descriptor.id,
-      duration_s: 0, // runner computes real duration from Session
-      accuracy,
-      xp: computeXp({ accuracy, duration_s: 60, difficultyWeight: 0.9 }),
-      // Ear-training doesn't map to per-pitch weak spots — the "weakness" is
-      // per-interval, not per-key. The progress heatmap stays empty for this
-      // exercise; a future per-interval weakness layer can land alongside
-      // C2/C3 when we have more than one ear-training surface to coordinate.
-      weakSpots: [],
+      hits: this.engine.state.hits,
+      misses: this.engine.state.misses,
+      difficultyWeight: 0.9,
       completed: this.engine.state.phase === 'done',
-    }
+    })
   }
 
   // ── Local helpers ─────────────────────────────────────────────────────
