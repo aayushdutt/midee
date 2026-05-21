@@ -842,7 +842,12 @@ body {
   right: calc(14px + env(safe-area-inset-right));
   height: 54px;
   display: grid;
-  grid-template-columns: auto auto 1fr auto;
+  /* minmax(0, 1fr) — not plain 1fr — on the status track. A 1fr track's
+     implicit min is min-content, and the nowrap filename's min-content is the
+     whole string, so the track refused to shrink and the centered status
+     spilled over both neighbours. minmax(0, …) lets it shrink so the title's
+     text-overflow: ellipsis engages instead of overlapping. */
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
   /* Continuous gap — avoids stepped jumps at the responsive tier
      breakpoints. Floor of 6px keeps things from cramping on phones. */
@@ -5048,6 +5053,21 @@ body.canvas-hidden #kbd-resizer {
   gap: 8px;
 }
 
+/* Peak-intent feedback nudge under the session actions — non-blocking. */
+.post-session-feedback {
+  display: block;
+  margin-top: 14px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.post-session-feedback:hover {
+  color: var(--accent);
+}
+
 .post-session-option {
   display: flex;
   align-items: flex-start;
@@ -6546,6 +6566,16 @@ body.canvas-hidden #kbd-resizer {
   overflow: hidden;
 }
 
+/* Scroll region between the pinned header and the popover edge. Lets the
+   menu stay usable on short viewports (landscape phones, small laptops) —
+   the header holds, the sections scroll, nothing gets clipped. */
+.ts-customize-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .customize-section {
   display: flex;
   flex-direction: column;
@@ -6553,8 +6583,81 @@ body.canvas-hidden #kbd-resizer {
   padding: 14px 16px;
 }
 
+/* Short viewports: reclaim vertical space so more sections fit before the
+   scroll kicks in. */
+@media (max-height: 560px) {
+  .customize-section {
+    padding: 10px 16px;
+    gap: 8px;
+  }
+}
+
 .customize-section + .customize-section {
   border-top: 1px solid var(--border);
+}
+
+/* Feedback / feature-request card at the menu foot — designed to invite a
+   click: accent-tinted surface, icon, and an arrow that nudges on hover. */
+.customize-section--footer {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.customize-feedback-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: var(--r-md, 10px);
+  border: 1px solid var(--accent-soft);
+  background: var(--accent-soft);
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.customize-feedback-card:hover {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px var(--accent-soft);
+}
+
+.customize-feedback-card:active {
+  transform: translateY(0);
+}
+
+.customize-feedback-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+}
+
+.customize-feedback-label {
+  flex: 1 1 auto;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.customize-feedback-arrow {
+  flex: 0 0 auto;
+  color: var(--accent);
+  transition: transform 0.18s ease;
+}
+
+.customize-feedback-card:hover .customize-feedback-arrow {
+  transform: translate(2px, -2px);
 }
 
 .customize-section-head {

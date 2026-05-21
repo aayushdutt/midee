@@ -70,6 +70,8 @@ const es: Messages = {
   'customize.chord': 'Lectura de acordes',
   'customize.chord.sub': 'Nombra lo que está sonando · modo en vivo',
   'customize.language': 'Idioma',
+  'feedback.menu': 'Opiniones y sugerencias',
+  'feedback.postSession': '¿Te gustaría que funcionara distinto? Cuéntanos',
 
   // ── HUD — tooltips ──────────────────────────────────────────
   'hud.play': 'Reproducir / Pausar',

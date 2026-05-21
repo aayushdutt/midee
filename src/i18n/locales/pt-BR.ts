@@ -70,6 +70,8 @@ const ptBR: Messages = {
   'customize.chord': 'Leitura de acordes',
   'customize.chord.sub': 'Nomeia o que está soando · modo ao vivo',
   'customize.language': 'Idioma',
+  'feedback.menu': 'Feedback e sugestões',
+  'feedback.postSession': 'Quer que funcione diferente? Conte pra gente',
 
   // ── HUD — tooltips ──────────────────────────────────────────
   'hud.play': 'Tocar / Pausar',

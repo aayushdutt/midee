@@ -91,6 +91,8 @@ export const en = {
   'customize.chord': 'Chord readout',
   'customize.chord.sub': "Name what's sounding · live mode",
   'customize.language': 'Language',
+  'feedback.menu': 'Feedback & feature requests',
+  'feedback.postSession': 'Wish this worked differently? Tell us',
 
   // ── HUD — tooltips (data-tip) ───────────────────────────────
   'hud.play': 'Play / Pause',

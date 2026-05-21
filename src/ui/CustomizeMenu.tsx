@@ -3,7 +3,7 @@ import { render } from 'solid-js/web'
 import { LOCALES, type LocaleCode, locale, t } from '../i18n'
 import type { ParticleStyle, ParticleStyleInfo } from '../renderer/ParticleSystem'
 import type { Theme } from '../renderer/theme'
-import { isNarrowViewport } from './utils'
+import { FEEDBACK_URL, isNarrowViewport } from './utils'
 
 // Aesthetics popover — collapses theme, particles, and chord overlay (three
 // previously-separate topbar pills) into one trigger. Reduces topbar noise
@@ -96,95 +96,141 @@ function MenuView(props: MenuProps) {
         <span class="panel-label">{t('customize.title')}</span>
       </div>
 
-      <div class="customize-section">
-        <div class="customize-section-head">
-          <span class="customize-section-label">{t('customize.theme')}</span>
+      <div class="ts-customize-body">
+        <div class="customize-section">
+          <div class="customize-section-head">
+            <span class="customize-section-label">{t('customize.theme')}</span>
+          </div>
+          <div class="customize-theme-grid">
+            <For each={props.themes}>
+              {(theme, i) => (
+                <button
+                  class="customize-theme-tile"
+                  classList={{ 'customize-theme-tile--on': props.themeIndex() === i() }}
+                  type="button"
+                  title={theme.name}
+                  aria-label={`${theme.name} theme`}
+                  onClick={() => props.onSelectTheme(i())}
+                >
+                  <span
+                    class="customize-theme-tile-dot"
+                    style={{ background: theme.uiAccentCSS }}
+                  />
+                  <span class="customize-theme-tile-label">{theme.name}</span>
+                </button>
+              )}
+            </For>
+          </div>
         </div>
-        <div class="customize-theme-grid">
-          <For each={props.themes}>
-            {(theme, i) => (
-              <button
-                class="customize-theme-tile"
-                classList={{ 'customize-theme-tile--on': props.themeIndex() === i() }}
-                type="button"
-                title={theme.name}
-                aria-label={`${theme.name} theme`}
-                onClick={() => props.onSelectTheme(i())}
-              >
-                <span class="customize-theme-tile-dot" style={{ background: theme.uiAccentCSS }} />
-                <span class="customize-theme-tile-label">{theme.name}</span>
-              </button>
-            )}
-          </For>
-        </div>
-      </div>
 
-      <div class="customize-section">
-        <div class="customize-section-head">
-          <span class="customize-section-label">{t('customize.particles')}</span>
+        <div class="customize-section">
+          <div class="customize-section-head">
+            <span class="customize-section-label">{t('customize.particles')}</span>
+          </div>
+          <div class="customize-particle-row">
+            <For each={props.particles}>
+              {(p, i) => (
+                <button
+                  class="customize-particle-chip"
+                  classList={{ 'customize-particle-chip--on': props.particleIndex() === i() }}
+                  type="button"
+                  title={p.name}
+                  aria-label={`${p.name} particles`}
+                  onClick={() => props.onSelectParticle(i())}
+                >
+                  <span
+                    class="customize-particle-chip-glyph"
+                    data-style={p.id}
+                    aria-hidden="true"
+                    innerHTML={PARTICLE_GLYPHS[p.id] ?? PARTICLE_GLYPHS['sparks'] ?? ''}
+                  />
+                  <span class="customize-particle-chip-label">{p.name}</span>
+                </button>
+              )}
+            </For>
+          </div>
         </div>
-        <div class="customize-particle-row">
-          <For each={props.particles}>
-            {(p, i) => (
-              <button
-                class="customize-particle-chip"
-                classList={{ 'customize-particle-chip--on': props.particleIndex() === i() }}
-                type="button"
-                title={p.name}
-                aria-label={`${p.name} particles`}
-                onClick={() => props.onSelectParticle(i())}
-              >
-                <span
-                  class="customize-particle-chip-glyph"
-                  data-style={p.id}
-                  aria-hidden="true"
-                  innerHTML={PARTICLE_GLYPHS[p.id] ?? PARTICLE_GLYPHS['sparks'] ?? ''}
-                />
-                <span class="customize-particle-chip-label">{p.name}</span>
-              </button>
-            )}
-          </For>
-        </div>
-      </div>
 
-      <div class="customize-section">
-        <div class="customize-section-head">
-          <span class="customize-section-label">{t('customize.language')}</span>
+        <div class="customize-section">
+          <div class="customize-section-head">
+            <span class="customize-section-label">{t('customize.language')}</span>
+          </div>
+          <div class="customize-locale-row">
+            <For each={LOCALES}>
+              {(l) => (
+                <button
+                  class="customize-locale-chip"
+                  classList={{ 'customize-locale-chip--on': l.code === locale.value }}
+                  type="button"
+                  data-locale={l.code}
+                  aria-label={l.nativeName}
+                  onClick={() => props.onSelectLocale(l.code)}
+                >
+                  <span class="customize-locale-chip-label">{l.nativeName}</span>
+                </button>
+              )}
+            </For>
+          </div>
         </div>
-        <div class="customize-locale-row">
-          <For each={LOCALES}>
-            {(l) => (
-              <button
-                class="customize-locale-chip"
-                classList={{ 'customize-locale-chip--on': l.code === locale.value }}
-                type="button"
-                data-locale={l.code}
-                aria-label={l.nativeName}
-                onClick={() => props.onSelectLocale(l.code)}
-              >
-                <span class="customize-locale-chip-label">{l.nativeName}</span>
-              </button>
-            )}
-          </For>
-        </div>
-      </div>
 
-      <div class="customize-section customize-section--toggle">
-        <button
-          class="customize-toggle"
-          classList={{ 'customize-toggle--on': props.chordOn() }}
-          type="button"
-          aria-pressed={props.chordOn() ? 'true' : 'false'}
-          onClick={() => props.onToggleChord()}
-        >
-          <span class="customize-toggle-body">
-            <span class="customize-toggle-name">{t('customize.chord')}</span>
-            <span class="customize-toggle-sub">{t('customize.chord.sub')}</span>
-          </span>
-          <span class="customize-toggle-switch" aria-hidden="true">
-            <span class="customize-toggle-knob"></span>
-          </span>
-        </button>
+        <div class="customize-section customize-section--toggle">
+          <button
+            class="customize-toggle"
+            classList={{ 'customize-toggle--on': props.chordOn() }}
+            type="button"
+            aria-pressed={props.chordOn() ? 'true' : 'false'}
+            onClick={() => props.onToggleChord()}
+          >
+            <span class="customize-toggle-body">
+              <span class="customize-toggle-name">{t('customize.chord')}</span>
+              <span class="customize-toggle-sub">{t('customize.chord.sub')}</span>
+            </span>
+            <span class="customize-toggle-switch" aria-hidden="true">
+              <span class="customize-toggle-knob"></span>
+            </span>
+          </button>
+        </div>
+
+        <div class="customize-section customize-section--footer">
+          <a
+            class="customize-feedback-card"
+            href={FEEDBACK_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span class="customize-feedback-icon" aria-hidden="true">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.9"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 9.6 9.6 0 0 1-4-.9L3 21l1.9-5.5a8.38 8.38 0 0 1-.9-4A8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z" />
+              </svg>
+            </span>
+            <span class="customize-feedback-label">{t('feedback.menu')}</span>
+            <svg
+              class="customize-feedback-arrow"
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M7 17L17 7" />
+              <path d="M8 7h9v9" />
+            </svg>
+          </a>
+        </div>
       </div>
     </div>
   )

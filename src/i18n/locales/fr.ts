@@ -73,6 +73,8 @@ const fr: Messages = {
   'customize.chord': 'Affichage des accords',
   'customize.chord.sub': 'Nommer les accords joués · mode direct',
   'customize.language': 'Langue',
+  'feedback.menu': 'Avis & suggestions',
+  'feedback.postSession': 'Une idée pour l’améliorer ? Dites-le-nous',
 
   // ── HUD — tooltips ──────────────────────────────────────────
   'hud.play': 'Lecture / Pause',

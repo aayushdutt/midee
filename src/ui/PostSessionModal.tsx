@@ -6,6 +6,7 @@ import { createSignal } from 'solid-js'
 import { Portal, render } from 'solid-js/web'
 import { t, tn } from '../i18n'
 import { icons } from './icons'
+import { FEEDBACK_URL } from './utils'
 
 export type SessionAction = 'open-in-file' | 'download' | 'discard'
 
@@ -79,6 +80,15 @@ function PostSessionView(props: ViewProps) {
               </span>
             </button>
           </div>
+
+          <a
+            class="post-session-feedback"
+            href={FEEDBACK_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t('feedback.postSession')} ↗
+          </a>
         </div>
       </div>
     </Portal>

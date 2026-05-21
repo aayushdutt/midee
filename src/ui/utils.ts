@@ -1,3 +1,8 @@
+// Public feedback / feature-request portal (self-hosted Fider). Opened in a
+// new tab from the customize menu and the post-session modal — see CONTEXT
+// for surfacing rationale.
+export const FEEDBACK_URL = 'https://feedback.midee.app'
+
 export function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
