@@ -6,12 +6,9 @@ import { ModeSwitch } from './ModeSwitch'
 // `store.state.mode` inside a <Switch> and swaps the rendered surface when the
 // store changes. It calls `useApp()`, so it needs the harness. These tests use
 // the harness's REAL store to prove reactive re-rendering on mode changes — the
-// core value of wiring a real store into the fake ctx.
-//
-// Note: the project `.env` sets VITE_ENABLE_LEARN_MODE=true, so `learn` resolves
-// to the full <LearnMode> branch (which awaits ensureLearnController), not the
-// coming-soon fallback. We assert on the side effects each branch drives through
-// the fake ctx, since the mode surfaces themselves render null.
+// core value of wiring a real store into the fake ctx. We assert on the side
+// effects each branch drives through the fake ctx, since the mode surfaces
+// themselves render null.
 describe('ModeSwitch', () => {
   it('renders without throwing on useApp() inside the harness', () => {
     expect(() => renderWithApp(() => <ModeSwitch />)).not.toThrow()

@@ -49,8 +49,6 @@ const es: Messages = {
   'topStrip.context.live.keyboard': 'Toca con tu teclado',
   'topStrip.context.play.kicker': 'Reproduciendo',
   'topStrip.context.play.fallback': 'Abrir MIDI',
-  'topStrip.context.learnSoon.kicker': 'Próximamente',
-  'topStrip.context.learnSoon.title': 'El modo Aprender está en camino',
   'topStrip.context.learning.kicker': 'Aprendiendo',
   'topStrip.context.learn.kicker': 'Aprender',
   'topStrip.context.learn.title': 'Ejercicios, entrenamiento auditivo, lectura a vista',
@@ -367,11 +365,6 @@ const es: Messages = {
   'learn.summary.streakBump': 'racha +1',
   'learn.summary.again': 'Otra vez',
   'learn.summary.next': 'Siguiente',
-
-  'learn.soon.docTitle': 'Aprender · midee',
-  'learn.soon.badge': 'Próximamente',
-  'learn.soon.title.html': 'Practica, <em>gamificado</em>.',
-  'learn.soon.body': 'Rachas, niveles y un piano roll que sabe cuándo estás adivinando.',
 
   'coachmark.learn.title': 'Practica esta pieza',
   'coachmark.learn.body': 'Avanza nota por nota con el modo de espera.',

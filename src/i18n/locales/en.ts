@@ -69,8 +69,6 @@ export const en = {
   'topStrip.context.live.keyboard': 'Play with your keyboard',
   'topStrip.context.play.kicker': 'Now playing',
   'topStrip.context.play.fallback': 'Open MIDI',
-  'topStrip.context.learnSoon.kicker': 'Coming soon',
-  'topStrip.context.learnSoon.title': 'Learn mode is on the way',
   'topStrip.context.learning.kicker': 'Learning',
   'topStrip.context.learn.kicker': 'Learn',
   'topStrip.context.learn.title': 'Exercises, ear training, sight reading',
@@ -399,12 +397,6 @@ export const en = {
   'learn.summary.streakBump': 'streak +1',
   'learn.summary.again': 'Again',
   'learn.summary.next': 'Next',
-
-  // Coming-soon surface (Learn mode disabled via feature flag).
-  'learn.soon.docTitle': 'Learn · midee',
-  'learn.soon.badge': 'Coming soon',
-  'learn.soon.title.html': 'Practice, <em>gamified</em>.',
-  'learn.soon.body': "Streaks, levels, and a piano roll that knows when you're guessing.",
 
   // First-encounter coachmark for the topbar's "Learn this MIDI" pill.
   'coachmark.learn.title': 'Practice this piece',

@@ -2,7 +2,6 @@ import { createSignal } from 'solid-js'
 import { createStore, type SetStoreFunction } from 'solid-js/store'
 import { render } from 'solid-js/web'
 import type { AppServices } from '../core/services'
-import { ENABLE_LEARN_MODE } from '../env'
 import { t } from '../i18n'
 import type { LiveLooperState } from '../midi/LiveLooper'
 import type { MidiDeviceStatus } from '../midi/MidiInputManager'
@@ -713,13 +712,6 @@ export class Controls {
     }
 
     if (mode === 'learn') {
-      if (!ENABLE_LEARN_MODE) {
-        this.setUi('context', {
-          kicker: t('topStrip.context.learnSoon.kicker'),
-          title: t('topStrip.context.learnSoon.title'),
-        })
-        return
-      }
       // Show the loaded song name when an exercise is using one, otherwise
       // fall back to the generic Learn label.
       if (this.learnFileName) {

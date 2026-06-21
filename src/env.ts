@@ -4,10 +4,6 @@ import { z } from 'zod'
 export const env = createEnv({
   clientPrefix: 'VITE_',
   client: {
-    VITE_ENABLE_LEARN_MODE: z
-      .union([z.string(), z.boolean()])
-      .optional()
-      .transform((v) => v === true || v === 'true'),
     // Build-time gate for the bench runner. Set by `npm run bench`; absent in
     // public prod builds. NOTE: the gate in main.tsx reads `import.meta.env`
     // directly (not this object) so Vite can constant-fold the dead branch
@@ -27,5 +23,4 @@ export const env = createEnv({
   emptyStringAsUndefined: true,
 })
 
-export const ENABLE_LEARN_MODE = env.VITE_ENABLE_LEARN_MODE
 export const SHOW_FPS = env.VITE_SHOW_FPS

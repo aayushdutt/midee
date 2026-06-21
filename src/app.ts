@@ -12,7 +12,6 @@ import {
 import { booleanPersisted, indexPersisted, numberPersisted } from './core/persistence'
 import { fetchSampleMidi, getSample } from './core/samples'
 import type { AppServices } from './core/services'
-import { ENABLE_LEARN_MODE } from './env'
 import {
   fitPitchRange,
   pitchSignature,
@@ -486,9 +485,7 @@ export class App {
       void import('./ui/PostSessionModal')
       void import('./ui/MidiPickerModal')
     })
-    if (ENABLE_LEARN_MODE) {
-      whenIdle(() => void this.ensureLearnController())
-    }
+    whenIdle(() => void this.ensureLearnController())
 
     this.controls.updateMidiStatus(this.midiInput.status.value, '')
     this.dropzone.updateMidiStatus(this.midiInput.status.value, '')
@@ -1193,8 +1190,6 @@ export class App {
         lc.closeActiveExercise('abandoned')
         return
       }
-      // When VITE_ENABLE_LEARN_MODE is off, ModeSwitch shows the
-      // <LearnComingSoon/> marketing surface instead of <LearnMode/>.
       this.store.setState('mode', 'learn')
       return
     }

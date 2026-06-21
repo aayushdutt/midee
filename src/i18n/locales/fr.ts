@@ -52,8 +52,6 @@ const fr: Messages = {
   'topStrip.context.live.keyboard': 'Jouez avec votre clavier',
   'topStrip.context.play.kicker': 'En lecture',
   'topStrip.context.play.fallback': 'Ouvrir MIDI',
-  'topStrip.context.learnSoon.kicker': 'Bientôt',
-  'topStrip.context.learnSoon.title': 'Le mode Apprendre arrive',
   'topStrip.context.learning.kicker': 'Apprentissage',
   'topStrip.context.learn.kicker': 'Apprendre',
   'topStrip.context.learn.title': 'Exercices, oreille, lecture',
@@ -371,11 +369,6 @@ const fr: Messages = {
   'learn.summary.streakBump': 'série +1',
   'learn.summary.again': 'Encore',
   'learn.summary.next': 'Suivant',
-
-  'learn.soon.docTitle': 'Apprendre · midee',
-  'learn.soon.badge': 'Bientôt',
-  'learn.soon.title.html': 'La pratique, <em>gamifiée</em>.',
-  'learn.soon.body': 'Séries, niveaux et un piano roll qui sait quand vous devinez.',
 
   'coachmark.learn.title': 'Travaillez ce morceau',
   'coachmark.learn.body': 'Avancez note par note avec le mode attente.',

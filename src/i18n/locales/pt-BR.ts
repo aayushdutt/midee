@@ -49,8 +49,6 @@ const ptBR: Messages = {
   'topStrip.context.live.keyboard': 'Toque com seu teclado',
   'topStrip.context.play.kicker': 'Tocando agora',
   'topStrip.context.play.fallback': 'Abrir MIDI',
-  'topStrip.context.learnSoon.kicker': 'Em breve',
-  'topStrip.context.learnSoon.title': 'O modo Aprender está chegando',
   'topStrip.context.learning.kicker': 'Aprendendo',
   'topStrip.context.learn.kicker': 'Aprender',
   'topStrip.context.learn.title': 'Exercícios, treino auditivo, leitura à primeira vista',
@@ -367,11 +365,6 @@ const ptBR: Messages = {
   'learn.summary.streakBump': 'sequência +1',
   'learn.summary.again': 'De novo',
   'learn.summary.next': 'Próximo',
-
-  'learn.soon.docTitle': 'Aprender · midee',
-  'learn.soon.badge': 'Em breve',
-  'learn.soon.title.html': 'Pratique, <em>gamificado</em>.',
-  'learn.soon.body': 'Sequências, níveis e um piano roll que sabe quando você está chutando.',
 
   'coachmark.learn.title': 'Pratique esta peça',
   'coachmark.learn.body': 'Avance nota por nota com o modo de espera.',
