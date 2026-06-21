@@ -53,6 +53,82 @@ export function track(event: string, properties?: Record<string, unknown>): void
   enqueue((client) => client.capture(event, properties))
 }
 
+// High-frequency controls (volume/speed/zoom/bpm sliders) would otherwise fire
+// one event per tick of a drag. Coalesce per event name: only the final value
+// after the user stops moving is sent. Keyed by event name, so distinct
+// controls don't cancel each other.
+const settleTimers = new Map<string, ReturnType<typeof setTimeout>>()
+export function trackSettled(event: string, properties: Record<string, unknown>, ms = 600): void {
+  const prev = settleTimers.get(event)
+  if (prev) clearTimeout(prev)
+  settleTimers.set(
+    event,
+    setTimeout(() => {
+      settleTimers.delete(event)
+      track(event, properties)
+    }, ms),
+  )
+}
+
+// ── midi_loaded / midi_load_failed normalisation ───────────────────────────
+// midi_loaded fires from 4 call sites (play file/sample, learn file/sample)
+// that historically diverged in shape. Funnel them through one helper so every
+// dashboard sees the same keys. `note_count` is the content signal that lets
+// us tie which pieces drive retention; nullable fields are always present so
+// the schema never varies.
+export function trackMidiLoaded(p: {
+  source: 'drag' | 'picker' | 'sample'
+  target?: 'play' | 'learn'
+  trackCount: number
+  noteCount: number
+  durationS: number
+  fileSizeKb?: number | null
+  sampleId?: string | null
+}): void {
+  track('midi_loaded', {
+    source: p.source,
+    target: p.target ?? 'play',
+    track_count: p.trackCount,
+    note_count: p.noteCount,
+    duration_s: p.durationS,
+    file_size_kb: p.fileSizeKb ?? null,
+    sample_id: p.sampleId ?? null,
+  })
+}
+
+export type MidiLoadErrorType = 'empty' | 'not_midi' | 'parse'
+
+// Classify a load failure so we can see WHICH files break — today every
+// failure is bucketed 'parse', so we're blind to the cause. Sniffs the header:
+// a real Standard MIDI File starts with the magic bytes 'MThd'; a non-MIDI
+// file dropped in (mp3, musicxml, …) is the common real-world case.
+export async function midiLoadErrorType(err: unknown, file: File): Promise<MidiLoadErrorType> {
+  if (err instanceof Error && err.name === 'EmptyMidiError') return 'empty'
+  try {
+    const head = new Uint8Array(await file.slice(0, 4).arrayBuffer())
+    if (String.fromCharCode(...head) !== 'MThd') return 'not_midi'
+  } catch {
+    // Couldn't read the slice — fall through to the generic bucket.
+  }
+  return 'parse'
+}
+
+export function trackMidiLoadFailed(p: {
+  source: string
+  target?: 'play' | 'learn'
+  errorType: MidiLoadErrorType
+  fileExt?: string | null
+  fileSizeKb?: number | null
+}): void {
+  track('midi_load_failed', {
+    source: p.source,
+    target: p.target ?? 'play',
+    error_type: p.errorType,
+    file_ext: p.fileExt ?? null,
+    file_size_kb: p.fileSizeKb ?? null,
+  })
+}
+
 // Set once at boot. These attach to *every* subsequent event so we can
 // slice any funnel by device/pointer/orientation without re-sending them.
 // Landing path/referrer/utm are registered with `register_once` so the
@@ -179,6 +255,31 @@ type EventMap = {
   // Feedback portal (self-hosted Fider) outbound clicks. `source` identifies
   // which surface drove the click.
   feedback_clicked: { source: 'customize_menu' | 'post_session' }
+
+  // Transport / playback controls. seeked fires on commit (not per scrub
+  // frame); the slider-driven *_changed events fire via trackEventSettled so a
+  // single drag yields one event with the final value.
+  seeked: { from_s: number; to_s: number; method: 'scrub' | 'skip' }
+  playback_paused: { position_s: number; position_pct: number }
+  speed_changed: { speed: number }
+  volume_changed: { volume: number }
+  zoom_changed: { zoom: number }
+  tempo_changed: { bpm: number }
+  metronome_toggled: { on: boolean }
+
+  // Customization. instrument_changed now carries `method` so cycle-button and
+  // menu-pick paths are distinguishable (cycling was previously untracked).
+  theme_changed: { theme: string }
+  particle_changed: { style: string }
+  instrument_changed: { from: string | undefined; to: string; method: 'cycle' | 'menu' }
+  track_toggled: { enabled: boolean }
+
+  // Previously-silent failure paths now surfaced as first-class events.
+  synth_load_failed: { source: string }
+  sample_load_failed: { sample_id: string; target: 'play' | 'learn' }
+  // A non-fatal export degradation: audio render failed but the (video-only /
+  // av) export continued without sound. Distinct from export_failed.
+  export_degraded: { stage: 'audio_render'; output: string }
 }
 
 export type EventName = keyof EventMap
@@ -188,4 +289,14 @@ export type EventProps<K extends EventName> = EventMap[K]
 // silently breaking a dashboard.
 export function trackEvent<K extends EventName>(name: K, props: EventProps<K>): void {
   track(name, props as Record<string, unknown>)
+}
+
+// Typed + coalesced. For high-frequency controls whose name/shape should still
+// stay in lockstep with EventMap. See trackSettled for the debounce semantics.
+export function trackEventSettled<K extends EventName>(
+  name: K,
+  props: EventProps<K>,
+  ms = 600,
+): void {
+  trackSettled(name, props as Record<string, unknown>, ms)
 }

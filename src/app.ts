@@ -44,7 +44,16 @@ import { PianoRollRenderer } from './renderer/PianoRollRenderer'
 import { THEMES, type Theme } from './renderer/theme'
 import type { AppMode, AppStore } from './store/state'
 import { watch } from './store/watch'
-import { categorizeMidiDevice, track, trackActivation } from './telemetry'
+import {
+  categorizeMidiDevice,
+  midiLoadErrorType,
+  track,
+  trackActivation,
+  trackEvent,
+  trackEventSettled,
+  trackMidiLoaded,
+  trackMidiLoadFailed,
+} from './telemetry'
 import { ChordOverlay } from './ui/ChordOverlay'
 import { Controls } from './ui/Controls'
 import { CustomizeMenu } from './ui/CustomizeMenu'
@@ -61,6 +70,13 @@ import { showError, showSuccess } from './ui/Toast'
 import { TrackPanel } from './ui/TrackPanel'
 import { installViewportClassSync } from './ui/utils'
 import { whenIdle } from './whenIdle'
+
+// Total note count across all tracks — the content-size signal attached to
+// midi_loaded so we can tie which pieces drive retention. Structurally typed
+// to avoid coupling this helper to the MidiFile import.
+function countNotes(midi: { tracks: ReadonlyArray<{ notes: ReadonlyArray<unknown> }> }): number {
+  return midi.tracks.reduce((n, t) => n + t.notes.length, 0)
+}
 
 export class App {
   private clock = new MasterClock()
@@ -325,10 +341,14 @@ export class App {
         this.liveLooper.undo()
         if (before > 0) track('loop_undone', { layers_before: before })
       },
-      onMetronomeToggle: () => this.metronome.toggle(),
+      onMetronomeToggle: () => {
+        this.metronome.toggle()
+        trackEvent('metronome_toggled', { on: this.metronome.running.value })
+      },
       onMetronomeBpmChange: (bpm) => {
         this.metronome.setBpm(bpm)
         metronomeBpmStore.save(this.metronome.bpm.value)
+        trackEventSettled('tempo_changed', { bpm: this.metronome.bpm.value })
       },
       onSessionToggle: () => this.toggleSessionRecord(),
       onChordToggle: () => this.toggleChordOverlay(),
@@ -378,7 +398,10 @@ export class App {
     this.trackPanel = new TrackPanel(
       overlay,
       this.renderer,
-      (id, enabled) => this.synth.setTrackEnabled(id, enabled),
+      (id, enabled) => {
+        this.synth.setTrackEnabled(id, enabled)
+        trackEvent('track_toggled', { enabled })
+      },
       () => this.openFilePicker(),
     )
     this.trackPanel.setTrigger(this.controls.tracksButton)
@@ -793,23 +816,34 @@ export class App {
 
     try {
       const midi = await parseMidiFile(file)
-      this.synth.load(midi).catch((err) => console.error('SynthEngine.load failed:', err))
+      this.synth.load(midi).catch((err) => {
+        console.error('SynthEngine.load failed:', err)
+        // Visuals load but there's no sound — a silent session-killer that
+        // produced zero telemetry before.
+        trackEvent('synth_load_failed', { source })
+      })
       // completePlayLoad flips mode to 'play'; <PlayMode/>'s effect then
       // drives renderer.loadMidi, trackPanel.render, document.title, and
       // dropzone.hide off the new loadedMidi.
       this.store.completePlayLoad(midi)
       this.resetPlaybackTelemetry()
-      track('midi_loaded', {
+      trackMidiLoaded({
         source,
-        track_count: midi.tracks.length,
-        duration_s: Math.round(midi.duration),
-        file_size_kb: Math.round(file.size / 1024),
+        trackCount: midi.tracks.length,
+        noteCount: countNotes(midi),
+        durationS: Math.round(midi.duration),
+        fileSizeKb: Math.round(file.size / 1024),
       })
     } catch (err) {
       console.error('Failed to load MIDI:', err)
-      // Only failure path for loadMidi is parsing — bucket as such so we
-      // avoid sending free-text error messages (high cardinality + PII risk).
-      track('midi_load_failed', { source, error_type: 'parse' })
+      // Bucket the cause (not free-text — cardinality + PII) so we can see
+      // which files break instead of lumping everything as 'parse'.
+      trackMidiLoadFailed({
+        source,
+        errorType: await midiLoadErrorType(err, file),
+        fileExt: file.name.split('.').pop()?.toLowerCase() ?? null,
+        fileSizeKb: Math.round(file.size / 1024),
+      })
       if (previousMode === 'play' && previousMidi) {
         this.store.enterPlay()
         this.renderer.loadMidi(previousMidi)
@@ -838,12 +872,19 @@ export class App {
     this.themeIndex = idx
     this.applyTheme(THEMES[idx]!)
     themeIndexStore.save(idx)
+    trackEvent('theme_changed', { theme: THEMES[idx]!.name })
   }
 
   private cycleInstrument(): void {
+    const from = INSTRUMENTS[this.instrumentIndex]?.id
     this.instrumentIndex = (this.instrumentIndex + 1) % INSTRUMENTS.length
     this.applyInstrument()
     instrumentIndexStore.save(this.instrumentIndex)
+    trackEvent('instrument_changed', {
+      from,
+      to: INSTRUMENTS[this.instrumentIndex]!.id,
+      method: 'cycle',
+    })
   }
 
   private setInstrumentById(id: string): void {
@@ -853,7 +894,7 @@ export class App {
     this.instrumentIndex = idx
     this.applyInstrument()
     instrumentIndexStore.save(this.instrumentIndex)
-    track('instrument_changed', { from, to: id })
+    trackEvent('instrument_changed', { from, to: id, method: 'menu' })
   }
 
   private applyInstrument(): void {
@@ -872,6 +913,7 @@ export class App {
     this.particleIndex = idx
     this.applyParticleStyle()
     particleIndexStore.save(idx)
+    trackEvent('particle_changed', { style: PARTICLE_STYLES[idx]!.id })
   }
 
   private applyParticleStyle(): void {
@@ -890,14 +932,19 @@ export class App {
     if (!exportModal) return
 
     const exportStartedAt = performance.now()
-    track('export_started', {
+    // One settings shape shared across started / completed / failed so the
+    // funnel can be sliced by social-format settings without a join. `stage`
+    // is advanced as the pipeline progresses and reported on failure.
+    const exportBase = {
       output: settings.output,
       resolution: settings.resolution,
       fps: settings.fps,
       focus: settings.focus,
       speed: settings.speed,
       midi_duration_s: Math.round(midi.duration),
-    })
+    }
+    let exportStage: 'serialize' | 'audio_render' | 'video_encode' = 'serialize'
+    track('export_started', exportBase)
     trackActivation('export_started')
 
     // MIDI-only output skips all render/encode work — just re-serialise the
@@ -909,7 +956,7 @@ export class App {
       exportModal.close()
       this.showSuccess(`↓ ${sanitiseFilename(midi.name)}.mid`)
       track('export_completed', {
-        output: 'midi',
+        ...exportBase,
         elapsed_ms: Math.round(performance.now() - exportStartedAt),
       })
       return
@@ -969,6 +1016,7 @@ export class App {
         // Load without VideoExporter: that chunk embeds Mediabunny (~tens of kB
         // parsed) and must not run before / in parallel with offline audio setup.
         const { renderAudioOffline } = await import('./audio/OfflineAudioRenderer')
+        exportStage = 'audio_render'
         exportModal.updateProgress('Rendering audio', 0)
         try {
           // Per-stage progress: pct flows straight through. The bar resets
@@ -985,10 +1033,14 @@ export class App {
           console.error('Offline audio render failed:', err)
           // Audio-only has nothing to export without it — surface the error.
           if (settings.output === 'audio-only') throw err
+          // av / video-only continue silently without sound — a real quality
+          // hit that was previously invisible. Mark it as a degradation.
+          trackEvent('export_degraded', { stage: 'audio_render', output: settings.output })
           this.showError(t('error.audio.renderFailed'))
         }
       }
 
+      exportStage = 'video_encode'
       const { VideoExporter } = await import('./export/VideoExporter')
       const exporter = new VideoExporter(this.renderer.canvas)
       this.currentExporter = exporter
@@ -1012,9 +1064,7 @@ export class App {
       exportModal.close()
       this.showSuccess(`↓ ${t('toast.export.ready', { filename })}`)
       track('export_completed', {
-        output: settings.output,
-        resolution: settings.resolution,
-        fps: settings.fps,
+        ...exportBase,
         elapsed_ms: Math.round(performance.now() - exportStartedAt),
       })
     } catch (err) {
@@ -1024,8 +1074,8 @@ export class App {
         this.showError((err as Error).message || t('error.export.generic'))
       }
       track(isCancel ? 'export_cancelled' : 'export_failed', {
-        output: settings.output,
-        resolution: settings.resolution,
+        ...exportBase,
+        stage: exportStage,
         elapsed_ms: Math.round(performance.now() - exportStartedAt),
       })
       exportModal.close()
@@ -1106,16 +1156,18 @@ export class App {
       midi = await fetchSampleMidi(sample)
     } catch (err) {
       console.error('[loadSample] fetch failed', err)
+      trackEvent('sample_load_failed', { sample_id: sampleId, target: 'play' })
       this.showError(t('error.sample.fetchFailed'))
       return
     }
     this.loadSessionAsFile(midi)
     this.resetPlaybackTelemetry()
-    track('midi_loaded', {
+    trackMidiLoaded({
       source: 'sample',
-      sample_id: sampleId,
-      track_count: midi.tracks.length,
-      duration_s: Math.round(midi.duration),
+      sampleId,
+      trackCount: midi.tracks.length,
+      noteCount: countNotes(midi),
+      durationS: Math.round(midi.duration),
     })
     // Samples are a "watch it" gesture — start playback as soon as the synth
     // is ready. Sample click counts as the user gesture that unlocks audio.

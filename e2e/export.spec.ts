@@ -111,6 +111,9 @@ test.describe('MP4 export (flagship, full WebCodecs path)', () => {
   test('audio-only export produces a valid AAC-in-MP4 (.m4a) with an audio track', async ({
     page,
   }) => {
+    // Needs an AAC encoder — absent from GitHub's Linux Chromium (export never
+    // completes there → download timeout). Quarantined to the heavy/local suite.
+    test.skip(!process.env.E2E_HEAVY, 'AAC encode unavailable on CI Chromium — run with E2E_HEAVY=1')
     await loadFixtureAndOpenExport(page)
 
     // Switch output to "Audio only" — skips all video encoding, fastest path.

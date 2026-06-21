@@ -70,12 +70,14 @@ jobs:
           fi
           exit $fail
 
-  # Playwright e2e (Tier 3). Runs the FAST, deterministic suite — codec spike,
-  # playback, live-input, and audio-only export. The heavy/flaky AV export is
-  # quarantined behind E2E_HEAVY (see e2e/export.spec.ts) and NOT run here, so this
-  # job is fast and reliable enough to be BLOCKING — real signal, not advisory noise.
-  # The webServer does a lean `vite build` (no postbuild), and `retries: 1` absorbs
-  # transient flakes. Run the AV export locally/nightly with `npm run test:e2e:heavy`.
+  # Playwright e2e (Tier 3). Runs only the CODEC-FREE suite that works on GitHub's
+  # Linux Chromium — playback, live-input (held-key + the BUG-2 expected-fail), and
+  # the WebCodecs *presence* spike. Anything needing proprietary encoders (AV +
+  # audio-only export, real-encode/H.264/AAC asserts) or simultaneous multi-key
+  # timing (chord) is gated behind E2E_HEAVY, because GitHub's Linux Chromium ships
+  # no H.264/AAC encoders. Run the full suite locally/nightly with
+  # `npm run test:e2e:heavy` (macOS Chromium has the codecs). Lean `vite build`
+  # webServer + `retries: 1`; this subset is reliable enough to be BLOCKING.
   e2e:
     runs-on: ubuntu-latest
     steps:

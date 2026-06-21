@@ -8,6 +8,7 @@ import type { LiveLooperState } from '../midi/LiveLooper'
 import type { MidiDeviceStatus } from '../midi/MidiInputManager'
 import type { AppMode } from '../store/state'
 import { watch } from '../store/watch'
+import { trackEvent, trackEventSettled } from '../telemetry'
 import {
   formatMMSS,
   formatSpeed,
@@ -240,14 +241,17 @@ export class Controls {
             onVolume={(v) => {
               this.setVolume(v)
               store.setState('volume', v)
+              trackEventSettled('volume_changed', { volume: Math.round(v * 100) / 100 })
             }}
             onSpeed={(v) => {
               this.setSpeed(v)
               store.setState('speed', v)
+              trackEventSettled('speed_changed', { speed: v })
             }}
             onZoom={(v) => {
               this.setZoom(v)
               opts.onZoom?.(v)
+              trackEventSettled('zoom_changed', { zoom: Math.round(v) })
             }}
             onMetroToggle={() => opts.onMetronomeToggle?.()}
             onBpmDec={() => this.bumpBpm(-1)}
@@ -277,9 +281,15 @@ export class Controls {
             onScrubberChange={() => {
               this.isScrubbing = false
               const t = parseFloat(this.scrubber.value)
+              const from = opts.services.clock.currentTime
               this.invalidateTimeCache()
               opts.services.clock.seek(t)
               opts.onSeek?.(t)
+              trackEvent('seeked', {
+                from_s: Math.round(from),
+                to_s: Math.round(t),
+                method: 'scrub',
+              })
             }}
             registerScrubber={(el) => {
               this.scrubber = el
@@ -561,6 +571,11 @@ export class Controls {
     if (s === 'playing') {
       clock.pause()
       store.setState('status', 'paused')
+      const dur = store.state.duration
+      trackEvent('playback_paused', {
+        position_s: Math.round(clock.currentTime),
+        position_pct: dur > 0 ? Math.round((clock.currentTime / dur) * 100) : 0,
+      })
     } else if (s === 'paused' || s === 'ready') {
       clock.play()
       store.setState('status', 'playing')
@@ -570,6 +585,7 @@ export class Controls {
   private handleSkip(delta: number): void {
     const { store, clock } = this.opts.services
     if (store.state.mode !== 'play') return
+    const from = clock.currentTime
     const next =
       delta < 0
         ? Math.max(0, clock.currentTime + delta)
@@ -577,6 +593,7 @@ export class Controls {
     this.invalidateTimeCache()
     clock.seek(next)
     this.opts.onSeek?.(next)
+    trackEvent('seeked', { from_s: Math.round(from), to_s: Math.round(next), method: 'skip' })
   }
 
   private handleKey(e: KeyboardEvent): void {

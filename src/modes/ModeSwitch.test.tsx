@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { renderWithApp } from '../test/renderWithApp'
 import { ModeSwitch } from './ModeSwitch'
 
@@ -25,13 +25,14 @@ describe('ModeSwitch', () => {
     expect(ctx.dropzone.show).toHaveBeenCalledOnce()
   })
 
-  it('reactively swaps to the learn surface when the store mode changes', () => {
+  it('reactively swaps to the learn surface when the store mode changes', async () => {
     const { ctx } = renderWithApp(() => <ModeSwitch />)
     expect(ctx.ensureLearnController).not.toHaveBeenCalled()
-    // Flipping mode → 'learn' must remount the Switch branch into LearnMode,
-    // whose onMount awaits the dynamic-imported controller.
+    // Flipping mode → 'learn' remounts the Switch branch into LearnMode, whose
+    // onMount calls the controller. The call lands in a Solid effect (a microtask),
+    // not synchronously — assert with waitFor so it isn't a timing race on CI.
     ctx.store.setState({ mode: 'learn' })
-    expect(ctx.ensureLearnController).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect(ctx.ensureLearnController).toHaveBeenCalledOnce())
   })
 
   it('routes to the file picker when entering play with no MIDI loaded', () => {

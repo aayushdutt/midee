@@ -13,7 +13,13 @@ import { LearnOverlay } from '../learn/overlays/LearnOverlay'
 import { createSessionSummary } from '../learn/ui/SessionSummary'
 import { createEventSignal } from '../store/eventSignal'
 import { watch } from '../store/watch'
-import { track, trackEvent } from '../telemetry'
+import {
+  midiLoadErrorType,
+  track,
+  trackEvent,
+  trackMidiLoaded,
+  trackMidiLoadFailed,
+} from '../telemetry'
 import type { ModeContext } from './ModeController'
 
 // Learn mode host. Owns all Learn-scoped state (loaded MIDI, transport,
@@ -171,16 +177,23 @@ export class LearnController {
     try {
       const midi = await parseMidiFile(file)
       await this.consumeMidi(midi)
-      track('midi_loaded', {
+      trackMidiLoaded({
         source,
         target: 'learn',
-        track_count: midi.tracks.length,
-        duration_s: Math.round(midi.duration),
-        file_size_kb: Math.round(file.size / 1024),
+        trackCount: midi.tracks.length,
+        noteCount: midi.tracks.reduce((n, tk) => n + tk.notes.length, 0),
+        durationS: Math.round(midi.duration),
+        fileSizeKb: Math.round(file.size / 1024),
       })
     } catch (err) {
       console.error('[LearnController] loadMidiFromFile failed:', err)
-      track('midi_load_failed', { source, target: 'learn', error_type: 'parse' })
+      trackMidiLoadFailed({
+        source,
+        target: 'learn',
+        errorType: await midiLoadErrorType(err, file),
+        fileExt: file.name.split('.').pop()?.toLowerCase() ?? null,
+        fileSizeKb: Math.round(file.size / 1024),
+      })
       this.learnState.setState('status', 'ready')
       this.showError(
         err instanceof Error && err.name === 'EmptyMidiError'
@@ -199,15 +212,17 @@ export class LearnController {
     try {
       const midi = await fetchSampleMidi(sample)
       await this.consumeMidi(midi)
-      track('midi_loaded', {
+      trackMidiLoaded({
         source: 'sample',
         target: 'learn',
-        sample_id: sampleId,
-        track_count: midi.tracks.length,
-        duration_s: Math.round(midi.duration),
+        sampleId,
+        trackCount: midi.tracks.length,
+        noteCount: midi.tracks.reduce((n, tk) => n + tk.notes.length, 0),
+        durationS: Math.round(midi.duration),
       })
     } catch (err) {
       console.error('[LearnController] loadSample failed:', err)
+      trackEvent('sample_load_failed', { sample_id: sampleId, target: 'learn' })
       this.learnState.setState('status', 'ready')
       this.showError(t('error.sample.fetchFailed'))
     }
