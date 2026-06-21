@@ -3,6 +3,7 @@ import type { MasterClock } from '../core/clock/MasterClock'
 import type { MidiFile } from '../core/midi/types'
 import type { LiveNoteStore } from '../midi/LiveNoteStore'
 import { BeatGrid } from './BeatGrid'
+import { type EmitCadence, scheduleEmissions } from './emitSchedule'
 import { KeyboardRenderer } from './KeyboardRenderer'
 import { LiveNoteRenderer } from './LiveNoteRenderer'
 import { NoteRenderer } from './NoteRenderer'
@@ -60,6 +61,10 @@ const DEFAULT_PIXELS_PER_SECOND = 200
 // while the key stays held. Puff density is per-style (see ParticleSystem).
 const SUSTAIN_INITIAL_DELAY_SEC = 0.18
 const SUSTAIN_INTERVAL_SEC = 0.14
+const SUSTAIN_CADENCE: EmitCadence = {
+  initialDelaySec: SUSTAIN_INITIAL_DELAY_SEC,
+  intervalSec: SUSTAIN_INTERVAL_SEC,
+}
 
 export class PianoRollRenderer {
   private app!: Application
@@ -98,6 +103,11 @@ export class PianoRollRenderer {
   // entries get reaped when the note ends.
   private scheduledEmitNext = new Map<number, number>()
   private liveEmitNext = new Map<number, number>()
+  // Per-frame scratch reused by the scheduled-MIDI emit pass: the keys eligible
+  // to emit particles this frame and their burst geometry/color. Pooled to keep
+  // the hot path allocation-free; cleared at the top of each frame.
+  private emitEligible = new Set<number>()
+  private emitGeom = new Map<number, { cx: number; w: number; color: number }>()
 
   // Practice-mode hints (pitches that should glow on the keyboard as "play
   // these to advance"). `pending` is what's still required, `accepted` is what
@@ -388,6 +398,12 @@ export class PianoRollRenderer {
       const tracks = this.midi.tracks
       const prev = this.prevActive
       const nowLineY = this.viewport.nowLineY
+      // Collect this frame's emit-eligible keys + their burst geometry, then let
+      // the pure scheduler (emitSchedule.ts) decide onset vs sustain vs reap.
+      const eligible = this.emitEligible
+      const geom = this.emitGeom
+      eligible.clear()
+      geom.clear()
       // Don't light up the keyboard for scheduled notes when the clock is
       // paused at the very start of the timeline — nothing has actually
       // sounded yet. The classic case this guards against: opening a session
@@ -424,25 +440,26 @@ export class PianoRollRenderer {
 
           const w = this.viewport.pitchWidth(note.pitch)
           const cx = this.viewport.pitchToX(note.pitch) + w / 2
-
-          if (!prev.has(key)) {
-            // Note-on: full initial burst + schedule the first sustained puff.
-            this.particles.burst(cx, nowLineY, trackColor, w)
-            this.scheduledEmitNext.set(key, currentTime + SUSTAIN_INITIAL_DELAY_SEC)
-          } else {
-            // Held note: release a small puff each tick to keep the plume alive.
-            const nextAt = this.scheduledEmitNext.get(key)
-            if (nextAt !== undefined && currentTime >= nextAt) {
-              this.particles.sustainBurst(cx, nowLineY, trackColor, w)
-              this.scheduledEmitNext.set(key, currentTime + SUSTAIN_INTERVAL_SEC)
-            }
-          }
+          eligible.add(key)
+          geom.set(key, { cx, w, color: trackColor })
         }
       }
 
-      // Reap entries for notes that ended since the last frame.
-      for (const key of this.scheduledEmitNext.keys()) {
-        if (!curr.has(key)) this.scheduledEmitNext.delete(key)
+      // Pure scheduler decides onset/sustain/reap and updates scheduledEmitNext;
+      // here we only draw the resulting bursts using the captured geometry.
+      const { emits } = scheduleEmissions({
+        prev,
+        curr,
+        eligible,
+        schedule: this.scheduledEmitNext,
+        currentTime,
+        cadence: SUSTAIN_CADENCE,
+      })
+      for (const { key, kind } of emits) {
+        const g = geom.get(key)
+        if (!g) continue
+        if (kind === 'onset') this.particles.burst(g.cx, nowLineY, g.color, g.w)
+        else this.particles.sustainBurst(g.cx, nowLineY, g.color, g.w)
       }
 
       this.beatGrid.draw(

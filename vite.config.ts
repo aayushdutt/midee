@@ -78,5 +78,18 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     setupFiles: ['./vitest.setup.ts'],
+    coverage: {
+      // Advisory only — no thresholds yet. `npm run test:coverage` prints a
+      // text summary and writes an HTML report to coverage/. Provider is v8
+      // (@vitest/coverage-v8) to match the installed vitest major.
+      provider: 'v8',
+      reporter: ['text', 'html'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/test/**',
+        'src/**/*.d.ts',
+      ],
+    },
   },
 })

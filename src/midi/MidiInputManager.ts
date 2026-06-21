@@ -9,6 +9,62 @@ export interface MidiNoteEvent {
 
 export type MidiDeviceStatus = 'unavailable' | 'disconnected' | 'connected' | 'blocked'
 
+// Shift the master-clock time back to when the hardware event actually fired.
+// `eventTimeStamp` is a DOMHighResTimeStamp on the same clock as
+// `performance.now()` and reflects hardware dispatch, not callback execution —
+// so `eventTimeStamp - nowMs` is a negative delta (the event is always in the
+// past). Scaling by `speed` keeps the visual hit-point aligned when playback is
+// sped up/slowed down, and clamping at 0 prevents negative clock times.
+export function backdateEventTime(
+  clockTime: number,
+  eventTimeStamp: number,
+  nowMs: number,
+  speed: number,
+): number {
+  const deltaSeconds = (eventTimeStamp - nowMs) / 1000
+  return Math.max(0, clockTime + deltaSeconds * speed)
+}
+
+// Result of decoding one raw MIDI message into a logical intent. `kind: 'none'`
+// covers ignored messages (other CC, pitch-bend, aftertouch, redundant pedal).
+export type ParsedMidiMessage =
+  | { kind: 'noteOn'; pitch: number; velocity: number }
+  | { kind: 'noteOff'; pitch: number }
+  | { kind: 'pedal'; down: boolean }
+  | { kind: 'none' }
+
+// Pure decode of a raw MIDI status/data triplet. Handles the velocity-0
+// note-on → note-off coercion (common in hardware) and CC64 sustain-pedal
+// dedupe (hardware often streams redundant 127s) against `prevPedalDown`.
+// `data` is the raw MIDIMessageEvent bytes; messages shorter than 2 bytes or of
+// unhandled types resolve to `{ kind: 'none' }`.
+export function parseMidiMessage(
+  data: Uint8Array | number[] | null | undefined,
+  prevPedalDown: boolean,
+): ParsedMidiMessage {
+  if (!data || data.length < 2) return { kind: 'none' }
+
+  const status = data[0]! & 0xf0 // strip channel nibble
+  const pitch = data[1]!
+  const rawVel = data[2] ?? 0
+
+  if (status === 0x90 && rawVel > 0) {
+    return { kind: 'noteOn', pitch, velocity: rawVel / 127 }
+  }
+  if (status === 0x80 || (status === 0x90 && rawVel === 0)) {
+    // Note-off (also handles velocity-0 note-on, common in hardware).
+    return { kind: 'noteOff', pitch }
+  }
+  if (status === 0xb0 && pitch === 64) {
+    // CC64 — sustain pedal. `pitch` here is the controller number; per spec
+    // value <64 = off, >=64 = on. Dedupe same-state emissions.
+    const down = rawVel >= 64
+    return down === prevPedalDown ? { kind: 'none' } : { kind: 'pedal', down }
+  }
+  // Ignore other CC, pitch-bend, aftertouch, etc. for now
+  return { kind: 'none' }
+}
+
 // Manages Web MIDI access, device hot-plug, and raw message parsing.
 // Emits noteOn / noteOff signals synchronously on each incoming message.
 export class MidiInputManager {
@@ -76,38 +132,21 @@ export class MidiInputManager {
   }
 
   private handleMessage(e: MIDIMessageEvent): void {
-    const data = e.data
-    if (!data || data.length < 2) return
+    const msg = parseMidiMessage(e.data, this.pedal.value)
+    if (msg.kind === 'none') return
 
-    const status = data[0]! & 0xf0 // strip channel nibble
-    const pitch = data[1]!
-    const rawVel = data[2] ?? 0
-    const velocity = rawVel / 127
-
-    // `e.timeStamp` is a DOMHighResTimeStamp on the same clock as
-    // `performance.now()` and reflects when the hardware event was dispatched,
-    // not when our callback runs. Subtracting gives a negative delta (the event
-    // is always in the past by the time we see it); applying it shifts the
-    // visual hit-point back to the real key press.
     let clockTime = this.clock.currentTime
     if (typeof performance !== 'undefined' && Number.isFinite(e.timeStamp)) {
-      const deltaSeconds = (e.timeStamp - performance.now()) / 1000
-      clockTime = Math.max(0, clockTime + deltaSeconds * this.clock.speed)
+      clockTime = backdateEventTime(clockTime, e.timeStamp, performance.now(), this.clock.speed)
     }
 
-    if (status === 0x90 && rawVel > 0) {
-      // Note-on
-      this.noteOn.set({ pitch, velocity, clockTime })
-    } else if (status === 0x80 || (status === 0x90 && rawVel === 0)) {
-      // Note-off (also handles velocity-0 note-on, common in hardware)
-      this.noteOff.set({ pitch, velocity: 0, clockTime })
-    } else if (status === 0xb0 && pitch === 64) {
-      // CC64 — sustain pedal. `pitch` here is actually the controller number.
-      // Dedupe same-state emissions (hardware often streams redundant 127s).
-      const down = rawVel >= 64
-      if (down !== this.pedal.value) this.pedal.set(down)
+    if (msg.kind === 'noteOn') {
+      this.noteOn.set({ pitch: msg.pitch, velocity: msg.velocity, clockTime })
+    } else if (msg.kind === 'noteOff') {
+      this.noteOff.set({ pitch: msg.pitch, velocity: 0, clockTime })
+    } else {
+      this.pedal.set(msg.down)
     }
-    // Ignore other CC, pitch-bend, aftertouch, etc. for now
   }
 
   dispose(): void {

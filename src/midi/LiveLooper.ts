@@ -23,8 +23,10 @@ export type QuantizeDurationFn = (rawDuration: number) => number
 // Playback uses AudioContext-time scheduling with a ~150 ms lookahead so notes
 // land sample-accurately regardless of UI thread hiccups.
 
-const LOOKAHEAD_SEC = 0.15
-const POLL_INTERVAL_MS = 25
+// Exported so tests can drive the scheduler's horizon math against the real
+// values instead of hard-coding (and silently drifting from) copies.
+export const LOOKAHEAD_SEC = 0.15
+export const POLL_INTERVAL_MS = 25
 
 export class LiveLooper {
   readonly state = createEventSignal<LiveLooperState>('idle')

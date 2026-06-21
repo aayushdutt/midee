@@ -19,8 +19,18 @@ export class MasterClock {
   private listeners = new Set<ClockListener>()
   private rafId: number | null = null
 
+  // Time source seam. Defaults to Tone's AudioContext clock (real runtime
+  // behavior, byte-for-byte identical to reading getContext().currentTime).
+  // Tests inject a deterministic `now()` to drive the clock without an
+  // AudioContext or wall-clock.
+  private readonly now: () => number
+
+  constructor(now: () => number = () => getContext().currentTime) {
+    this.now = now
+  }
+
   private get contextTime(): number {
-    return getContext().currentTime
+    return this.now()
   }
 
   get currentTime(): number {

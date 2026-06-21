@@ -105,17 +105,18 @@ describe('SightReadingEngine', () => {
       expect(note1.state).toBe('missed')
       expect(engine.state.consecutiveMisses).toBe(2)
 
-      // Align to note 2 and hit it.
+      // Align to note 2 and hit it. A null target would silently skip the
+      // assertion, so require one explicitly — the whole point of this test is
+      // that the hit resets the miss counter.
       const remaining = engine.notes.filter(
         (n) => n.state === 'approaching' || n.state === 'in-window',
       )
       const target = remaining[0]
-      if (target) {
-        const diff = target.time - engine.time
-        if (diff > 0) engine.tick(diff)
-        engine.noteOn(target.midi)
-        expect(engine.state.consecutiveMisses).toBe(0)
-      }
+      expect(target).toBeDefined()
+      const diff = target!.time - engine.time
+      if (diff > 0) engine.tick(diff)
+      engine.noteOn(target!.midi)
+      expect(engine.state.consecutiveMisses).toBe(0)
     })
   })
 
@@ -166,8 +167,9 @@ describe('SightReadingEngine', () => {
       engine.tick(0.001)
       const note = engine.notes[0]!
       // The note may be in-window already (its onset is at t=0, engine is at t=0.001).
-      // Either approaching or in-window is fine — we just need to expire it.
-      expect(note.state === 'approaching' || note.state === 'in-window').toBe(true)
+      // Either approaching or in-window is a valid live state — assert membership
+      // so an unexpected state (e.g. 'missed'/'hit') fails loudly here.
+      expect(['approaching', 'in-window']).toContain(note.state)
 
       // Advance past the late-hit window from the note's onset.
       const toExpiry = note.time - engine.time + LATE_HIT_WINDOW_SEC + 0.05
@@ -223,16 +225,16 @@ describe('SightReadingEngine', () => {
       expect(engine.state.consecutiveMisses).toBe(count)
       expect(engine.state.phase).toBe('playing')
 
-      // Hit the next live note.
+      // Hit the next live note. Require one — if no live note exists the hit
+      // never happens and the reset assertion below would pass vacuously.
       const remaining = engine.notes.filter(
         (n) => n.state === 'approaching' || n.state === 'in-window',
       )
       const target = remaining.sort((a, b) => a.time - b.time)[0]
-      if (target) {
-        const diff = target.time - engine.time
-        if (diff > 0) engine.tick(diff)
-        engine.noteOn(target.midi)
-      }
+      expect(target).toBeDefined()
+      const diff = target!.time - engine.time
+      if (diff > 0) engine.tick(diff)
+      engine.noteOn(target!.midi)
 
       expect(engine.state.consecutiveMisses).toBe(0)
       expect(engine.state.phase).toBe('playing')

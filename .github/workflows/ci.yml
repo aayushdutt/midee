@@ -69,3 +69,44 @@ jobs:
             echo "::warning::lint reported issues (non-blocking)"
           fi
           exit $fail
+
+  # Playwright e2e (Tier 3). Runs the FAST, deterministic suite — codec spike,
+  # playback, live-input, and audio-only export. The heavy/flaky AV export is
+  # quarantined behind E2E_HEAVY (see e2e/export.spec.ts) and NOT run here, so this
+  # job is fast and reliable enough to be BLOCKING — real signal, not advisory noise.
+  # The webServer does a lean `vite build` (no postbuild), and `retries: 1` absorbs
+  # transient flakes. Run the AV export locally/nightly with `npm run test:e2e:heavy`.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Cache the downloaded Chromium build across runs (keyed on the Playwright
+      # version in the lockfile) so we don't re-download ~150MB every run.
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      # Install the full Chromium build (NOT headless-shell) — the export path
+      # needs real WebCodecs encoders. On a cache hit, restore the binary and
+      # install only the OS deps; otherwise download the browser + deps.
+      - run: npx playwright install --with-deps chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+      - run: npx playwright install-deps chromium
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+      - run: npm run test:e2e
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

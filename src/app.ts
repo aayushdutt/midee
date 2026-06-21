@@ -13,6 +13,14 @@ import { booleanPersisted, indexPersisted, numberPersisted } from './core/persis
 import { fetchSampleMidi, getSample } from './core/samples'
 import type { AppServices } from './core/services'
 import { ENABLE_LEARN_MODE } from './env'
+import {
+  fitPitchRange,
+  pitchSignature,
+  resolveExportBitrate,
+  resolveExportDims,
+  speedToPps,
+  trimAudioBuffer,
+} from './export/exportMath'
 // VideoExporter pulls Mediabunny; OfflineAudioRenderer pulls Tone + instruments.
 // Both are dynamic-imported from startExport(). Import order matters: load the
 // offline-audio module first when audio is needed — do not block Tone on the
@@ -45,7 +53,7 @@ import { DropZone } from './ui/DropZone'
 // picker, post-session card) are dynamic-imported in ensureXModal() helpers
 // below so their JSX stays out of the initial bundle. The static side keeps
 // the type imports for signatures.
-import type { ExportResolution, ExportSettings } from './ui/ExportModal'
+import type { ExportSettings } from './ui/ExportModal'
 import { InstrumentMenu } from './ui/InstrumentMenu'
 import { KeyboardResizer } from './ui/KeyboardResizer'
 import type { SessionAction } from './ui/PostSessionModal'
@@ -1493,112 +1501,9 @@ const metronomeBpmStore = numberPersisted('midee.metronomeBpm', 120, 40, 240)
 // an explicit "false" turns it off.
 const chordOverlayStore = booleanPersisted('midee.chordOverlay', true)
 
-// Scans the MIDI's notes for min/max pitch and pads outward by a few keys so
-// the visible range feels natural rather than clipping right at the extremes.
-// Clamps to the MIDI-usable octaves on 88-key piano.
-function fitPitchRange(midi: import('./core/midi/types').MidiFile): { min: number; max: number } {
-  let lo = 108,
-    hi = 21
-  for (const track of midi.tracks) {
-    for (const n of track.notes) {
-      if (n.pitch < lo) lo = n.pitch
-      if (n.pitch > hi) hi = n.pitch
-    }
-  }
-  if (hi < lo) return { min: 21, max: 108 }
-  // Pad ~3 semitones each side; widen if the range is tiny so cards don't
-  // look like a single-octave slice on a half-chorused piece.
-  const pad = Math.max(3, Math.round((hi - lo) * 0.12))
-  return {
-    min: Math.max(21, lo - pad),
-    max: Math.min(108, hi + pad),
-  }
-}
-
-function speedToPps(speed: 'compact' | 'standard' | 'drama'): number {
-  switch (speed) {
-    case 'compact':
-      return 300
-    case 'standard':
-      return 200
-    case 'drama':
-      return 120
-  }
-}
-
-function trimAudioBuffer(audio: AudioBuffer, durationSec: number): AudioBuffer {
-  const targetFrames = Math.max(1, Math.ceil(durationSec * audio.sampleRate))
-  if (targetFrames >= audio.length) return audio
-
-  const trimmed = new AudioBuffer({
-    length: targetFrames,
-    numberOfChannels: audio.numberOfChannels,
-    sampleRate: audio.sampleRate,
-  })
-
-  for (let ch = 0; ch < audio.numberOfChannels; ch++) {
-    trimmed.copyToChannel(audio.getChannelData(ch).subarray(0, targetFrames), ch)
-  }
-
-  return trimmed
-}
-
 // Strips characters that misbehave in filenames across Windows/macOS/Linux.
 // Falls back to a constant if the result is empty.
 function sanitiseFilename(name: string): string {
   const cleaned = name.replace(/[\\/:*?"<>|]+/g, ' ').trim()
   return cleaned.length > 0 ? cleaned : 'midee'
-}
-
-// Stable string for an active-pitch set so the chord overlay can short-circuit
-// recomputation when nothing changed between frames.
-function pitchSignature(pitches: Set<number>): string {
-  if (pitches.size === 0) return ''
-  return Array.from(pitches)
-    .sort((a, b) => a - b)
-    .join('.')
-}
-
-// Resolves a user-facing resolution preset to concrete pixel dimensions.
-// Returns `null` when the preset means "keep whatever the canvas currently is"
-// so the caller can skip the resize entirely.
-function resolveExportDims(preset: ExportResolution): { width: number; height: number } | null {
-  switch (preset) {
-    case '720p':
-      return { width: 1280, height: 720 }
-    case '1080p':
-      return { width: 1920, height: 1080 }
-    case '2k':
-      return { width: 2560, height: 1440 }
-    case '4k':
-      return { width: 3840, height: 2160 }
-    case 'vertical':
-      return { width: 1080, height: 1920 }
-    case 'square':
-      return { width: 1080, height: 1080 }
-    case 'match':
-      return null
-  }
-}
-
-// H.264 bitrate per preset. Lower than YouTube's recommendations but tuned
-// for visual fidelity of a piano-roll (mostly dark background, few gradients)
-// — the encoder doesn't need YouTube's overhead for live-action footage.
-function resolveExportBitrate(preset: ExportResolution): number {
-  switch (preset) {
-    case '720p':
-      return 5_000_000
-    case '1080p':
-      return 8_000_000
-    case '2k':
-      return 16_000_000
-    case '4k':
-      return 35_000_000
-    case 'vertical':
-      return 8_000_000
-    case 'square':
-      return 5_000_000
-    case 'match':
-      return 8_000_000
-  }
 }
