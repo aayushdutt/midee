@@ -50,6 +50,13 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+html:lang(zh-CN) {
+  --font:
+    "Inter", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Source Han Sans SC", system-ui, sans-serif;
+  --font-display: "Noto Serif SC", "Songti SC", "STSong", "Source Han Serif SC", ui-serif, serif;
+}
+
 html,
 body {
   width: 100%;

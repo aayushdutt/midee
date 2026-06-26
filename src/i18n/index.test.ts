@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { watch } from '../store/watch'
-import { formatNumber, locale, setLocale, t, tn } from './index'
+import { formatNumber, initI18n, locale, setLocale, t, tn } from './index'
 import { en } from './locales/en'
+import zhCN from './locales/zh-CN'
 
 // These tests cover the pure-function surface of i18n: `t`, `tn`, and the
 // native-Intl helpers. They do not exercise `initI18n` / `setLocale` (which
@@ -11,10 +12,21 @@ import { en } from './locales/en'
 // botched interpolation).
 
 const originalLocale = locale.value
-afterEach(() => {
+const originalUrl = new URL(window.location.href)
+const originalHistoryPath = `${originalUrl.pathname}${originalUrl.search}${originalUrl.hash}`
+const originalNavigatorLanguage = navigator.language
+
+afterEach(async () => {
   // tn() picks plural form based on `locale.value`; restore so test order
   // doesn't matter.
-  locale.set(originalLocale)
+  await setLocale(originalLocale)
+  localStorage.clear()
+  document.documentElement.lang = originalLocale
+  window.history.replaceState({}, '', originalHistoryPath)
+  Object.defineProperty(window.navigator, 'language', {
+    value: originalNavigatorLanguage,
+    configurable: true,
+  })
 })
 
 describe('t()', () => {
@@ -69,6 +81,38 @@ describe('formatNumber()', () => {
   it('formats numbers using the current locale', () => {
     // English uses "." as decimal separator; testing in default (en) locale.
     expect(formatNumber(1234.5)).toBe('1,234.5')
+  })
+})
+
+describe('zh-CN locale', () => {
+  it('loads translated strings and plural keys', async () => {
+    await setLocale('zh-CN')
+
+    expect(t('home.cta.openMidi')).toBe(zhCN['home.cta.openMidi'])
+    expect(tn('tracks.notes', 2, { channel: 3 })).toBe('3 声部 · 2 个音符')
+    expect(formatNumber(1234.5)).toBe(new Intl.NumberFormat('zh-CN').format(1234.5))
+  })
+
+  it('initI18n honors the ?lang=zh-CN URL override', async () => {
+    window.history.replaceState({}, '', '?lang=zh-CN')
+
+    await initI18n()
+
+    expect(locale.value).toBe('zh-CN')
+    expect(document.documentElement.lang).toBe('zh-CN')
+    expect(t('customize.language')).toBe(zhCN['customize.language'])
+  })
+
+  it('maps a base zh browser language to zh-CN', async () => {
+    Object.defineProperty(window.navigator, 'language', {
+      value: 'zh',
+      configurable: true,
+    })
+
+    await initI18n()
+
+    expect(locale.value).toBe('zh-CN')
+    expect(document.documentElement.lang).toBe('zh-CN')
   })
 })
 

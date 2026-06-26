@@ -12,6 +12,7 @@ import {
   Sampler,
   Synth,
 } from 'tone'
+import type { MessageKey } from '../i18n'
 
 export type InstrumentId =
   | 'piano'
@@ -30,25 +31,90 @@ export type InstrumentId =
 
 export interface InstrumentInfo {
   id: InstrumentId
-  name: string // display name
-  description: string // short character-of-voice hint
+  nameKey: MessageKey
+  descriptionKey: MessageKey // short character-of-voice hint
   sampled: boolean // whether loading requires a network fetch
 }
 
 export const INSTRUMENTS: readonly InstrumentInfo[] = [
-  { id: 'piano', name: 'Piano', description: 'Warm acoustic grand', sampled: true },
-  { id: 'upright', name: 'Upright', description: 'Intimate upright · HD', sampled: true },
-  { id: 'digital', name: 'Digital', description: 'Clean stage piano', sampled: false },
-  { id: 'rhodes', name: 'Rhodes', description: 'Mellow electric piano', sampled: false },
-  { id: 'guitar', name: 'Guitar', description: 'Acoustic nylon · HD', sampled: true },
-  { id: 'violin', name: 'Violin', description: 'Bowed strings · HD', sampled: true },
-  { id: 'flute', name: 'Flute', description: 'Breathy wind · HD', sampled: true },
-  { id: 'marimba', name: 'Marimba', description: 'Woody mallet', sampled: false },
-  { id: 'bells', name: 'Bells', description: 'Crystalline chimes', sampled: false },
-  { id: 'strings', name: 'Strings', description: 'Swelling ensemble', sampled: false },
-  { id: 'pad', name: 'Pad', description: 'Airy sustained pad', sampled: false },
-  { id: 'pluck', name: 'Pluck', description: 'Bright percussive', sampled: false },
-  { id: 'bass', name: 'Bass', description: 'Round low sustain', sampled: false },
+  {
+    id: 'piano',
+    nameKey: 'instrument.piano.name',
+    descriptionKey: 'instrument.piano.description',
+    sampled: true,
+  },
+  {
+    id: 'upright',
+    nameKey: 'instrument.upright.name',
+    descriptionKey: 'instrument.upright.description',
+    sampled: true,
+  },
+  {
+    id: 'digital',
+    nameKey: 'instrument.digital.name',
+    descriptionKey: 'instrument.digital.description',
+    sampled: false,
+  },
+  {
+    id: 'rhodes',
+    nameKey: 'instrument.rhodes.name',
+    descriptionKey: 'instrument.rhodes.description',
+    sampled: false,
+  },
+  {
+    id: 'guitar',
+    nameKey: 'instrument.guitar.name',
+    descriptionKey: 'instrument.guitar.description',
+    sampled: true,
+  },
+  {
+    id: 'violin',
+    nameKey: 'instrument.violin.name',
+    descriptionKey: 'instrument.violin.description',
+    sampled: true,
+  },
+  {
+    id: 'flute',
+    nameKey: 'instrument.flute.name',
+    descriptionKey: 'instrument.flute.description',
+    sampled: true,
+  },
+  {
+    id: 'marimba',
+    nameKey: 'instrument.marimba.name',
+    descriptionKey: 'instrument.marimba.description',
+    sampled: false,
+  },
+  {
+    id: 'bells',
+    nameKey: 'instrument.bells.name',
+    descriptionKey: 'instrument.bells.description',
+    sampled: false,
+  },
+  {
+    id: 'strings',
+    nameKey: 'instrument.strings.name',
+    descriptionKey: 'instrument.strings.description',
+    sampled: false,
+  },
+  {
+    id: 'pad',
+    nameKey: 'instrument.pad.name',
+    descriptionKey: 'instrument.pad.description',
+    sampled: false,
+  },
+  {
+    id: 'pluck',
+    nameKey: 'instrument.pluck.name',
+    descriptionKey: 'instrument.pluck.description',
+    sampled: false,
+  },
+  {
+    id: 'bass',
+    nameKey: 'instrument.bass.name',
+    descriptionKey: 'instrument.bass.description',
+    sampled: false,
+  },
 ]
 
 export interface InstrumentRuntime {

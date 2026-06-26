@@ -82,8 +82,8 @@ function MenuView(props: MenuProps) {
             >
               <span class="instrument-item-dot" aria-hidden="true"></span>
               <span class="instrument-item-body">
-                <span class="instrument-item-name">{inst.name}</span>
-                <span class="instrument-item-sub">{inst.description}</span>
+                <span class="instrument-item-name">{t(inst.nameKey)}</span>
+                <span class="instrument-item-sub">{t(inst.descriptionKey)}</span>
               </span>
               <span class="instrument-item-check" aria-hidden="true" innerHTML={icons.check()} />
             </button>
@@ -143,7 +143,7 @@ export class InstrumentMenu {
 
     const label = (): string => {
       const info = INSTRUMENTS.find((i) => i.id === current())
-      return info?.name ?? t('instrument.fallback')
+      return info ? t(info.nameKey) : t('instrument.fallback')
     }
 
     const triggerWrapper = document.createElement('div')

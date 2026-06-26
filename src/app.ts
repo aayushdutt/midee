@@ -896,7 +896,7 @@ export class App {
 
   private applyInstrument(): void {
     const info = INSTRUMENTS[this.instrumentIndex]!
-    this.controls.updateInstrument(info.name)
+    this.controls.updateInstrument(t(info.nameKey))
     this.instrumentMenu?.setCurrent(info.id)
     void this.synth.setInstrument(info.id)
   }
