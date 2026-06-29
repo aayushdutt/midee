@@ -8,6 +8,7 @@ const zhCN: Messages = {
   'home.cta.playLive': '实时弹奏',
   'home.cta.learn.title': '练习与学习',
   'home.cta.learn.sub': '引导练习 · 跟弹曲目',
+  'home.cta.learn.badge': '新',
   'home.samples.label': '或试试示例',
   'home.dropHint.html':
     '把 <code>.mid</code> 拖到任意位置 · 也可以用 <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>… 来弹奏',

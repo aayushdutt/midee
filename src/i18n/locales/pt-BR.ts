@@ -10,6 +10,7 @@ const ptBR: Messages = {
   'home.cta.playLive': 'Tocar ao vivo',
   'home.cta.learn.title': 'Praticar e aprender',
   'home.cta.learn.sub': 'Exercícios guiados · peças para praticar',
+  'home.cta.learn.badge': 'Novo',
   'home.samples.label': 'ou explore um exemplo',
   'home.dropHint.html':
     'Solte um <code>.mid</code> em qualquer lugar · toque com <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>…',

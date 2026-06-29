@@ -158,7 +158,7 @@ function DropZoneView(props: DropZoneProps) {
               >
                 <span innerHTML={icons.practice(13)} />
                 <span>{t('home.cta.learn.title')}</span>
-                <span class="home-learn-badge">New</span>
+                <span class="home-learn-badge">{t('home.cta.learn.badge')}</span>
               </button>
             )}
           </Show>

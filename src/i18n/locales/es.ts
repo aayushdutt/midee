@@ -10,6 +10,7 @@ const es: Messages = {
   'home.cta.playLive': 'Tocar en vivo',
   'home.cta.learn.title': 'Practicar y aprender',
   'home.cta.learn.sub': 'Ejercicios guiados · piezas para practicar',
+  'home.cta.learn.badge': 'Nuevo',
   'home.samples.label': 'o explora un ejemplo',
   'home.dropHint.html':
     'Suelta un <code>.mid</code> en cualquier parte · toca con <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>…',

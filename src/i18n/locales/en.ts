@@ -27,6 +27,7 @@ export const en = {
   'home.cta.playLive': 'Play live',
   'home.cta.learn.title': 'Practice & learn',
   'home.cta.learn.sub': 'Guided exercises · play-along pieces',
+  'home.cta.learn.badge': 'New',
   'home.samples.label': 'or explore a sample',
   'home.dropHint.html':
     'Drop <code>.mid</code> anywhere · play with <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>…',

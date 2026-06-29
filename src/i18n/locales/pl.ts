@@ -10,20 +10,20 @@ type PolishPluralKey = `tracks.notes.${'few' | 'many'}` | `postSession.stats.${'
 const pl: Messages & Record<PolishPluralKey, string> = {
   'home.kicker': 'midee · wizualizator MIDI',
   'home.title.html': 'Graj <em>nuty</em>,<br/>patrz, jak rozkwitają.',
-  'home.subtitle':
-    'Otwórz plik MIDI, aby go animować, albo graj na żywo klawiaturą, myszą lub kontrolerem MIDI.',
+  'home.subtitle': 'Otwórz plik MIDI, aby go odtworzyć lub się go nauczyć.',
   'home.cta.openMidi': 'Otwórz MIDI',
   'home.cta.playLive': 'Graj na żywo',
   'home.cta.learn.title': 'Ćwicz i ucz się',
   'home.cta.learn.sub': 'Ćwiczenia z prowadzeniem · utwory do grania razem',
-  'home.samples.label': 'lub wypróbuj przykład',
+  'home.cta.learn.badge': 'Nowość',
+  'home.samples.label': 'albo odtwórz jeden z przykładów',
   'home.dropHint.html':
-    'Upuść <code>.mid</code> w dowolnym miejscu · graj klawiszami <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>…',
+    'Wrzuć <code>.mid</code> gdziekolwiek · zagraj <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>…',
   'home.midi.lookingFor': 'Szukam MIDI…',
   'home.midi.ready': 'Urządzenie MIDI gotowe',
   'home.midi.blocked': 'Włącz MIDI na górnym pasku',
   'home.midi.unavailable': 'Web MIDI niedostępne w tej przeglądarce',
-  'home.midi.disconnected': 'Brak urządzenia MIDI — klawiatura i mysz też działają',
+  'home.midi.disconnected': 'Brak kontrolera MIDI — klawiatura i myszka też działają',
   'home.metaLink.blog': 'Przeczytaj bloga',
   'home.metaLink.github': 'Kod na GitHubie',
   'home.metaLink.discord': 'Dołącz do społeczności na Discordzie',
@@ -72,7 +72,7 @@ const pl: Messages & Record<PolishPluralKey, string> = {
   'customize.chord': 'Odczyt akordów',
   'customize.chord.sub': 'Nazywa to, co brzmi · tryb na żywo',
   'customize.language': 'Język',
-  'feedback.menu': 'Opinie i propozycje funkcji',
+  'feedback.menu': 'Podziel się z nami swoim feedbackiem oraz zaproponuj funkcję',
   'feedback.postSession': 'Chcesz, żeby działało inaczej? Napisz nam',
 
   'hud.play': 'Odtwórz / Pauza',
@@ -350,7 +350,7 @@ const pl: Messages & Record<PolishPluralKey, string> = {
   'learn.pa.rampLabel': 'Narastanie',
 
   'learn.streak.tip': 'Seria ćwiczeń · ostatnie 14 dni',
-  'learn.streak.label': 'dni z rzędu',
+  'learn.streak.label': 'dni streaku',
 
   'learn.summary.accuracy': 'celność',
   'learn.summary.xp': 'xp',
@@ -370,7 +370,7 @@ const pl: Messages & Record<PolishPluralKey, string> = {
   'midiPicker.close': 'Zamknij',
   'midiPicker.dropTitle': 'Upuść tutaj plik MIDI',
   'midiPicker.dropSub': 'lub kliknij, aby wybrać z komputera',
-  'midiPicker.samplesLabel': 'Lub wypróbuj przykład',
+  'midiPicker.samplesLabel': 'Albo odtwórz jeden z przykładów',
 
   'instrument.title': 'Instrument',
   'instrument.aria': 'Wybierz instrument',
@@ -380,7 +380,7 @@ const pl: Messages & Record<PolishPluralKey, string> = {
   'instrument.piano.description': 'Ciepły fortepian akustyczny',
   'instrument.upright.name': 'Pianino',
   'instrument.upright.description': 'Kameralne pianino · HD',
-  'instrument.digital.name': 'Cyfrowy',
+  'instrument.digital.name': 'Elektryczne pianino',
   'instrument.digital.description': 'Czyste pianino sceniczne',
   'instrument.rhodes.name': 'Rhodes',
   'instrument.rhodes.description': 'Łagodne pianino elektryczne',
