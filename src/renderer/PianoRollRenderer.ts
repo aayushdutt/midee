@@ -339,6 +339,11 @@ export class PianoRollRenderer {
     return this.pixelsPerSecond
   }
 
+  // Pitch-class labels on the falling bars. Fades in/out on the next frames.
+  setNoteLabels(on: boolean): void {
+    this.noteRenderer.setLabelsEnabled(on)
+  }
+
   setKeyboardHeight(px: number): void {
     if (!this.applyKeyboardHeight(px)) return
     this.rebuildStaticLayers()

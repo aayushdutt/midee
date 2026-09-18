@@ -79,6 +79,8 @@ const pl: Messages & Record<PolishPluralKey, string> = {
   'customize.particles': 'Cząstki',
   'customize.chord': 'Odczyt akordów',
   'customize.chord.sub': 'Nazywa to, co brzmi · tryb na żywo',
+  'customize.noteLabels': 'Nazwy dźwięków',
+  'customize.noteLabels.sub': 'Podpisuje spadające nuty · graj razem',
   'customize.language': 'Język',
   'feedback.menu': 'Opinie i propozycje funkcji',
   'feedback.postSession': 'Chcesz, żeby działało inaczej? Napisz nam',

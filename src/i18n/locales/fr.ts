@@ -77,6 +77,8 @@ const fr: Messages = {
   'customize.particles': 'Particules',
   'customize.chord': 'Affichage des accords',
   'customize.chord.sub': 'Nommer les accords joués · mode direct',
+  'customize.noteLabels': 'Noms des notes',
+  'customize.noteLabels.sub': 'Étiquette les notes qui tombent · jouer en même temps',
   'customize.language': 'Langue',
   'feedback.menu': 'Avis & suggestions',
   'feedback.postSession': 'Une idée pour l’améliorer ? Dites-le-nous',

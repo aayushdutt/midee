@@ -71,6 +71,8 @@ const ja: Messages = {
   'customize.particles': 'パーティクル',
   'customize.chord': 'コード表示',
   'customize.chord.sub': '鳴っている音をコード名で表示 · ライブモード',
+  'customize.noteLabels': '音名表示',
+  'customize.noteLabels.sub': '落ちてくるノートに音名を表示 · 合わせて演奏',
   'customize.language': '言語',
   'feedback.menu': 'フィードバックと機能リクエスト',
   'feedback.postSession': 'もっとこうしたい？ご意見をお寄せください',

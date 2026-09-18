@@ -74,6 +74,8 @@ const es: Messages = {
   'customize.particles': 'Partículas',
   'customize.chord': 'Lectura de acordes',
   'customize.chord.sub': 'Nombra lo que está sonando · modo en vivo',
+  'customize.noteLabels': 'Nombres de notas',
+  'customize.noteLabels.sub': 'Etiqueta las notas que caen · toca junto',
   'customize.language': 'Idioma',
   'feedback.menu': 'Opiniones y sugerencias',
   'feedback.postSession': '¿Te gustaría que funcionara distinto? Cuéntanos',

@@ -19,6 +19,7 @@ export interface CustomizeMenuCallbacks {
   onSelectTheme: (index: number) => void
   onSelectParticle: (index: number) => void
   onToggleChord: () => void
+  onToggleNoteLabels: () => void
   onSelectLocale: (code: LocaleCode) => void
 }
 
@@ -76,11 +77,13 @@ interface MenuProps {
   themeIndex: () => number
   particleIndex: () => number
   chordOn: () => boolean
+  noteLabelsOn: () => boolean
   isOpen: () => boolean
   isSheet: () => boolean
   onSelectTheme: (i: number) => void
   onSelectParticle: (i: number) => void
   onToggleChord: () => void
+  onToggleNoteLabels: () => void
   onSelectLocale: (code: LocaleCode) => void
   registerEl: (el: HTMLElement) => void
 }
@@ -189,6 +192,21 @@ function MenuView(props: MenuProps) {
               <span class="customize-toggle-knob"></span>
             </span>
           </button>
+          <button
+            class="customize-toggle"
+            classList={{ 'customize-toggle--on': props.noteLabelsOn() }}
+            type="button"
+            aria-pressed={props.noteLabelsOn() ? 'true' : 'false'}
+            onClick={() => props.onToggleNoteLabels()}
+          >
+            <span class="customize-toggle-body">
+              <span class="customize-toggle-name">{t('customize.noteLabels')}</span>
+              <span class="customize-toggle-sub">{t('customize.noteLabels.sub')}</span>
+            </span>
+            <span class="customize-toggle-switch" aria-hidden="true">
+              <span class="customize-toggle-knob"></span>
+            </span>
+          </button>
         </div>
 
         <div class="customize-section customize-section--footer">
@@ -251,6 +269,7 @@ export class CustomizeMenu {
   private readonly particleIdxFn: () => number
   private readonly setChordOn: (v: boolean) => void
   private readonly chordOnFn: () => boolean
+  private readonly setNoteLabelsOn: (v: boolean) => void
   private readonly setIsOpen: (v: boolean) => void
   private readonly setIsSheet: (v: boolean) => void
   private readonly setLabel: (v: string) => void
@@ -284,6 +303,7 @@ export class CustomizeMenu {
     const [themeIdx, setThemeIdx] = createSignal(0)
     const [particleIdx, setParticleIdx] = createSignal(0)
     const [chordOn, setChordOn] = createSignal(false)
+    const [noteLabelsOn, setNoteLabelsOn] = createSignal(false)
     const [isOpen, setIsOpen] = createSignal(false)
     const [isSheet, setIsSheet] = createSignal(false)
     const [label, setLabel] = createSignal(t('customize.theme'))
@@ -295,6 +315,7 @@ export class CustomizeMenu {
     this.setParticleIdx = setParticleIdx
     this.chordOnFn = chordOn
     this.setChordOn = setChordOn
+    this.setNoteLabelsOn = setNoteLabelsOn
     this.setIsOpen = setIsOpen
     this.setIsSheet = setIsSheet
     this.setLabel = setLabel
@@ -334,11 +355,13 @@ export class CustomizeMenu {
           themeIndex={themeIdx}
           particleIndex={particleIdx}
           chordOn={chordOn}
+          noteLabelsOn={noteLabelsOn}
           isOpen={isOpen}
           isSheet={isSheet}
           onSelectTheme={(i) => callbacks.onSelectTheme(i)}
           onSelectParticle={(i) => callbacks.onSelectParticle(i)}
           onToggleChord={() => callbacks.onToggleChord()}
+          onToggleNoteLabels={() => callbacks.onToggleNoteLabels()}
           onSelectLocale={(code) => callbacks.onSelectLocale(code)}
           registerEl={(el) => {
             this.menu = el
@@ -366,6 +389,10 @@ export class CustomizeMenu {
 
   setChord(on: boolean): void {
     this.setChordOn(on)
+  }
+
+  setNoteLabels(on: boolean): void {
+    this.setNoteLabelsOn(on)
   }
 
   // ── Open / close ──────────────────────────────────────────────────────

@@ -189,6 +189,7 @@ export class App {
   private chordLastRunMs = 0
   private chordLastSig = ''
   private chordOverlayOn = false
+  private noteLabelsOn = false
 
   private themeIndex = indexOfId(THEMES, themeStore.load())
   private instrumentIndex = indexOfId(INSTRUMENTS, instrumentStore.load())
@@ -532,6 +533,7 @@ export class App {
         onSelectTheme: (idx) => this.setThemeByIndex(idx, 'menu'),
         onSelectParticle: (idx) => this.setParticleByIndex(idx, 'menu'),
         onToggleChord: () => this.toggleChordOverlay(),
+        onToggleNoteLabels: () => this.toggleNoteLabels(),
         // Locale change is rare, and almost every part of the UI was built
         // with the previous locale baked in via template literals. Reload
         // is the simplest correct path: persistence happens in setLocale,
@@ -543,6 +545,10 @@ export class App {
       },
     )
     this.customizeMenu.setChord(this.chordOverlayOn)
+
+    this.noteLabelsOn = noteLabelsStore.load()
+    this.renderer.setNoteLabels(this.noteLabelsOn)
+    this.customizeMenu.setNoteLabels(this.noteLabelsOn)
 
     this.applyTheme(THEMES[this.themeIndex]!)
     this.applyInstrument()
@@ -1785,6 +1791,15 @@ export class App {
     }
   }
 
+  // ── Note labels ────────────────────────────────────────────────────────
+  private toggleNoteLabels(): void {
+    this.noteLabelsOn = !this.noteLabelsOn
+    this.renderer.setNoteLabels(this.noteLabelsOn)
+    this.customizeMenu?.setNoteLabels(this.noteLabelsOn)
+    noteLabelsStore.save(this.noteLabelsOn)
+    track('note_labels_toggled', { on: this.noteLabelsOn })
+  }
+
   // Effective visibility = user's saved preference AND current mode supports it.
   // Play mode is excluded — the chord readout is a "what am I playing?" cue,
   // not a passive playback annotation.
@@ -1976,6 +1991,9 @@ const metronomeBpmStore = numberPersisted('midee.metronomeBpm', 120, 40, 240)
 // boolean store treats "no preference" as the fallback (true), and only
 // an explicit "false" turns it off.
 const chordOverlayStore = booleanPersisted('midee.chordOverlay', true)
+// Note-name labels on the bars default off — a play-along aid, not the
+// default look. Never rename the key.
+const noteLabelsStore = booleanPersisted('midee.noteLabels', false)
 
 // Persisted id → list index. Stores only return roster ids, so -1 is unreachable.
 function indexOfId<T extends { id: string }>(list: readonly T[], id: string): number {

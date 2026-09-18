@@ -1,6 +1,7 @@
 import { Container, Graphics } from 'pixi.js'
 import { GlowFilter } from 'pixi-filters'
 import type { MidiTrack } from '../core/midi/types'
+import { NoteLabelLayer } from './noteLabels'
 import { getTrackColor, type Theme } from './theme'
 import { type Viewport, visibleNoteRange } from './viewport'
 
@@ -17,6 +18,9 @@ export class NoteRenderer {
   private glowContainer: Container
   private glowGraphics: Graphics
   private glowFilter: GlowFilter
+  // Pitch-class labels ("E", "F♯") on the bars — opt-in, sits above the glow
+  // so the filter never blooms the text.
+  private labels = new NoteLabelLayer()
 
   constructor(private theme: Theme) {
     this.container = new Container()
@@ -37,6 +41,11 @@ export class NoteRenderer {
     this.glowGraphics = new Graphics()
     this.glowContainer.addChild(this.glowGraphics)
     this.container.addChild(this.glowContainer)
+    this.container.addChild(this.labels.container)
+  }
+
+  setLabelsEnabled(on: boolean): void {
+    this.labels.setEnabled(on)
   }
 
   // Call once when tracks are loaded — sets up one Graphics per track
@@ -75,6 +84,8 @@ export class NoteRenderer {
     const { noteRadius } = this.theme
     const nowLineY = viewport.nowLineY
     this.glowGraphics.clear()
+    const labels = this.labels.isActive ? this.labels : null
+    labels?.begin()
 
     let activeCount = 0
     let sumR = 0,
@@ -122,6 +133,8 @@ export class NoteRenderer {
         g.roundRect(x, y, w, h, noteRadius)
         g.fill({ color: noteColor, alpha })
 
+        labels?.place(note.pitch, x, w, noteBottom, h, noteColor, alpha)
+
         if (
           !practiceInactive &&
           note.time <= currentTime &&
@@ -136,6 +149,8 @@ export class NoteRenderer {
         }
       }
     }
+
+    labels?.end()
 
     if (activeCount > 0) {
       const avgColor =
@@ -161,5 +176,6 @@ export class NoteRenderer {
     })
     this.glowGraphics.clear()
     this.glowContainer.visible = false
+    this.labels.clear()
   }
 }

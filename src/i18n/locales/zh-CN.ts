@@ -70,6 +70,8 @@ const zhCN: Messages = {
   'customize.particles': '粒子效果',
   'customize.chord': '和弦显示',
   'customize.chord.sub': '显示当前发声的和弦 · 实时模式',
+  'customize.noteLabels': '音名标注',
+  'customize.noteLabels.sub': '在下落的音符上标注音名 · 跟着弹奏',
   'customize.language': '语言',
   'feedback.menu': '反馈与功能建议',
   'feedback.postSession': '希望这里不一样？告诉我们',

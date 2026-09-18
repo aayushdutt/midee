@@ -95,6 +95,8 @@ export const en = {
   'customize.particles': 'Particles',
   'customize.chord': 'Chord readout',
   'customize.chord.sub': "Name what's sounding · live mode",
+  'customize.noteLabels': 'Note names',
+  'customize.noteLabels.sub': 'Label the falling notes · play along',
   'customize.language': 'Language',
   'feedback.menu': 'Feedback & feature requests',
   'feedback.postSession': 'Wish this worked differently? Tell us',
