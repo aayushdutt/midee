@@ -50,8 +50,11 @@ const PILL_SHADE = 0.22 // bar colour × this = pill colour
 const PILL_ALPHA = 0.6
 const INK = 0xffffff
 const INK_ALPHA = 0.94
-// Bar must have this much room left above the pill or the label is dropped.
-const MIN_BAR_HEIGHT = PILL_HEIGHT + PILL_INSET_BOTTOM + 8
+// Bars at least this tall get the pill inset at the bottom edge; shorter ones
+// get it centred (overhanging top and bottom on very short notes, which reads
+// as "a badge on a dot"). Below MIN_BAR_HEIGHT the bar is a sliver — skip.
+const INSET_BAR_HEIGHT = PILL_HEIGHT + PILL_INSET_BOTTOM * 2
+const MIN_BAR_HEIGHT = 8
 const TEXT_PAD_X = 3
 // Narrow bars (black keys carrying a two-glyph "F♯") let the pill grow past
 // the bar edges by a hair. The pill is a dark translucent shape over a
@@ -70,6 +73,12 @@ export function pillWidth(textWidth: number, barWidth: number, barHeight: number
   const preferred = barWidth - PILL_INSET_X * 2
   const needed = textWidth + TEXT_PAD_X * 2
   return Math.max(preferred, Math.min(needed, maxPill))
+}
+
+// Top edge of the pill for a bar whose leading (bottom) edge is `bottomY`.
+export function pillTop(bottomY: number, barHeight: number): number {
+  if (barHeight >= INSET_BAR_HEIGHT) return bottomY - PILL_INSET_BOTTOM - PILL_HEIGHT
+  return bottomY - barHeight / 2 - PILL_HEIGHT / 2
 }
 
 // Darker shade of the bar colour for the pill — keeps the label "of" its bar.
@@ -186,14 +195,14 @@ export class NoteLabelLayer {
     // Pill follows the bar's dimming (velocity / practice focus) so quiet or
     // out-of-focus tracks stay quiet; the text keeps most of its contrast on
     // top of it either way.
-    const pillTop = bottomY - PILL_INSET_BOTTOM - PILL_HEIGHT
-    this.pills.roundRect(x + (w - pillW) / 2, pillTop, pillW, PILL_HEIGHT, PILL_RADIUS)
+    const top = pillTop(bottomY, h)
+    this.pills.roundRect(x + (w - pillW) / 2, top, pillW, PILL_HEIGHT, PILL_RADIUS)
     this.pills.fill({ color: pillColor(color), alpha: PILL_ALPHA * alpha })
 
     label.text = PITCH_CLASS_NAMES[pc]!
     label.alpha = INK_ALPHA * Math.max(alpha, 0.6)
     // +0.5: optical centre of caps sits a hair below the em box's centre.
-    label.position.set(x + w / 2, pillTop + PILL_HEIGHT / 2 + 0.5)
+    label.position.set(x + w / 2, top + PILL_HEIGHT / 2 + 0.5)
     label.visible = true
   }
 

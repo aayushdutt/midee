@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pillColor, pillWidth, pitchClassName } from './noteLabels'
+import { pillColor, pillTop, pillWidth, pitchClassName } from './noteLabels'
 
 describe('pitchClassName', () => {
   it('names pitches with sharps and the ♯ glyph', () => {
@@ -31,7 +31,19 @@ describe('pillWidth', () => {
 
   it('returns 0 when the text cannot fit with 1px padding, or the bar is short', () => {
     expect(pillWidth(11.5, 9, 40)).toBe(0)
-    expect(pillWidth(6, 24, 20)).toBe(0)
+    expect(pillWidth(6, 24, 7)).toBe(0)
+  })
+})
+
+describe('pillTop', () => {
+  it('sits inset above the bottom edge on tall bars', () => {
+    expect(pillTop(100, 40)).toBe(100 - 4 - 14)
+  })
+
+  it('centres on the bar when there is no room to inset', () => {
+    expect(pillTop(100, 20)).toBe(100 - 10 - 7)
+    // Shorter than the pill: overhangs symmetrically.
+    expect(pillTop(100, 8)).toBe(100 - 4 - 7)
   })
 })
 
