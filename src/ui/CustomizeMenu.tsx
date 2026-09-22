@@ -1,7 +1,7 @@
 import { createSignal, For } from 'solid-js'
 import { render } from 'solid-js/web'
 import { LOCALES, type LocaleCode, locale, t } from '../i18n'
-import type { ParticleStyle, ParticleStyleInfo } from '../renderer/ParticleSystem'
+import type { ParticleStyle, ParticleStyleInfo } from '../renderer/particleStyles'
 import { accentCSS, type Theme } from '../renderer/theme'
 import { trackEvent } from '../telemetry'
 import { icons } from './icons'
@@ -12,7 +12,7 @@ import { FEEDBACK_URL, isNarrowViewport } from './utils'
 // while keeping every option one tap away once opened.
 //
 // Pattern mirrors InstrumentMenu: a pill trigger anchored in the topbar +
-// an absolutely-positioned popover anchored under it (or rendered as a
+// a fixed-position popover anchored under it (or rendered as a
 // bottom sheet on narrow viewports via shared CSS).
 
 export interface CustomizeMenuCallbacks {
@@ -40,6 +40,9 @@ function TriggerView(props: TriggerProps) {
       id="ts-customize"
       type="button"
       aria-label={t('customize.aria')}
+      aria-haspopup="dialog"
+      aria-expanded={props.isOpen()}
+      aria-controls="ts-appearance-panel"
       data-tip={t('customize.aria')}
       onClick={() => props.onToggle()}
     >
@@ -85,6 +88,7 @@ interface MenuProps {
   onToggleChord: () => void
   onToggleNoteLabels: () => void
   onSelectLocale: (code: LocaleCode) => void
+  onClose: () => void
   registerEl: (el: HTMLElement) => void
 }
 
@@ -92,6 +96,11 @@ function MenuView(props: MenuProps) {
   return (
     <div
       ref={(el) => props.registerEl(el)}
+      id="ts-appearance-panel"
+      role="dialog"
+      aria-labelledby="ts-appearance-title"
+      aria-hidden={!props.isOpen()}
+      inert={!props.isOpen()}
       class="ts-popover ts-customize-menu"
       classList={{
         'ts-popover--open': props.isOpen(),
@@ -99,29 +108,59 @@ function MenuView(props: MenuProps) {
       }}
     >
       <div class="panel-header">
-        <span class="panel-label">{t('customize.title')}</span>
+        <span class="panel-label" id="ts-appearance-title">
+          {t('customize.title')}
+        </span>
+        <button
+          class="panel-close-btn"
+          type="button"
+          aria-label={t('midiPicker.close')}
+          onClick={() => props.onClose()}
+          innerHTML={icons.close(14)}
+        />
       </div>
 
       <div class="ts-customize-body">
         <div class="customize-section">
           <div class="customize-section-head">
             <span class="customize-section-label">{t('customize.theme')}</span>
+            <span class="customize-section-value">{props.themes[props.themeIndex()]?.name}</span>
           </div>
           <div class="customize-theme-grid">
             <For each={props.themes}>
-              {(theme, i) => (
-                <button
-                  class="customize-theme-tile"
-                  classList={{ 'customize-theme-tile--on': props.themeIndex() === i() }}
-                  type="button"
-                  title={theme.name}
-                  aria-label={`${theme.name} theme`}
-                  onClick={() => props.onSelectTheme(i())}
-                >
-                  <span class="customize-theme-tile-dot" style={{ background: accentCSS(theme) }} />
-                  <span class="customize-theme-tile-label">{theme.name}</span>
-                </button>
-              )}
+              {(theme, index) => {
+                const isNew = theme.id === 'opal' || theme.id === 'liquid-glass'
+                return (
+                  <button
+                    class="customize-theme-tile"
+                    classList={{
+                      'customize-theme-tile--on': props.themeIndex() === index(),
+                      'customize-theme-tile--material': !!theme.noteMaterial,
+                      'customize-theme-tile--new': isNew,
+                    }}
+                    style={{ '--theme-accent': accentCSS(theme) }}
+                    data-material={theme.noteMaterial}
+                    type="button"
+                    title={theme.name}
+                    aria-label={`${theme.name} theme`}
+                    aria-describedby={isNew ? `new-theme-${theme.id}` : undefined}
+                    aria-pressed={props.themeIndex() === index()}
+                    onClick={() => props.onSelectTheme(index())}
+                  >
+                    <span
+                      class="customize-theme-tile-dot"
+                      aria-hidden="true"
+                      style={{ background: theme.preview ?? accentCSS(theme) }}
+                    />
+                    <span class="customize-theme-tile-label">{theme.name}</span>
+                    {isNew && (
+                      <span class="customize-theme-new" id={`new-theme-${theme.id}`}>
+                        {t('customize.new')}
+                      </span>
+                    )}
+                  </button>
+                )
+              }}
             </For>
           </div>
         </div>
@@ -129,6 +168,9 @@ function MenuView(props: MenuProps) {
         <div class="customize-section">
           <div class="customize-section-head">
             <span class="customize-section-label">{t('customize.particles')}</span>
+            <span class="customize-section-value">
+              {props.particles[props.particleIndex()]?.name}
+            </span>
           </div>
           <div class="customize-particle-row">
             <For each={props.particles}>
@@ -139,6 +181,7 @@ function MenuView(props: MenuProps) {
                   type="button"
                   title={p.name}
                   aria-label={`${p.name} particles`}
+                  aria-pressed={props.particleIndex() === i()}
                   onClick={() => props.onSelectParticle(i())}
                 >
                   <span
@@ -148,6 +191,11 @@ function MenuView(props: MenuProps) {
                     innerHTML={PARTICLE_GLYPHS[p.id] ?? PARTICLE_GLYPHS['sparks'] ?? ''}
                   />
                   <span class="customize-particle-chip-label">{p.name}</span>
+                  <span
+                    class="customize-particle-check"
+                    aria-hidden="true"
+                    innerHTML={icons.check(11)}
+                  />
                 </button>
               )}
             </For>
@@ -167,6 +215,7 @@ function MenuView(props: MenuProps) {
                   type="button"
                   data-locale={l.code}
                   aria-label={l.nativeName}
+                  aria-pressed={l.code === locale.value}
                   onClick={() => props.onSelectLocale(l.code)}
                 >
                   <span class="customize-locale-chip-label">{l.nativeName}</span>
@@ -256,12 +305,20 @@ function MenuView(props: MenuProps) {
 }
 
 export class CustomizeMenu {
-  readonly trigger: HTMLButtonElement
+  private triggerElement!: HTMLButtonElement
+
+  // Component refreshes replace the DOM node while this controller survives.
+  // Always anchor and handle outside clicks against the current button.
+  get trigger(): HTMLButtonElement {
+    return this.triggerElement
+  }
   private menu!: HTMLElement
   private isOpen = false
   private disposeTrigger: (() => void) | null = null
   private disposeMenu: (() => void) | null = null
   private menuWrapper: HTMLDivElement | null = null
+  private triggerWrapper: HTMLDivElement | null = null
+  private anchorFrame = 0
 
   private readonly setThemeIdx: (v: number) => void
   private readonly themeIdxFn: () => number
@@ -282,7 +339,10 @@ export class CustomizeMenu {
     this.close()
   }
   private onKey = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape' && this.isOpen) this.close()
+    if (e.key === 'Escape' && this.isOpen) {
+      e.preventDefault()
+      this.close(true)
+    }
   }
   private onResize = (): void => {
     if (!this.isOpen) return
@@ -291,6 +351,14 @@ export class CustomizeMenu {
       return
     }
     this.positionUnder()
+  }
+  // A theme label or the top strip's responsive/entrance transition can move
+  // the trigger after the opening click. Follow its actual screen rectangle
+  // while open so the panel never covers its own trigger during that motion.
+  private followAnchor = (): void => {
+    if (!this.isOpen) return
+    if (!this.menu.classList.contains('popover--sheet')) this.positionUnder()
+    this.anchorFrame = requestAnimationFrame(this.followAnchor)
   }
 
   constructor(
@@ -327,7 +395,7 @@ export class CustomizeMenu {
     const triggerWrapper = document.createElement('div')
     triggerWrapper.style.display = 'contents'
     triggerHost.appendChild(triggerWrapper)
-    let triggerEl!: HTMLButtonElement
+    this.triggerWrapper = triggerWrapper
     this.disposeTrigger = render(
       () => (
         <TriggerView
@@ -336,13 +404,12 @@ export class CustomizeMenu {
           isOpen={isOpen}
           onToggle={() => this.toggle()}
           registerEl={(el) => {
-            triggerEl = el
+            this.triggerElement = el
           }}
         />
       ),
       triggerWrapper,
     )
-    this.trigger = triggerEl
 
     const menuWrapper = document.createElement('div')
     popoverHost.appendChild(menuWrapper)
@@ -363,6 +430,7 @@ export class CustomizeMenu {
           onToggleChord={() => callbacks.onToggleChord()}
           onToggleNoteLabels={() => callbacks.onToggleNoteLabels()}
           onSelectLocale={(code) => callbacks.onSelectLocale(code)}
+          onClose={() => this.close(true)}
           registerEl={(el) => {
             this.menu = el
           }}
@@ -403,6 +471,7 @@ export class CustomizeMenu {
   private open(): void {
     if (this.isOpen) return
     this.isOpen = true
+    document.body.classList.add('appearance-open')
     this.setIsOpen(true)
     if (isNarrowViewport()) {
       this.setIsSheet(true)
@@ -413,34 +482,45 @@ export class CustomizeMenu {
       this.setIsSheet(false)
       this.positionUnder()
     }
-    setTimeout(() => {
-      document.addEventListener('pointerdown', this.onDocPointer)
-      document.addEventListener('keydown', this.onKey)
-      window.addEventListener('resize', this.onResize)
-    }, 0)
+    // The triggering pointerdown has already finished before this click. Add
+    // listeners now, avoiding a deferred callback that could survive close/dispose.
+    document.addEventListener('pointerdown', this.onDocPointer)
+    document.addEventListener('keydown', this.onKey)
+    window.addEventListener('resize', this.onResize)
+    this.anchorFrame = requestAnimationFrame(this.followAnchor)
+    this.menu.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus({ preventScroll: true })
   }
 
-  private close(): void {
+  private close(returnFocus = false): void {
     if (!this.isOpen) return
     this.isOpen = false
+    document.body.classList.remove('appearance-open')
+    cancelAnimationFrame(this.anchorFrame)
+    this.anchorFrame = 0
     this.setIsOpen(false)
     this.setIsSheet(false)
     document.removeEventListener('pointerdown', this.onDocPointer)
     document.removeEventListener('keydown', this.onKey)
     window.removeEventListener('resize', this.onResize)
+    if (returnFocus) this.trigger.focus({ preventScroll: true })
   }
 
   private positionUnder(): void {
     const rect = this.trigger.getBoundingClientRect()
-    const menuW = this.menu.offsetWidth || 280
-    const right = Math.max(12, window.innerWidth - rect.right)
+    const menuW = this.menu.offsetWidth || 340
+    const right = Math.min(
+      Math.max(12, window.innerWidth - rect.right),
+      Math.max(12, window.innerWidth - menuW - 12),
+    )
     const top = rect.bottom + 8
-    this.menu.style.right = `${right}px`
-    this.menu.style.top = `${top}px`
-    this.menu.style.left = ''
-    const desiredLeft = window.innerWidth - right - menuW
-    if (desiredLeft < 12)
-      this.menu.style.right = `${Math.max(12, window.innerWidth - menuW - 12)}px`
+    const rightValue = `${Math.round(right)}px`
+    const topValue = `${Math.ceil(top)}px`
+    if (this.menu.style.right !== rightValue) this.menu.style.right = rightValue
+    if (this.menu.style.top !== topValue) this.menu.style.top = topValue
+    const availableHeight = `${Math.max(0, Math.floor(window.innerHeight - top - 12))}px`
+    if (this.menu.style.getPropertyValue('--customize-available-height') !== availableHeight) {
+      this.menu.style.setProperty('--customize-available-height', availableHeight)
+    }
   }
 
   getCurrentTheme(): number {
@@ -459,6 +539,8 @@ export class CustomizeMenu {
     this.disposeMenu?.()
     this.disposeTrigger = null
     this.disposeMenu = null
+    this.triggerWrapper?.remove()
+    this.triggerWrapper = null
     this.menuWrapper?.remove()
     this.menuWrapper = null
   }
@@ -470,6 +552,12 @@ export type { ParticleStyle }
 // Lightweight inline SVGs that hint at each particle style's behaviour.
 // All use currentColor so they pick up theme accent on hover / when active.
 const PARTICLE_GLYPHS: Record<string, string> = {
+  mist: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"><path d="M3 8c5-5 9 3 14-1s6-2 4 0M2 13c6-5 10 4 17-1M5 18c5-3 8 2 13-1"/><path d="m4 4 .1 0m17 15 .1 0" opacity=".5"/></svg>`,
+  silk: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="m4 17 2-5m5 7 2-6m4-2 2-5"/><path d="m8 8 1-3m9 15 1-3m-6-7 1-3" opacity=".45"/></svg>`,
+  gold: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="m5 4 10 3 4 10-12 3-4-9zM5 4l7 9 7 4M12 13 7 20"/><path d="m19 2 1 2 2 1-2 1-1 2-1-2-2-1 2-1z" fill="currentColor"/></svg>`,
+  pearl: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1"><path d="m9 9 4 2-1 5-5-2zm9-5 3 2-2 3-2-2z"/><path d="m4 5 1 1m0 12 1 1m11-3 1 1m-7-14 1 1" stroke-linecap="round" opacity=".55"/></svg>`,
+  liquid: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"><path d="m5 8 1 1m4-5 1 1m6 3 1 1m-6 4 1 1m-9 5 1 1m5 2 1-1m7-4 2-2"/><path d="m6 14 1-1m9 7 1 1m5-11 1 1" opacity=".4"/></svg>`,
+  glass: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><path d="m12 2 2 8 7 2-7 2-2 8-2-8-7-2 7-2z"/><path d="m19 3 .7 2.3L22 6l-2.3.7L19 9l-.7-2.3L16 6l2.3-.7z" opacity=".5"/></svg>`,
   sparks: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
     <path d="M12 3v4"/><path d="M12 17v4"/><path d="M3 12h4"/><path d="M17 12h4"/>
     <path d="M5.6 5.6l2.8 2.8"/><path d="M15.6 15.6l2.8 2.8"/>

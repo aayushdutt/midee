@@ -71,6 +71,7 @@ const ptBR: Messages = {
   'customize.aria': 'Aparência',
   'customize.title': 'Aparência',
   'customize.theme': 'Tema',
+  'customize.new': 'Novo',
   'customize.particles': 'Partículas',
   'customize.chord': 'Leitura de acordes',
   'customize.chord.sub': 'Nomeia o que está soando · modo ao vivo',

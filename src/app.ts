@@ -40,9 +40,9 @@ import { sessionToMidiFile } from './midi/SessionToMidi'
 import type { LearnController } from './modes/LearnController'
 import { setNextLiveOpts } from './modes/LiveMode'
 import { MODE_CAPTURES_LIVE, type ModeContext } from './modes/ModeController'
-import { PARTICLE_STYLES, type ParticleStyle } from './renderer/ParticleSystem'
 import { PianoRollRenderer } from './renderer/PianoRollRenderer'
-import { accentCSS, THEMES, type Theme, type ThemeId } from './renderer/theme'
+import { ALL_PARTICLE_STYLES, PARTICLE_STYLES, type ParticleStyle } from './renderer/particleStyles'
+import { ALL_THEMES, accentCSS, THEMES, type Theme, type ThemeId } from './renderer/theme'
 import type { AppMode, AppStore } from './store/state'
 import { watch } from './store/watch'
 import {
@@ -1046,9 +1046,20 @@ export class App {
   }
 
   private setThemeByIndex(idx: number, method: 'cycle' | 'menu'): void {
-    if (idx < 0 || idx >= THEMES.length || idx === this.themeIndex) return
+    if (idx < 0 || idx >= THEMES.length) return
     this.themeIndex = idx
     const theme = THEMES[idx]!
+    // A material theme is a complete visual preset. Selecting it also restores
+    // its authored particles, even from Off or when reselecting the same theme.
+    // The particle picker can still override that choice afterwards.
+    if (theme.recommendedParticles) {
+      this.setParticleByIndex(
+        PARTICLE_STYLES.findIndex((p) => p.id === theme.recommendedParticles),
+        method,
+      )
+    }
+    // Present the new surface only after the old effect has been cleared, so
+    // a paused preview cannot retain particles belonging to the previous theme.
     this.applyTheme(theme)
     themeStore.save(theme.id)
     trackEvent('theme_changed', { theme: theme.name, theme_id: theme.id, method })
@@ -1970,7 +1981,7 @@ const themeStore = idPersisted<ThemeId>(
   'midee.theme',
   'sunset',
   THEMES.map((t) => t.id),
-  { key: 'midee.themeIndex', ids: THEMES.map((t) => t.id) },
+  { key: 'midee.themeIndex', ids: ALL_THEMES.map((t) => t.id) },
 )
 // New visitors default to Upright (1.2 MB of self-hosted samples) so first-load
 // is fast. Returning users keep whatever they had, including Salamander Grand.
@@ -1984,7 +1995,7 @@ const particleStore = idPersisted<ParticleStyle>(
   'midee.particle',
   'embers',
   PARTICLE_STYLES.map((s) => s.id),
-  { key: 'midee.particleIndex', ids: PARTICLE_STYLES.map((s) => s.id) },
+  { key: 'midee.particleIndex', ids: ALL_PARTICLE_STYLES.map((s) => s.id) },
 )
 const metronomeBpmStore = numberPersisted('midee.metronomeBpm', 120, 40, 240)
 // Chord readout defaults *on*: it's the headline live-mode cue. The

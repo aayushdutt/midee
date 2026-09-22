@@ -19,8 +19,8 @@ no watermark.
 **Visualizer**
 
 - 88-key piano with multi-track playback, per-track color, and live note glow.
-- Five themes (Dark, Midnight, Neon, Sunset, Ocean) and a growing library of
-  particle styles.
+- Liquid Glass and Opal material themes with coordinated particles, plus five
+  classic palettes (Dark, Midnight, Neon, Sunset, Ocean).
 - Resizable keyboard, pinnable HUD, chord readout overlay.
 
 **Live performance**
@@ -87,6 +87,25 @@ npm run build      # static bundle → dist/
 Firefox 130+.
 
 ---
+
+## Deferred visual styles
+
+Public builds expose Liquid Glass and Opal, alongside the classic palettes.
+Smoked Glass, Aurora Silk, Lacquer & Gold, and Ember Mist are retained for
+later, including their particle presets. To preview them locally:
+
+```bash
+VITE_ENABLE_FOR_LATER_VISUALS=1 npm run dev
+```
+
+The gate lives in `src/renderer/forLater/visuals.ts`; it controls the available
+catalogs used by menus, keyboard cycling, and saved-preference validation.
+Ember Mist’s note and strike renderers live in `src/renderer/forLater/`.
+The deferred note factory and mist strike layer are gated, allowing unused
+standalone renderers to be removed by the production bundler. `ALL_THEMES` and
+`ALL_PARTICLE_STYLES` preserve historical index order for storage migration;
+never reorder them to match the menu. Deferred saved IDs fall back to Sunset
+and Embers in a public build without overwriting the saved preference.
 
 ## Keyboard
 

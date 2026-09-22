@@ -74,6 +74,7 @@ const fr: Messages = {
   'customize.aria': 'Apparence',
   'customize.title': 'Apparence',
   'customize.theme': 'Thème',
+  'customize.new': 'Nouveau',
   'customize.particles': 'Particules',
   'customize.chord': 'Affichage des accords',
   'customize.chord.sub': 'Nommer les accords joués · mode direct',

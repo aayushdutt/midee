@@ -92,6 +92,7 @@ export const en = {
   'customize.aria': 'Appearance',
   'customize.title': 'Appearance',
   'customize.theme': 'Theme',
+  'customize.new': 'New',
   'customize.particles': 'Particles',
   'customize.chord': 'Chord readout',
   'customize.chord.sub': "Name what's sounding · live mode",

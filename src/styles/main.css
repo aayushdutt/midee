@@ -7683,15 +7683,38 @@ body:has(#export-modal.open, #midi-picker-modal.open, #post-session-modal.open) 
    shell + .panel-header + horizontal-rule-divided sections. Same header
    padding and hierarchy → consistent across the topbar. */
 .ts-customize-menu {
-  width: 300px;
+  position: fixed;
+  z-index: 120;
+  width: 340px;
+  max-width: calc(100vw - 24px);
   /* This menu is content-dense (theme grid + particles + chord + language +
      feedback), so give it more vertical room than the shared .ts-popover cap
      (min(60vh, 520px)) before the body starts scrolling. */
-  max-height: min(82vh, 720px);
+  max-height: min(720px, var(--customize-available-height, 82vh));
   padding: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Keep the anchor available while its detached appearance panel is open. */
+body.appearance-open #top-strip.strip--dim {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ts-customize-menu :is(button, a):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.ts-customize-menu .panel-header {
+  padding: 10px 12px 10px 16px;
+}
+
+.ts-customize-menu .panel-close-btn {
+  width: 28px;
+  height: 28px;
 }
 
 /* Scroll region between the pinned header and the popover edge. Lets the
@@ -7813,8 +7836,8 @@ body:has(#export-modal.open, #midi-picker-modal.open, #post-session-modal.open) 
 /* ── Theme tiles — flat colour dot + name label. ── */
 .customize-theme-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 6px;
   /* Belt-and-braces — the popover already clips, but constraining the grid
      itself prevents an overflowing label from pushing siblings outward. */
   width: 100%;
@@ -7822,6 +7845,7 @@ body:has(#export-modal.open, #midi-picker-modal.open, #post-session-modal.open) 
 }
 
 .customize-theme-tile {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -7864,6 +7888,39 @@ body:has(#export-modal.open, #midi-picker-modal.open, #post-session-modal.open) 
   transition: transform 0.18s var(--ease-spring);
 }
 
+.customize-theme-tile--new {
+  border-color: color-mix(in srgb, var(--theme-accent) 19%, transparent);
+  background: color-mix(in srgb, var(--theme-accent) 4%, transparent);
+  color: var(--text-muted);
+}
+
+.customize-theme-tile--new.customize-theme-tile--on {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  color: var(--text);
+}
+
+.customize-theme-tile--material .customize-theme-tile-dot {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.customize-theme-new {
+  position: absolute;
+  top: -6px;
+  right: 5px;
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 25%, transparent);
+  border-radius: 4px;
+  background: #17181e;
+  color: var(--theme-accent);
+  font-size: 7px;
+  font-weight: 600;
+  line-height: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
 .customize-theme-tile:hover .customize-theme-tile-dot {
   transform: scale(1.06);
 }
@@ -7897,8 +7954,9 @@ body:has(#export-modal.open, #midi-picker-modal.open, #post-session-modal.open) 
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
-  border-radius: var(--r-pill);
+  min-height: 32px;
+  padding: 7px 9px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.025);
   color: var(--text-muted);
@@ -7921,6 +7979,18 @@ body:has(#export-modal.open, #midi-picker-modal.open, #post-session-modal.open) 
   display: inline-flex;
   align-items: center;
   line-height: 1;
+}
+
+.customize-particle-check {
+  display: inline-flex;
+  width: 11px;
+  height: 11px;
+  color: var(--accent);
+  opacity: 0;
+}
+
+.customize-particle-chip--on .customize-particle-check {
+  opacity: 1;
 }
 
 /* ─── Locale chips — same shape language as particle chips so the section
@@ -8127,14 +8197,8 @@ body:has(#export-modal.open, #midi-picker-modal.open, #post-session-modal.open) 
   .customize-section {
     padding: 12px 14px;
   }
-  .customize-head {
-    padding: 12px 14px 10px;
-  }
   .customize-theme-grid {
-    gap: 5px;
-  }
-  .customize-theme-tile-preview {
-    height: 34px;
+    gap: 10px 5px;
   }
 }
 

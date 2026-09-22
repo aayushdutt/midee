@@ -1,25 +1,26 @@
 import { Container, Sprite, Texture } from 'pixi.js'
+import {
+  buildGlassParticleTextures,
+  GLASS_BURST,
+  GLASS_PARTICLES,
+  type GlassParticleKind,
+} from './glassParticleTextures'
 
-// Per-style presets. The visual personality lives here; the renderer itself
-// is style-agnostic. Wind is a *single directional* vector picked at construction
-// — particles within a session all drift the same way, which reads as one
-// coherent breeze rather than contradictory swirls.
-export type ParticleStyle = 'sparks' | 'embers' | 'bloom' | 'sparkle' | 'none'
+import {
+  buildMaterialParticleTextures,
+  isMaterialParticleStyle,
+  MATERIAL_CHOREOGRAPHY,
+  MATERIAL_PARTICLES,
+  type MaterialParticleKind,
+  type MaterialParticleStyle,
+  materialParticleTint,
+  updateMaterialParticle,
+} from './materialParticles'
 
-export interface ParticleStyleInfo {
-  id: ParticleStyle
-  name: string
-}
+import type { ParticleStyle } from './particleStyles'
 
-// Ordered roster for the UI selector. Kept here so adding a new style is a
-// one-file change.
-export const PARTICLE_STYLES: readonly ParticleStyleInfo[] = [
-  { id: 'sparks', name: 'Sparks' },
-  { id: 'embers', name: 'Embers' },
-  { id: 'bloom', name: 'Bloom' },
-  { id: 'sparkle', name: 'Sparkle' },
-  { id: 'none', name: 'Off' },
-]
+// Compatibility for renderer consumers; menus and persistence use the light catalog.
+export { PARTICLE_STYLES, type ParticleStyle, type ParticleStyleInfo } from './particleStyles'
 
 interface StyleConfig {
   count: number // particles per burst
@@ -47,6 +48,32 @@ interface StyleConfig {
 // (multiplied by dt before accumulating into velocity). Everything is dialled
 // down roughly 2× from the previous pass — particles should float, not fly.
 const STYLES: Record<ParticleStyle, StyleConfig> = {
+  silk: materialConfig('silk'),
+  gold: materialConfig('gold'),
+  pearl: materialConfig('pearl'),
+  liquid: materialConfig('liquid'),
+  mist: materialConfig('mist'),
+  glass: {
+    count: GLASS_BURST.length,
+    sustainCount: 2,
+    speedMin: 0.65,
+    speedMax: 1.6,
+    lifeMin: 0.65,
+    lifeMax: 1.35,
+    sizeMin: 3,
+    sizeMax: 6.5,
+    gravity: 0,
+    drag: 0,
+    upwardArc: 0.65,
+    windStrength: 0,
+    windFlutter: 0,
+    turbulence: 0,
+    alphaScale: 0.72,
+    fadeCurve: 'bell',
+    hueJitter: 2,
+    valueJitter: 0.025,
+    blend: 'add',
+  },
   sparks: {
     count: 14,
     sustainCount: 2,
@@ -160,6 +187,40 @@ const STYLES: Record<ParticleStyle, StyleConfig> = {
   },
 }
 
+function materialConfig(style: MaterialParticleStyle): StyleConfig {
+  const recipe = MATERIAL_CHOREOGRAPHY[style]
+  return {
+    count: recipe.onset.length,
+    sustainCount: recipe.sustain.length,
+    speedMin: style === 'liquid' ? 0.8 : 0.7,
+    speedMax: style === 'liquid' ? 1.6 : 1.65,
+    lifeMin: 1,
+    lifeMax: 2,
+    sizeMin: 2,
+    sizeMax: 6,
+    gravity: 0,
+    drag: 0,
+    upwardArc:
+      style === 'mist'
+        ? 0.3
+        : style === 'silk'
+          ? 0.28
+          : style === 'pearl'
+            ? 0.44
+            : style === 'liquid'
+              ? 0.52
+              : 0.55,
+    windStrength: 0,
+    windFlutter: 0,
+    turbulence: 0,
+    alphaScale: 1,
+    fadeCurve: 'bell',
+    hueJitter: 0,
+    valueJitter: 0.015,
+    blend: 'add',
+  }
+}
+
 interface Particle {
   sprite: Sprite
   x: number
@@ -176,6 +237,10 @@ interface Particle {
   windFactor: number
   // Per-particle tiny x-jitter amplitude for micro-turbulence.
   turbAmp: number
+  originX: number
+  originY: number
+  glassKind: GlassParticleKind
+  materialKind: MaterialParticleKind
 }
 
 const POOL_SIZE = 1024
@@ -193,6 +258,9 @@ export class ParticleSystem {
     return this.active.length > 0
   }
   private texture: Texture | null = null
+  private glassTextures: Record<GlassParticleKind, Texture> | null = null
+  private materialTextures: Partial<Record<MaterialParticleKind, Texture>> = {}
+  private emissionSerial = 0
   private style: ParticleStyle = 'sparks'
   // Wind always blows to the right — a gentle consistent breeze. Kept as a
   // field for future theming (leftward/rightward per theme) without churn.
@@ -222,12 +290,20 @@ export class ParticleSystem {
         phase: 0,
         windFactor: 1,
         turbAmp: 0,
+        originX: 0,
+        originY: 0,
+        glassKind: 'glint',
+        materialKind: 'pollen',
       })
     }
   }
 
   setStyle(style: ParticleStyle): void {
+    if (this.style === style) return
+    this.clear()
     this.style = style
+    if (style === 'glass' && !this.glassTextures) this.glassTextures = buildGlassParticleTextures()
+    if (isMaterialParticleStyle(style)) buildMaterialParticleTextures(style, this.materialTextures)
     this.container.blendMode = STYLES[style].blend === 'add' ? 'add' : 'normal'
     // Switching to Off is meant to feel immediate — clear any motes mid-flight.
     if (style === 'none') this.clear()
@@ -248,7 +324,15 @@ export class ParticleSystem {
   burst(x: number, y: number, color: number, keyWidth = 20, count?: number): void {
     const cfg = STYLES[this.style]
     const emitCount = count ?? cfg.count
-    if (emitCount <= 0) return
+    if (emitCount <= 0 || this.style === 'none') return
+    const material = isMaterialParticleStyle(this.style) ? this.style : null
+    const choreography = material ? MATERIAL_CHOREOGRAPHY[material] : null
+    const glass = this.style === 'glass'
+    // Repeatable glints for export; clear() starts a fresh take.
+    const random =
+      glass || material
+        ? seededRandom(Math.round(x * 17) + this.emissionSerial++ * 7919)
+        : Math.random
 
     // Per-burst (per-key) personality. Derived deterministically from x so
     // each key always looks the same, but different keys differ from each
@@ -267,48 +351,108 @@ export class ParticleSystem {
     const emissionHalf = keyWidth * 0.4
 
     for (let i = 0; i < emitCount; i++) {
+      if (this.active.length >= (choreography?.cap ?? (glass ? 448 : POOL_SIZE))) break
       const p = this.pool.pop()
       if (!p) break
 
       // Center-biased triangular distribution in [-1, 1]. Sum of two uniforms
       // is a natural plume density — more particles from the middle of the
       // key, tapering to the edges. One extra random() per particle.
-      const u = Math.random() + Math.random() - 1
+      const u = random() + random() - 1
       const spawnOffset = u * emissionHalf
       // Plume fan: particles from the left edge lean slightly left, from the
       // right edge slightly right. Combined with the random upward arc this
       // produces a naturally spreading column rather than a starburst.
       const positionTilt = u * 0.32 // max ±0.32 rad = ±18°
       const angle =
-        -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * cfg.upwardArc * arcKeyMul + positionTilt
-      const speed = cfg.speedMin + Math.random() * (cfg.speedMax - cfg.speedMin)
+        -Math.PI / 2 +
+        (material === 'mist' ? 0.2 : 0) +
+        (random() - 0.5) * Math.PI * cfg.upwardArc * arcKeyMul +
+        positionTilt
+      const speed = cfg.speedMin + random() * (cfg.speedMax - cfg.speedMin)
 
       p.x = x + spawnOffset
       p.y = y
+      p.originX = p.x
+      p.originY = y
       p.vx = Math.cos(angle) * speed
       p.vy = Math.sin(angle) * speed
       p.age = 0
-      p.life = cfg.lifeMin + Math.random() * (cfg.lifeMax - cfg.lifeMin)
-      p.size = cfg.sizeMin + Math.random() * (cfg.sizeMax - cfg.sizeMin)
+      p.life = cfg.lifeMin + random() * (cfg.lifeMax - cfg.lifeMin)
+      p.size = cfg.sizeMin + random() * (cfg.sizeMax - cfg.sizeMin)
       // Burst-coherent phase + particle-unique offset. Particles from one
       // key move together; particles from a different key move a bit apart.
-      p.phase = keyPhase + Math.random() * 0.8
+      p.phase = keyPhase + random() * 0.8
       // Wind factor = burst bias × per-particle spread. Narrower spread
       // within a burst keeps the key's "fingerprint" legible.
-      p.windFactor = windKeyMul * (0.7 + Math.random() * 0.6)
-      p.turbAmp = turbKeyMul * cfg.turbulence * (0.06 + Math.random() * 0.16)
+      p.windFactor = windKeyMul * (0.7 + random() * 0.6)
+      p.turbAmp = turbKeyMul * cfg.turbulence * (0.06 + random() * 0.16)
+
+      if (glass) {
+        // Sustains shed only fine detail. The haze and ribbons belong to the
+        // onset, so a held chord never accumulates a continuous smoke curtain.
+        p.glassKind =
+          count === undefined
+            ? GLASS_BURST[i % GLASS_BURST.length]!
+            : random() < 0.7
+              ? 'dust'
+              : 'glint'
+        const recipe = GLASS_PARTICLES[p.glassKind]
+        p.life = recipe.life[0] + random() * (recipe.life[1] - recipe.life[0])
+        p.size = recipe.size[0] + random() * (recipe.size[1] - recipe.size[0])
+        p.vx *= recipe.speed
+        p.vy *= recipe.speed
+        // Unique tumbling phases within a coherent burst.
+        p.phase += random() * Math.PI * 2
+      }
+
+      if (choreography) {
+        const sequence = count === undefined ? choreography.onset : choreography.sustain
+        p.materialKind = sequence[i % sequence.length]!
+        const recipe = MATERIAL_PARTICLES[p.materialKind]
+        p.life = recipe.life[0] + random() * (recipe.life[1] - recipe.life[0])
+        p.size = recipe.size[0] + random() * (recipe.size[1] - recipe.size[0])
+        p.vx *= recipe.speed
+        p.vy *= recipe.speed
+        p.phase += random() * Math.PI * 2
+        if (p.materialKind === 'contact') {
+          p.x = p.originX = x
+          p.size = Math.min(55, Math.max(32, keyWidth * 1.8))
+        }
+      }
 
       const sprite = p.sprite
+      sprite.texture = material
+        ? this.materialTextures[p.materialKind]!
+        : glass
+          ? this.glassTextures![p.glassKind]
+          : this.texture!
+      sprite.rotation = glass ? p.phase : 0
+      sprite.scale.set(p.size / (TEXTURE_RESOLUTION * 0.5))
       sprite.position.set(p.x, p.y)
-      sprite.tint = jitterColor(color, cfg.hueJitter, cfg.valueJitter)
+      sprite.tint = jitterColor(
+        material
+          ? materialParticleTint(material, color, p.materialKind)
+          : glass
+            ? silverTint(color)
+            : color,
+        cfg.hueJitter,
+        cfg.valueJitter,
+        random,
+      )
       sprite.visible = true
-      sprite.alpha = 1
+      sprite.alpha = glass || material ? 0 : 1
       this.active.push(p)
     }
   }
 
   update(dt: number): void {
+    // A preview / theme repaint must not move particles.
+    if (dt <= 0) return
     this.clock += dt
+    if (this.active.length === 0) return
+    const glass = this.style === 'glass'
+    const material = isMaterialParticleStyle(this.style) ? this.style : null
     const cfg = STYLES[this.style]
 
     // Global wind: constant direction, never reverses. A gentle amplitude
@@ -326,6 +470,16 @@ export class ParticleSystem {
         this.active[i] = this.active[this.active.length - 1]!
         this.active.pop()
         this.pool.push(p)
+        continue
+      }
+
+      if (glass) {
+        updateGlassParticle(p)
+        continue
+      }
+
+      if (material) {
+        updateMaterialParticle(p, material)
         continue
       }
 
@@ -358,7 +512,79 @@ export class ParticleSystem {
       p.sprite.visible = false
       this.pool.push(p)
     }
-    this.active = []
+    this.active.length = 0
+    this.clock = 0
+    this.emissionSerial = 0
+  }
+
+  destroy(): void {
+    this.clear()
+    this.container.destroy({ children: true })
+    this.texture?.destroy(true)
+    if (this.glassTextures)
+      for (const texture of Object.values(this.glassTextures)) texture.destroy(true)
+    for (const texture of Object.values(this.materialTextures)) texture.destroy(true)
+    this.pool = []
+  }
+}
+
+function seededRandom(seed: number): () => number {
+  let state = seed | 0
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) | 0
+    return (state >>> 0) / 4294967296
+  }
+}
+
+function silverTint(color: number): number {
+  const r = Math.round(((color >> 16) & 255) * 0.65 + 255 * 0.35)
+  const g = Math.round(((color >> 8) & 255) * 0.65 + 255 * 0.35)
+  const b = Math.round((color & 255) * 0.65 + 255 * 0.35)
+  return (r << 16) | (g << 8) | b
+}
+
+function updateGlassParticle(p: Particle): void {
+  // Sample every family from absolute age: no frame-rate-dependent physics,
+  // and a static preview cannot advance or perturb a particle trajectory.
+  const u = p.age / p.life
+  const travel = 108 * (1 - Math.exp(-p.age / 0.75))
+  const swirl = (Math.sin(p.phase + p.age * 2.2) - Math.sin(p.phase)) * 8 * u
+  p.x = p.originX + p.vx * travel + swirl
+  p.y = p.originY + p.vy * travel + (p.glassKind === 'facet' ? 6 : 2) * p.age * p.age
+  const sprite = p.sprite
+  const size = p.size / (TEXTURE_RESOLUTION * 0.5)
+  const envelope = Math.sin(Math.PI * u)
+  sprite.position.set(p.x, p.y)
+  switch (p.glassKind) {
+    case 'facet': {
+      const face = Math.abs(Math.cos(p.phase + p.age * 2.3))
+      sprite.rotation = p.phase + p.age * 1.9
+      sprite.scale.set(size * (0.2 + face * 0.8), size)
+      sprite.alpha = Math.min(1, p.age / 0.08) * (1 - u) ** 0.8 * (0.4 + face * 0.6)
+      break
+    }
+    case 'glint': {
+      const flash = 0.25 + 0.75 * Math.abs(Math.sin(p.phase + u * 3.6)) ** 10
+      sprite.rotation = p.phase + p.age * 0.3
+      sprite.scale.set(size * (0.65 + flash * 0.35), size)
+      sprite.alpha = envelope * flash * 0.95
+      break
+    }
+    case 'ribbon':
+      sprite.rotation = Math.atan2(p.vy, p.vx) + Math.PI / 2
+      sprite.scale.set(size * 0.5, size * (0.6 + u))
+      sprite.alpha = Math.min(1, p.age / 0.04) * Math.exp(-u * 3) * 0.7
+      break
+    case 'haze':
+      sprite.rotation = 0
+      sprite.scale.set(size * (1 + u * 0.7), size * (0.4 + u * 0.6))
+      sprite.alpha = Math.min(1, p.age / 0.06) * (1 - u) ** 1.6 * 0.24
+      break
+    case 'dust':
+      sprite.rotation = 0
+      sprite.scale.set(size * (1 - u * 0.35))
+      sprite.alpha = envelope * (0.65 + 0.2 * Math.sin(p.phase + u * 5))
+      break
   }
 }
 
@@ -436,14 +662,14 @@ function sizeFactorAt(curve: StyleConfig['fadeCurve'], u: number): number {
   return 1 - u * 0.45
 }
 
-function jitterColor(base: number, hueDeg: number, valueJ: number): number {
+function jitterColor(base: number, hueDeg: number, valueJ: number, random = Math.random): number {
   if (hueDeg === 0 && valueJ === 0) return base
   const r = (base >> 16) & 0xff
   const g = (base >> 8) & 0xff
   const b = base & 0xff
   const [h, s, l] = rgbToHsl(r, g, b)
-  const nh = (h + (Math.random() - 0.5) * 2 * hueDeg + 360) % 360
-  const nl = clamp01(l + (Math.random() - 0.5) * 2 * valueJ)
+  const nh = (h + (random() - 0.5) * 2 * hueDeg + 360) % 360
+  const nl = clamp01(l + (random() - 0.5) * 2 * valueJ)
   const [nr, ng, nb] = hslToRgb(nh, s, nl)
   return (nr << 16) | (ng << 8) | nb
 }

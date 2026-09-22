@@ -1,6 +1,8 @@
 import { Container, Graphics } from 'pixi.js'
 import { GlowFilter } from 'pixi-filters'
 import type { MidiTrack } from '../core/midi/types'
+import { createNoteMaterial } from './createNoteMaterial'
+import type { NoteMaterial, NoteMaterialId } from './NoteMaterial'
 import { NoteLabelLayer } from './noteLabels'
 import { getTrackColor, type Theme } from './theme'
 import { type Viewport, visibleNoteRange } from './viewport'
@@ -21,10 +23,18 @@ export class NoteRenderer {
   // Pitch-class labels ("E", "F♯") on the bars — opt-in, sits above the glow
   // so the filter never blooms the text.
   private labels = new NoteLabelLayer()
+  private material: NoteMaterial | null = null
+  private materialId: NoteMaterialId | undefined
+  private materialClip = new Graphics()
+  private clipWidth = 0
+  private clipHeight = 0
 
   constructor(private theme: Theme) {
     this.container = new Container()
     this.container.label = 'notes'
+    this.materialClip.label = 'note-consumption-clip'
+    this.materialClip.visible = false
+    this.container.addChild(this.materialClip)
 
     this.glowContainer = new Container()
     this.glowContainer.label = 'note-glow'
@@ -42,6 +52,7 @@ export class NoteRenderer {
     this.glowContainer.addChild(this.glowGraphics)
     this.container.addChild(this.glowContainer)
     this.container.addChild(this.labels.container)
+    this.updateTheme(theme)
   }
 
   setLabelsEnabled(on: boolean): void {
@@ -84,6 +95,16 @@ export class NoteRenderer {
     const { noteRadius } = this.theme
     const nowLineY = viewport.nowLineY
     this.glowGraphics.clear()
+    if (
+      this.material &&
+      (this.clipWidth !== viewport.config.canvasWidth || this.clipHeight !== nowLineY)
+    ) {
+      this.clipWidth = viewport.config.canvasWidth
+      this.clipHeight = nowLineY
+      this.materialClip.clear().rect(0, 0, this.clipWidth, this.clipHeight).fill(0xffffff)
+    }
+    this.material?.setViewport?.(viewport.config.canvasWidth, viewport.rollHeight)
+    this.material?.begin()
     const labels = this.labels.isActive ? this.labels : null
     labels?.begin()
 
@@ -130,12 +151,33 @@ export class NoteRenderer {
         const alpha =
           (0.5 + note.velocity * 0.5) * (practiceInactive ? PRACTICE_INACTIVE_ALPHA_SCALE : 1)
 
-        g.roundRect(x, y, w, h, noteRadius)
-        g.fill({ color: noteColor, alpha })
+        const active =
+          !practiceInactive && note.time <= currentTime && note.time + note.duration > currentTime
+        if (this.material) {
+          this.material.place(
+            x,
+            y,
+            w,
+            // Preserve the complete material coordinate system as the note
+            // crosses the keys. One shared roll mask consumes the surface;
+            // shrinking it here would squeeze every texture and reflection.
+            Math.max(note.duration * viewport.config.pixelsPerSecond, 3),
+            noteColor,
+            alpha,
+            currentTime,
+            note.time,
+            note.pitch + note.time,
+            active,
+          )
+        } else {
+          g.roundRect(x, y, w, h, noteRadius)
+          g.fill({ color: noteColor, alpha })
+        }
 
         labels?.place(note.pitch, x, w, noteBottom, h, noteColor, alpha)
 
         if (
+          !this.material &&
           !practiceInactive &&
           note.time <= currentTime &&
           note.time + note.duration >= currentTime
@@ -151,6 +193,7 @@ export class NoteRenderer {
     }
 
     labels?.end()
+    this.material?.end()
 
     if (activeCount > 0) {
       const avgColor =
@@ -166,7 +209,31 @@ export class NoteRenderer {
 
   updateTheme(theme: Theme): void {
     this.theme = theme
-    this.glowFilter.distance = theme.noteGlowDistance
+    if (theme.noteMaterial !== this.materialId) {
+      this.material?.destroy()
+      this.materialId = theme.noteMaterial
+      this.material = theme.noteMaterial ? createNoteMaterial(theme.noteMaterial) : null
+      if (this.material) {
+        this.material.container.mask = this.materialClip
+        this.container.addChildAt(
+          this.material.container,
+          this.container.children.indexOf(this.glowContainer),
+        )
+      }
+      this.materialClip.visible = this.material !== null
+    }
+    // WebGL bakes distance into the shader; assigning the uniform alone only
+    // changes padding. Recreate on radius changes so theme switching is real.
+    if (this.glowFilter.distance !== theme.noteGlowDistance) {
+      this.glowFilter.destroy()
+      this.glowFilter = new GlowFilter({
+        distance: theme.noteGlowDistance,
+        outerStrength: theme.noteGlowStrength,
+        innerStrength: 0,
+        quality: 0.3,
+      })
+      this.glowContainer.filters = [this.glowFilter]
+    }
     this.glowFilter.outerStrength = theme.noteGlowStrength
   }
 
@@ -177,5 +244,12 @@ export class NoteRenderer {
     this.glowGraphics.clear()
     this.glowContainer.visible = false
     this.labels.clear()
+    this.material?.clear()
+  }
+
+  destroy(): void {
+    this.material?.destroy()
+    this.glowFilter.destroy()
+    this.container.destroy({ children: true })
   }
 }

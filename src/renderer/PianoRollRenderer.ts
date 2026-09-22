@@ -1,11 +1,14 @@
-import { Application, Graphics, type Ticker } from 'pixi.js'
+import { Application, Graphics, Sprite, type Ticker } from 'pixi.js'
 import type { MasterClock } from '../core/clock/MasterClock'
 import type { MidiFile } from '../core/midi/types'
 import type { LiveNoteStore } from '../midi/LiveNoteStore'
 import { BeatGrid } from './BeatGrid'
 import { type EmitCadence, scheduleEmissions } from './emitSchedule'
+import { EmberMistStrike } from './forLater/EmberMistStrike'
+import { ENABLE_FOR_LATER_VISUALS } from './forLater/visuals'
 import { KeyboardRenderer } from './KeyboardRenderer'
 import { LiveNoteRenderer } from './LiveNoteRenderer'
+import { makeMaterialAtmosphere } from './materialAtmosphere'
 import { NoteRenderer } from './NoteRenderer'
 import { type ParticleStyle, ParticleSystem } from './ParticleSystem'
 import { layersAnimating, type RenderContext, type RenderLayer } from './RenderLayer'
@@ -83,6 +86,9 @@ export class PianoRollRenderer {
   private beatGrid!: BeatGrid
   private nowLineGraphics!: Graphics
   private backgroundGraphics!: Graphics
+  private mistStrike: EmberMistStrike | null = null
+  private materialAtmosphere: Sprite | null = null
+  private atmosphereThemeId: string | null = null
 
   private midi: MidiFile | null = null
   private liveNoteStore: LiveNoteStore | null = null
@@ -232,6 +238,23 @@ export class PianoRollRenderer {
     const { canvasWidth, canvasHeight } = this.viewport.config
     const rollHeight = this.viewport.rollHeight
     const g = this.backgroundGraphics
+    if (this.atmosphereThemeId !== this.theme.id) {
+      this.materialAtmosphere?.destroy({ texture: true, textureSource: true })
+      this.materialAtmosphere = null
+      this.atmosphereThemeId = this.theme.id
+    }
+    if (this.theme.noteMaterial) {
+      if (!this.materialAtmosphere) {
+        this.materialAtmosphere = new Sprite(makeMaterialAtmosphere(this.theme))
+        this.materialAtmosphere.label = 'material-atmosphere'
+        this.app.stage.addChildAt(this.materialAtmosphere, 1)
+      }
+      this.materialAtmosphere.width = canvasWidth
+      this.materialAtmosphere.height = Math.max(1, rollHeight)
+    } else if (this.materialAtmosphere) {
+      this.materialAtmosphere.destroy({ texture: true, textureSource: true })
+      this.materialAtmosphere = null
+    }
     g.clear()
 
     g.rect(0, 0, canvasWidth, canvasHeight)
@@ -252,6 +275,18 @@ export class PianoRollRenderer {
   private drawNowLine(): void {
     const g = this.nowLineGraphics
     g.clear()
+    if (ENABLE_FOR_LATER_VISUALS && this.theme.noteMaterial === 'ember-mist') {
+      if (!this.mistStrike) {
+        this.mistStrike = new EmberMistStrike()
+        this.app.stage.addChildAt(
+          this.mistStrike.container,
+          this.app.stage.children.indexOf(this.keyboardRenderer.container) + 1,
+        )
+      }
+      return
+    }
+    this.mistStrike?.destroy()
+    this.mistStrike = null
     const y = this.viewport.nowLineY
     const w = this.viewport.config.canvasWidth
     const glow = this.theme.nowLineGlow
@@ -375,8 +410,8 @@ export class PianoRollRenderer {
     this.noteRenderer.updateTheme(theme)
     this.liveNoteRenderer.updateTheme(theme)
     this.keyboardRenderer.updateTheme(theme)
-    // Particle motion is intentionally theme-independent — only the color
-    // changes (via the caller's trackColors[0]). Behaviour stays consistent.
+    // App theme selection applies the authored particle preset separately;
+    // keeping that explicit also supports saved overrides and export settings.
     this.rebuildStaticLayers()
     this.presentFrame()
   }
@@ -625,6 +660,7 @@ export class PianoRollRenderer {
 
     this.keyboardRenderer.drawActiveKeys(activeColors, this.viewport)
     this.particles.update(dt)
+    this.mistStrike?.update(this.viewport, activeColors, currentTime)
 
     if (this.externalLayers.length > 0) {
       const ctx: RenderContext = {
@@ -872,6 +908,11 @@ export class PianoRollRenderer {
     this.clockUnsub?.()
     this.liveStoreUnsub?.()
     this.loopStoreUnsub?.()
+    this.noteRenderer.destroy()
+    this.liveNoteRenderer.destroy()
+    this.materialAtmosphere?.destroy({ texture: true, textureSource: true })
+    this.particles.destroy()
+    this.mistStrike?.destroy()
     this.app.destroy()
   }
 }

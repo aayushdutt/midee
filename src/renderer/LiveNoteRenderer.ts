@@ -1,6 +1,8 @@
 import { Container, Graphics } from 'pixi.js'
 import { GlowFilter } from 'pixi-filters'
 import type { LiveNote, LiveNoteStore } from '../midi/LiveNoteStore'
+import { createNoteMaterial } from './createNoteMaterial'
+import type { NoteMaterial, NoteMaterialId } from './NoteMaterial'
 import { liveNoteColor, type Theme } from './theme'
 import type { Viewport } from './viewport'
 
@@ -25,6 +27,8 @@ export class LiveNoteRenderer {
   private glowContainer: Container
   private glowGraphics: Graphics
   private glowFilter: GlowFilter
+  private material: NoteMaterial | null = null
+  private materialId: NoteMaterialId | undefined
 
   constructor(private theme: Theme) {
     this.container = new Container()
@@ -50,6 +54,7 @@ export class LiveNoteRenderer {
 
     this.container.addChild(this.baseGraphics)
     this.container.addChild(this.glowContainer)
+    this.updateTheme(theme)
   }
 
   draw(
@@ -60,12 +65,15 @@ export class LiveNoteRenderer {
   ): void {
     this.baseGraphics.clear()
     this.glowGraphics.clear()
+    this.material?.setViewport?.(viewport.config.canvasWidth, viewport.rollHeight)
+    this.material?.begin()
 
     const primaryEmpty = primary.releasedNotes.length === 0 && primary.heldNotes.size === 0
     const loopEmpty =
       loop === null || (loop.releasedNotes.length === 0 && loop.heldNotes.size === 0)
     if (primaryEmpty && loopEmpty) {
       this.glowContainer.visible = false
+      this.material?.end()
       return
     }
 
@@ -107,7 +115,8 @@ export class LiveNoteRenderer {
       this.drawOne(note, currentTime, pixelsPerSecond, nowY, viewport, color, true, 1)
 
     this.glowFilter.color = color
-    this.glowContainer.visible = primary.heldNotes.size > 0
+    this.glowContainer.visible = !this.material && primary.heldNotes.size > 0
+    this.material?.end()
   }
 
   private drawOne(
@@ -120,6 +129,7 @@ export class LiveNoteRenderer {
     drawGlow: boolean,
     alphaScale: number,
   ): void {
+    if (!viewport.hasKey(note.pitch)) return
     const x = viewport.pitchToX(note.pitch)
     const w = Math.max(viewport.pitchWidth(note.pitch) - 1, 2)
     const endTime = note.endTime ?? currentTime
@@ -130,6 +140,22 @@ export class LiveNoteRenderer {
     if (y + height <= 0) return
     const radius = Math.min(this.theme.noteRadius, height / 2, w / 2)
     const alpha = (0.55 + note.velocity * 0.45) * alphaScale
+
+    if (this.material) {
+      this.material.place(
+        x,
+        y,
+        w,
+        height,
+        color,
+        alpha,
+        currentTime,
+        note.startTime,
+        note.pitch + note.startTime,
+        drawGlow,
+      )
+      return
+    }
 
     this.baseGraphics.roundRect(x, y, w, height, radius)
     this.baseGraphics.fill({ color, alpha: alpha * 0.75 })
@@ -142,7 +168,22 @@ export class LiveNoteRenderer {
 
   updateTheme(theme: Theme): void {
     this.theme = theme
-    this.glowFilter.distance = theme.noteGlowDistance
+    if (theme.noteMaterial !== this.materialId) {
+      this.material?.destroy()
+      this.materialId = theme.noteMaterial
+      this.material = theme.noteMaterial ? createNoteMaterial(theme.noteMaterial) : null
+      if (this.material) this.container.addChildAt(this.material.container, 1)
+    }
+    if (this.glowFilter.distance !== theme.noteGlowDistance) {
+      this.glowFilter.destroy()
+      this.glowFilter = new GlowFilter({
+        distance: theme.noteGlowDistance,
+        outerStrength: theme.noteGlowStrength,
+        innerStrength: 0,
+        quality: 0.3,
+      })
+      this.glowContainer.filters = [this.glowFilter]
+    }
     this.glowFilter.outerStrength = theme.noteGlowStrength
   }
 
@@ -150,5 +191,12 @@ export class LiveNoteRenderer {
     this.baseGraphics.clear()
     this.glowGraphics.clear()
     this.glowContainer.visible = false
+    this.material?.clear()
+  }
+
+  destroy(): void {
+    this.material?.destroy()
+    this.glowFilter.destroy()
+    this.container.destroy({ children: true })
   }
 }

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { type MidiTrack, TRACK_COLOR_SLOTS } from '../core/midi/types'
-import { accentCSS, getTrackColor, liveNoteColor, THEMES, type Theme, type ThemeId } from './theme'
+import {
+  ALL_THEMES,
+  accentCSS,
+  getTrackColor,
+  liveNoteColor,
+  THEMES,
+  type Theme,
+  type ThemeId,
+} from './theme'
 
 // Compile-time exhaustiveness over the `ThemeId` union.
 const EXPECTED_THEME_IDS: Record<ThemeId, true> = {
@@ -9,6 +17,12 @@ const EXPECTED_THEME_IDS: Record<ThemeId, true> = {
   neon: true,
   sunset: true,
   ocean: true,
+  'smoked-glass': true,
+  'aurora-silk': true,
+  'lacquer-gold': true,
+  opal: true,
+  'liquid-glass': true,
+  'ember-mist': true,
 }
 
 const track = (colorIndex: number): MidiTrack => ({
@@ -67,8 +81,8 @@ describe('liveNoteColor', () => {
 })
 
 describe('theme roster', () => {
-  it('ships exactly one theme per ThemeId', () => {
-    const ids = THEMES.map((t) => t.id)
+  it('retains exactly one catalog entry per persisted ThemeId', () => {
+    const ids = ALL_THEMES.map((t) => t.id)
     expect([...ids].sort()).toEqual(Object.keys(EXPECTED_THEME_IDS).sort())
   })
 

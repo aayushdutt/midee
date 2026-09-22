@@ -79,6 +79,48 @@ async function selectTheme(page: Page, name: string): Promise<void> {
 }
 
 test.describe('Theme selection + persistence', () => {
+  test('ships only Opal and Liquid Glass material themes and their particle presets', async ({ page }) => {
+    await gotoApp(page)
+    await leaveHomeScreen(page)
+    await openCustomize(page)
+    await expect(page.locator('.customize-theme-tile--material')).toHaveCount(2)
+    await expect(themeTile(page, 'Opal')).toBeVisible()
+    await expect(themeTile(page, 'Liquid Glass')).toBeVisible()
+    for (const name of ['Smoked Glass', 'Aurora Silk', 'Lacquer & Gold', 'Ember Mist']) {
+      await expect(themeTile(page, name)).toHaveCount(0)
+    }
+    for (const name of ['Glass glints', 'Silk fibers', 'Gold leaf', 'Windblown mist']) {
+      await expect(page.getByRole('button', { name: `${name} particles`, exact: true })).toHaveCount(0)
+    }
+    await expect(page.locator('.customize-particle-chip')).toHaveCount(7)
+  })
+
+  test('saved deferred visuals fall back to shipping choices', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('midee.theme', 'ember-mist')
+      localStorage.setItem('midee.particle', 'mist')
+    })
+    await gotoApp(page)
+    await leaveHomeScreen(page)
+    await openCustomize(page)
+    await expect(themeTile(page, 'Sunset')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('button', { name: 'Embers particles', exact: true })).toHaveClass(/--on/)
+  })
+
+  test('legacy material indices still restore Opal and its dust', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('midee.themeIndex', '8')
+      localStorage.setItem('midee.particleIndex', '8')
+    })
+    await gotoApp(page)
+    await leaveHomeScreen(page)
+    await openCustomize(page)
+    await expect(themeTile(page, 'Opal')).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('button', { name: 'Opal dust particles', exact: true })).toHaveClass(/--on/)
+    expect(await storedThemeId(page)).toBe('opal')
+    expect(await page.evaluate(() => localStorage.getItem('midee.particle'))).toBe('pearl')
+  })
+
   test('selecting a theme applies its accent vars, marks the tile, and persists the id', async ({
     page,
   }) => {

@@ -67,6 +67,7 @@ const zhCN: Messages = {
   'customize.aria': '外观',
   'customize.title': '外观',
   'customize.theme': '主题',
+  'customize.new': '新',
   'customize.particles': '粒子效果',
   'customize.chord': '和弦显示',
   'customize.chord.sub': '显示当前发声的和弦 · 实时模式',

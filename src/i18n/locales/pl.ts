@@ -76,6 +76,7 @@ const pl: Messages & Record<PolishPluralKey, string> = {
   'customize.aria': 'Wygląd',
   'customize.title': 'Wygląd',
   'customize.theme': 'Motyw',
+  'customize.new': 'Nowość',
   'customize.particles': 'Cząstki',
   'customize.chord': 'Odczyt akordów',
   'customize.chord.sub': 'Nazywa to, co brzmi · tryb na żywo',

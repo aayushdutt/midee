@@ -71,6 +71,7 @@ const es: Messages = {
   'customize.aria': 'Apariencia',
   'customize.title': 'Apariencia',
   'customize.theme': 'Tema',
+  'customize.new': 'Nuevo',
   'customize.particles': 'Partículas',
   'customize.chord': 'Lectura de acordes',
   'customize.chord.sub': 'Nombra lo que está sonando · modo en vivo',

@@ -68,6 +68,7 @@ const ja: Messages = {
   'customize.aria': '外観',
   'customize.title': '外観',
   'customize.theme': 'テーマ',
+  'customize.new': 'NEW',
   'customize.particles': 'パーティクル',
   'customize.chord': 'コード表示',
   'customize.chord.sub': '鳴っている音をコード名で表示 · ライブモード',
