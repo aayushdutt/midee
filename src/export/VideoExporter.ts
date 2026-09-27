@@ -118,8 +118,18 @@ export interface ExportOptions {
   onAudioUnavailable?: (stage: AudioUnavailableStage, err: unknown) => void
   // Receives the finished MP4 instead of the browser download (bench); default downloads it.
   deliver?: (blob: Blob, filename: string) => void
+  // Measurement only (the bench's `exportquality` suite) — the app never sets
+  // it. `hardwareAcceleration` moves that codec plan first (the other stays as
+  // the runtime-failure fallback; ExportStats.hw says which one shipped);
+  // `latencyMode` replaces the shipped 'realtime'. Unset = shipped behaviour.
+  encoderOverrides?: EncoderOverrides
   onRenderFrame: (time: number, dt: number) => void
   onSeek: (time: number) => void
+}
+
+export interface EncoderOverrides {
+  hardwareAcceleration?: HwPreference
+  latencyMode?: 'quality' | 'realtime'
 }
 
 interface CodecPlan {
@@ -229,6 +239,10 @@ export class VideoExporter {
     const height = canvasH & ~1
 
     const plans = await buildCodecPlans(width, height, fps, bitrate)
+    const preferredHw = opts.encoderOverrides?.hardwareAcceleration
+    if (preferredHw) {
+      plans.sort((a, b) => Number(b.hw === preferredHw) - Number(a.hw === preferredHw))
+    }
 
     const mode: ExportMode = opts.mode ?? 'av'
     let withAudio = mode === 'av' && opts.audio !== undefined
@@ -443,7 +457,7 @@ export class VideoExporter {
       // the bitrates we target (typically YouTube re-encodes anyway). This
       // setting is unrelated to live audio latency — it only governs the
       // H.264 encoder's internal search depth.
-      latencyMode: 'realtime',
+      latencyMode: opts.encoderOverrides?.latencyMode ?? 'realtime',
     })
 
     const keyEvery = Math.max(1, Math.round(fps * KEYFRAME_INTERVAL_SEC))
