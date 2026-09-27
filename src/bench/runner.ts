@@ -1031,10 +1031,67 @@ function enterExportCanvas(
   }
 }
 
+// `&overlay=` (exportreal only) reproduces what covers the canvas during a real
+// export, which the bench otherwise lacks — the export dialog. Every frame
+// changes the canvas, so anything with a backdrop-filter above it is re-blurred
+// by the compositor on the same GPU the export uses.
+//   none   — the page as the bench leaves it (HUD visible, no dialog); default
+//   modal  — the dialog's scrim as shipped (main.css `#export-modal.open`:
+//            rgba(4,4,10,.7) + blur(14px)) with a progress-phase card
+//   opaque — the same scrim fully opaque, no blur (the candidate fix)
+//   bare   — everything but the canvas hidden: the compositing upper bound
+type ExportOverlay = 'none' | 'modal' | 'opaque' | 'bare'
+const EXPORT_OVERLAYS: readonly ExportOverlay[] = ['none', 'modal', 'opaque', 'bare']
+
+function applyExportOverlay(overlay: ExportOverlay, canvas: HTMLCanvasElement): () => void {
+  if (overlay === 'none') return () => {}
+  if (overlay === 'bare') {
+    // Hide every sibling along the canvas's ancestor chain.
+    const hidden: [HTMLElement, string][] = []
+    for (let el: HTMLElement | null = canvas; el && el !== document.body; el = el.parentElement) {
+      for (const sib of el.parentElement?.children ?? []) {
+        if (sib !== el && sib instanceof HTMLElement) {
+          hidden.push([sib, sib.style.visibility])
+          sib.style.visibility = 'hidden'
+        }
+      }
+    }
+    return () => {
+      for (const [el, v] of hidden) el.style.visibility = v
+    }
+  }
+  const scrim = document.createElement('div')
+  Object.assign(scrim.style, {
+    position: 'fixed',
+    inset: '0',
+    zIndex: '80',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: overlay === 'modal' ? 'rgba(4, 4, 10, 0.7)' : 'rgb(4, 4, 10)',
+  })
+  if (overlay === 'modal') {
+    scrim.style.setProperty('backdrop-filter', 'blur(14px)')
+    scrim.style.setProperty('-webkit-backdrop-filter', 'blur(14px)')
+  }
+  const card = document.createElement('div')
+  card.className = 'export-card'
+  card.dataset.phase = 'progress'
+  Object.assign(card.style, { opacity: '1', transform: 'none', height: '180px' })
+  scrim.append(card)
+  document.body.append(scrim)
+  return () => scrim.remove()
+}
+
 async function suiteExportReal(
   ctx: AppCtxValue,
   fixtureId: string,
 ): Promise<Record<string, number>> {
+  const overlay = (new URLSearchParams(window.location.search).get('overlay') ??
+    'none') as ExportOverlay
+  if (!EXPORT_OVERLAYS.includes(overlay)) {
+    throw new Error(`bench: overlay must be ${EXPORT_OVERLAYS.join('|')}, got ${overlay}`)
+  }
   const params = exportParams()
   const res = params.res ?? '1080p'
   const { fps } = params
@@ -1075,8 +1132,9 @@ async function suiteExportReal(
   const heapTimer = setInterval(sampleHeap, 250)
 
   let deliveredBytes = 0
+  const removeOverlay = applyExportOverlay(overlay, renderer.canvas)
   try {
-    progress(`exportreal:${fixtureId}@${res}${fps}`)
+    progress(`exportreal:${fixtureId}@${res}${fps}+${overlay}`)
     const t0 = performance.now()
     const stats = await exporter.export({
       fps,
@@ -1123,6 +1181,11 @@ async function suiteExportReal(
       audioIncluded: stats.audioIncluded ? 1 : 0,
       audioWasm: stats.audioEncoder === 'wasm' ? 1 : 0,
       peakHeapMB: heapPrecise ? round(Math.max(...heap)) : -1,
+      // The same per-frame split export_completed reports from the field.
+      renderMsPerFrame: round(stats.renderMs / Math.max(1, stats.framesEncoded)),
+      captureMsPerFrame: round(stats.captureMs / Math.max(1, stats.framesEncoded)),
+      stallMsPerFrame: round(stats.stallMs / Math.max(1, stats.framesEncoded)),
+      firstChunkMs: stats.firstChunkMs ?? -1,
       frames: stats.framesEncoded,
       durationS: round(midi.duration),
       width,
@@ -1133,6 +1196,7 @@ async function suiteExportReal(
     if (glLost) throw new Error(`exportreal: WebGL context lost at ${res}`)
     throw err
   } finally {
+    removeOverlay()
     clearInterval(heapTimer)
     renderer.canvas.removeEventListener('webglcontextlost', onGlLost)
     exportCanvas.restore()

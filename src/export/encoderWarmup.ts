@@ -22,11 +22,24 @@ const WARMUP: VideoEncoderConfig = {
 }
 
 let warming: Promise<void> | null = null
+let warmedMs: number | null = null
 
 /** Idempotent per page load; never rejects. */
 export function prewarmVideoEncoder(): Promise<void> {
-  warming ??= warm().catch(() => {})
+  if (!warming) {
+    const start = performance.now()
+    warming = warm()
+      .catch(() => {})
+      .then(() => {
+        warmedMs = Math.round(performance.now() - start)
+      })
+  }
   return warming
+}
+
+/** How long the pre-warm took once it finished; null while running or never run. */
+export function encoderPrewarmMs(): number | null {
+  return warmedMs
 }
 
 async function warm(): Promise<void> {

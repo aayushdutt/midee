@@ -53,6 +53,26 @@ export function track(event: string, properties?: Record<string, unknown>): void
   enqueue((client) => client.capture(event, properties))
 }
 
+// The GPU as WebGL names it ("ANGLE (Intel, Intel(R) UHD Graphics 620 …)",
+// "Apple GPU", …): what tells slow exports apart in the field (integrated vs
+// discrete, vendor). Probed once on a throwaway context, then released;
+// 'unknown' where the debug extension is withheld (Firefox, some privacy modes).
+let gpuName: string | undefined
+export function webglRendererName(): string {
+  if (gpuName !== undefined) return gpuName
+  gpuName = 'unknown'
+  try {
+    const probe = document.createElement('canvas')
+    const gl = probe.getContext('webgl2') ?? probe.getContext('webgl')
+    const dbg = gl?.getExtension('WEBGL_debug_renderer_info')
+    if (gl && dbg) gpuName = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)).slice(0, 120)
+    gl?.getExtension('WEBGL_lose_context')?.loseContext()
+  } catch {
+    // leave 'unknown'
+  }
+  return gpuName
+}
+
 // High-frequency controls (volume/speed/zoom/bpm sliders) would otherwise fire
 // one event per tick of a drag. Coalesce per event name: only the final value
 // after the user stops moving is sent. Keyed by event name, so distinct

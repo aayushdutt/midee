@@ -18,7 +18,7 @@ import type { AppServices } from './core/services'
 // Both are dynamic-imported from startExport(). Import order matters: load the
 // offline-audio module first when audio is needed — do not block Tone on the
 // heavy VideoExporter chunk (see Promise.all removal below).
-import { prewarmVideoEncoder } from './export/encoderWarmup'
+import { encoderPrewarmMs, prewarmVideoEncoder } from './export/encoderWarmup'
 import {
   exportFraming,
   pitchSignature,
@@ -58,6 +58,7 @@ import {
   trackEventSettled,
   trackMidiLoaded,
   trackMidiLoadFailed,
+  webglRendererName,
 } from './telemetry'
 import { ChordOverlay } from './ui/ChordOverlay'
 import { Controls } from './ui/Controls'
@@ -1160,6 +1161,14 @@ export class App {
       device_memory: nav.deviceMemory ?? null,
       export_w: planPixels?.width ?? null,
       export_h: planPixels?.height ?? null,
+      // What the frame costs on this device: the GPU, and the look (theme
+      // sets the glow — about half the render on weak GPUs — particles and
+      // labels add draw work; instrument sets the offline audio render).
+      gpu: webglRendererName(),
+      theme: THEMES[this.themeIndex]?.id ?? null,
+      particles: PARTICLE_STYLES[this.particleIndex]?.id ?? null,
+      note_labels: this.noteLabelsOn,
+      instrument: INSTRUMENTS[this.instrumentIndex]?.id ?? null,
     }
     let exportStage: 'serialize' | 'audio_render' | 'video_encode' = 'serialize'
 
@@ -1430,6 +1439,17 @@ export class App {
         // >1 means the export took longer than the piece itself plays for -
         // the field's p90 was 4-6× on Windows/Android, hence the ETA UI.
         realtime_factor: Math.round((elapsedMs / 1000 / Math.max(1, midi.duration)) * 100) / 100,
+        // Per-frame split of the video loop: the largest of the three is what
+        // bounds this device (render → CPU scene work, capture → GPU render +
+        // readback where capture waits on it, stall → encoder). See ExportStats
+        // and docs/EXPORT_PERF_MEASUREMENTS_2026-09-27.md.
+        render_ms_per_frame: perFrameMs(stats.renderMs, stats.framesEncoded),
+        capture_ms_per_frame: perFrameMs(stats.captureMs, stats.framesEncoded),
+        stall_ms_per_frame: perFrameMs(stats.stallMs, stats.framesEncoded),
+        // Encoder start-up, and whether the dialog's pre-warm had finished
+        // (null = still running or never ran) — Chrome's cold start is 3–9 s.
+        first_chunk_ms: stats.firstChunkMs,
+        encoder_prewarm_ms: encoderPrewarmMs(),
       })
     } catch (err) {
       const isCancel = err instanceof DOMException && err.name === 'AbortError' && !glContextLost
@@ -2031,4 +2051,9 @@ function indexOfId<T extends { id: string }>(list: readonly T[], id: string): nu
 function sanitiseFilename(name: string): string {
   const cleaned = name.replace(/[\\/:*?"<>|]+/g, ' ').trim()
   return cleaned.length > 0 ? cleaned : 'midee'
+}
+
+// A loop total spread over its frames, to 0.01 ms (telemetry).
+function perFrameMs(totalMs: number, frames: number): number | null {
+  return frames > 0 ? Math.round((totalMs / frames) * 100) / 100 : null
 }

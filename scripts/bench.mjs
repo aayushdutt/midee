@@ -115,6 +115,8 @@ const cleanups = []
 // baseline row: `bach-prelude-c@1080p30`.
 const EXPORTREAL_RES = ['720p', '1080p', '4k']
 const EXPORTREAL_FPS = [30, 60]
+// What covers the canvas during exportreal (see applyExportOverlay in runner.ts).
+const EXPORT_OVERLAYS = ['none', 'modal', 'opaque', 'bare']
 // Suites that take the --res/--fps matrix (`&res=…&fps=…`).
 const RES_SUITES = new Set(['exportreal', 'exportlab', 'exportstages', 'encodemax', 'encodepar'])
 // Which of a suite's repeated runs is kept (lowest score wins). Default is
@@ -215,6 +217,9 @@ usage: npm run bench [-- <flags>]        build (${OUT_DIR}/) + run
                     knob sweep), exportstages (per-stage ms + GPU drain per
                     effect config), encodemax (encoder ceiling on pre-rendered
                     frames), encodepar (1-4 parallel encoders, main vs worker)
+  --overlay a,b     exportreal only: what covers the canvas during the export —
+                    none (default), modal (the export dialog's blurred scrim, as
+                    shipped), opaque (same scrim, no blur), bare (only the canvas)
   --configs a,b     exportstages only: subset of base, noparticles, noglow,
                     labels, bare, glass (default all)
   --cold hw|sw      encodemax only: which encoder the cold-start probe opens
@@ -234,7 +239,9 @@ usage: npm run bench [-- <flags>]        build (${OUT_DIR}/) + run
                     Opens each run in the real app (real GPU + hardware
                     encoder), collects results on a local sink (:${SINK_PORT}),
                     runs strictly one at a time and closes each tab after.
-                    chrome = a tab in your running Chrome (\`open -a\`);
+                    Runs never take focus; windows go to a secondary display
+                    when one is attached.
+                    chrome = a tab in your running Chrome (\`open -g -a\`);
                     chrome-iso = a dedicated second Chrome instance (own
                     profile in bench/, background-throttling off) — use it
                     whenever you keep browsing during the run; safari = a new
@@ -277,6 +284,7 @@ function parseArgs(argv) {
     browsers: null, // null = Playwright; else real-browser ids
     res: ['1080p'],
     fps: [30],
+    overlay: ['none'],
     timeoutS: DEFAULT_TIMEOUT_S,
   }
   for (let i = 2; i < argv.length; i++) {
@@ -320,6 +328,11 @@ function parseArgs(argv) {
       args.fps = next().split(',').map(Number)
       for (const f of args.fps) {
         if (!EXPORTREAL_FPS.includes(f)) die(`--fps expects ${EXPORTREAL_FPS.join('|')}, got ${f}`)
+      }
+    } else if (a === '--overlay') {
+      args.overlay = next().split(',')
+      for (const o of args.overlay) {
+        if (!EXPORT_OVERLAYS.includes(o)) die(`--overlay expects ${EXPORT_OVERLAYS.join('|')}, got ${o}`)
       }
     } else if (a === '--configs') args.configs = next()
     else if (a === '--variants') args.variants = next()
@@ -738,8 +751,16 @@ function startSink() {
 // appended to the fixture so each variant keys its own baseline row.
 function variantsFor(suite, args) {
   if (!RES_SUITES.has(suite)) return [{ label: '', query: '' }]
+  // exportreal × --overlay: 'none' keeps the plain label, so it compares
+  // against the existing baseline row.
+  const overlays = suite === 'exportreal' ? args.overlay : ['none']
   return args.res.flatMap((res) =>
-    args.fps.map((fps) => ({ label: `@${res}${fps}`, query: `&res=${res}&fps=${fps}` })),
+    args.fps.flatMap((fps) =>
+      overlays.map((ov) => ({
+        label: `@${res}${fps}${ov === 'none' ? '' : `+${ov}`}`,
+        query: `&res=${res}&fps=${fps}${ov === 'none' ? '' : `&overlay=${ov}`}`,
+      })),
+    ),
   )
 }
 

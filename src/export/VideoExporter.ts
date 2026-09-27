@@ -68,6 +68,19 @@ export interface ExportStats {
   attempts: number
   audioIncluded: boolean
   audioEncoder: AacEncoderKind | null // null when no audio track shipped
+  // Frame-loop totals (ms) of the attempt that shipped: seek + scene render
+  // (CPU submit only — WebGL work is async), VideoFrame(canvas) capture, and
+  // time blocked on encoder backpressure. Whichever dominates says what bounds
+  // this device: render → CPU scene work, capture → the GPU finishing the frame
+  // plus the copy (where capture waits on it: Safari, software GL, weak GPUs —
+  // so GPU/effects cost lands here), stall → the encoder (Chrome, fast GPUs).
+  // Measured shape on an M4: Chrome stall-bound, Safari and headless capture-bound.
+  renderMs: number
+  captureMs: number
+  stallMs: number
+  // First encode() → first output chunk: the encoder's start-up (Chrome's
+  // cold start is 3–9 s unless the dialog's pre-warm already paid it).
+  firstChunkMs: number | null
   audioRenderMs: number // 0 when the caller passed a pre-rendered buffer
   audioEncodeMs: number
   videoEncodeMs: number
@@ -397,8 +410,12 @@ export class VideoExporter {
     // Mediabunny's track `add()` is async (backpressure); chain so chunks stay ordered.
     let encoderError: Error | null = null
     let videoMuxDrain = Promise.resolve()
+    // Where the frame loop's time goes, for telemetry (see ExportStats).
+    const timing = { renderMs: 0, captureMs: 0, stallMs: 0, firstChunkMs: null as number | null }
+    let firstEncodeAt = 0
     const encoder = new VideoEncoder({
       output: (chunk, meta) => {
+        timing.firstChunkMs ??= performance.now() - firstEncodeAt
         // Surface mux failures through check() rather than as an unobserved
         // rejection (a cancelled Output rejects any add() still queued).
         videoMuxDrain = videoMuxDrain
@@ -443,8 +460,10 @@ export class VideoExporter {
         check()
 
         const t = i * dt
+        const renderStart = performance.now()
         opts.onSeek(t)
         opts.onRenderFrame(t, dt)
+        const captureStart = performance.now()
 
         const frame = new VideoFrame(this.canvas, {
           timestamp: Math.round((i * 1_000_000) / fps),
@@ -452,6 +471,10 @@ export class VideoExporter {
           displayWidth: width,
           displayHeight: height,
         })
+        const captureEnd = performance.now()
+        timing.renderMs += captureStart - renderStart
+        timing.captureMs += captureEnd - captureStart
+        if (i === 0) firstEncodeAt = captureEnd
         encoder.encode(frame, { keyFrame: i % keyEvery === 0 })
         frame.close()
 
@@ -464,10 +487,12 @@ export class VideoExporter {
         // room. Otherwise yield every few frames so the audio pipeline and the
         // browser's own tasks get a turn.
         if (encoder.encodeQueueSize > MAX_ENCODE_QUEUE) {
+          const stallStart = performance.now()
           while (encoder.encodeQueueSize > MAX_ENCODE_QUEUE / 2) {
             check()
             await waitForDequeue(encoder)
           }
+          timing.stallMs += performance.now() - stallStart
         } else if (i % 10 === 9) {
           await yieldToEventLoop()
         }
@@ -537,6 +562,10 @@ export class VideoExporter {
         attempts: cfg.attempt,
         audioIncluded: audioEncoder !== null,
         audioEncoder,
+        renderMs: Math.round(timing.renderMs),
+        captureMs: Math.round(timing.captureMs),
+        stallMs: Math.round(timing.stallMs),
+        firstChunkMs: timing.firstChunkMs === null ? null : Math.round(timing.firstChunkMs),
         audioRenderMs: Math.round(this.audioRenderMs),
         audioEncodeMs: Math.round(audioEncodeMs),
         videoEncodeMs: Math.round(videoEncodeMs),
