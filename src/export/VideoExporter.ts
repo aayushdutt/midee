@@ -39,6 +39,7 @@ import {
 } from 'mediabunny'
 import { type AacEncoderKind, resolveAacEncoder } from './aacEncoder'
 import { downloadBlob } from './download'
+import { isWebKit } from './engine'
 
 export type ExportStage =
   | 'Rendering audio'
@@ -66,6 +67,7 @@ export interface ExportStats {
   codec: string
   codecString: string
   hw: HwPreference
+  latencyMode: LatencyMode
   attempts: number
   audioIncluded: boolean
   audioEncoder: AacEncoderKind | null // null when no audio track shipped
@@ -122,15 +124,17 @@ export interface ExportOptions {
   // Measurement only (the bench's `exportquality` suite) — the app never sets
   // it. `hardwareAcceleration` moves that codec plan first (the other stays as
   // the runtime-failure fallback; ExportStats.hw says which one shipped);
-  // `latencyMode` replaces the shipped 'realtime'. Unset = shipped behaviour.
+  // `latencyMode` replaces the shipped defaultLatencyMode(). Unset = shipped behaviour.
   encoderOverrides?: EncoderOverrides
   onRenderFrame: (time: number, dt: number) => void
   onSeek: (time: number) => void
 }
 
+export type LatencyMode = 'quality' | 'realtime'
+
 export interface EncoderOverrides {
   hardwareAcceleration?: HwPreference
-  latencyMode?: 'quality' | 'realtime'
+  latencyMode?: LatencyMode
 }
 
 interface CodecPlan {
@@ -152,6 +156,21 @@ const KEYFRAME_INTERVAL_SEC = 2
 // fill the queue, so depth doesn't matter there
 // (docs/EXPORT_PERF_MEASUREMENTS_2026-09-27.md).
 const MAX_ENCODE_QUEUE = 2
+// Encoder rate-control mode: 'quality' only for WebKit (Safari, and every
+// browser on iOS — same engine, same encoder) at 4K. 'quality' runs Apple's
+// encoder in its offline mode, which spends more of the bitrate (realtime
+// undershoots it badly): on an M4, Safari 26 exported +19 % (720p) / +1 %
+// (1080p) / +37 % (4K) faster with files +30 / +22–50 / +16 % bigger and no
+// visible change (worst-frame PSNR ≥ 45.7 dB, −1.1 to −1.6 dB). Only 4K buys
+// real speed for its size; below that it's mostly a bigger file. Chromium and
+// Firefox stay on 'realtime': in Chrome 'quality' was no faster and 15–50 %
+// bigger (docs/EXPORT_PERF_MEASUREMENTS_2026-09-27.md, "Output quality").
+// Measured on macOS only; export telemetry reports the mode to confirm iOS.
+const QUALITY_MODE_MIN_PIXELS = 3840 * 2160
+
+function defaultLatencyMode(width: number, height: number): LatencyMode {
+  return isWebKit() && width * height >= QUALITY_MODE_MIN_PIXELS ? 'quality' : 'realtime'
+}
 const PROGRESS_UPDATE_EVERY_N_FRAMES = 3
 
 const AUDIO_BITRATE = 192_000
@@ -445,6 +464,8 @@ export class VideoExporter {
     })
     this.encoder = encoder
 
+    // Encoder rate-control mode (unrelated to live audio latency).
+    const latencyMode = opts.encoderOverrides?.latencyMode ?? defaultLatencyMode(width, height)
     encoder.configure({
       codec: plan.codecString,
       width,
@@ -452,13 +473,7 @@ export class VideoExporter {
       bitrate,
       framerate: fps,
       hardwareAcceleration: plan.hw,
-      // 'realtime' skips the slower rate-distortion optimization passes the
-      // encoder otherwise runs in 'quality' mode — ~1.5-2× faster encode for
-      // the same bitrate, at a slight quality drop that is imperceptible at
-      // the bitrates we target (typically YouTube re-encodes anyway). This
-      // setting is unrelated to live audio latency — it only governs the
-      // H.264 encoder's internal search depth.
-      latencyMode: opts.encoderOverrides?.latencyMode ?? 'realtime',
+      latencyMode,
     })
 
     const keyEvery = Math.max(1, Math.round(fps * KEYFRAME_INTERVAL_SEC))
@@ -577,6 +592,7 @@ export class VideoExporter {
         codec: plan.label,
         codecString: plan.codecString,
         hw: plan.hw,
+        latencyMode,
         attempts: cfg.attempt,
         audioIncluded: audioEncoder !== null,
         audioEncoder,

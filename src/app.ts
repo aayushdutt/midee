@@ -1419,6 +1419,7 @@ export class App {
         elapsed_ms: elapsedMs,
         codec: stats.codec,
         hw: stats.hw,
+        latency_mode: stats.latencyMode,
         attempts: stats.attempts,
         audio_included: stats.audioIncluded,
         // 'wasm' = the browser had no AAC encoder (Safari ≤ 18 and similar).
