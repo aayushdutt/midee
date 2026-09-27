@@ -229,6 +229,8 @@ const ptBR: Messages = {
   'error.recent.loadFailed':
     'Não foi possível reabrir esse arquivo - ele pode ter sido apagado deste navegador.',
   'error.audio.renderFailed': 'Falha ao renderizar áudio - o MP4 ficará silencioso.',
+  'error.audio.encodeFailed':
+    'Falha ao codificar o áudio - o MP4 ficará silencioso. A aba Áudio ainda pode exportar o som separadamente.',
   'error.export.generic': 'Falha na exportação - verifique o console para detalhes.',
   'error.export.gpuLost':
     'O contexto gráfico foi perdido durante a exportação - tente uma resolução menor.',

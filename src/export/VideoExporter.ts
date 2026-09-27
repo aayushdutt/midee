@@ -18,15 +18,26 @@
 // encoder then errors at runtime — a single software retry rescues those.
 // If the audio render fails the attempt is re-run without an audio track (an
 // MP4 with an empty audio track is not something every player tolerates).
+//
+// Audio encoding is Mediabunny's (AudioSampleSource), not a hand-driven
+// AudioEncoder: Safari's AudioEncoder emits a malformed AAC description that
+// makes the track undecodable everywhere, and only Mediabunny's encoder path
+// repairs it. The encoder itself is picked once per export by
+// resolveAacEncoder() — native, or a WASM fallback for browsers without AAC
+// (Safari ≤ 18). No encoder at all → the audio track is never declared and
+// the offline render never starts.
 
 import {
+  AudioSample,
+  AudioSampleSource,
   BufferTarget,
-  EncodedAudioPacketSource,
   EncodedPacket,
   EncodedVideoPacketSource,
   Mp4OutputFormat,
   Output,
+  Quality,
 } from 'mediabunny'
+import { type AacEncoderKind, resolveAacEncoder } from './aacEncoder'
 
 export type ExportStage =
   | 'Rendering audio'
@@ -56,6 +67,7 @@ export interface ExportStats {
   hw: HwPreference
   attempts: number
   audioIncluded: boolean
+  audioEncoder: AacEncoderKind | null // null when no audio track shipped
   audioRenderMs: number // 0 when the caller passed a pre-rendered buffer
   audioEncodeMs: number
   videoEncodeMs: number
@@ -71,6 +83,10 @@ export interface ExportStats {
 // audio"; a rejection is treated the same way after `onAudioUnavailable`.
 export type AudioProducer = (report: (pct: number) => void) => Promise<AudioBuffer | null>
 
+// Where an 'av' export lost its soundtrack: the offline render failed, or
+// there was no AAC encoder / the encode failed.
+export type AudioUnavailableStage = 'audio_render' | 'audio_encode'
+
 export interface ExportOptions {
   fps?: number
   duration: number
@@ -84,8 +100,9 @@ export interface ExportOptions {
   onPlan?: (info: ExportPlanInfo) => void
   // Fired when a mid-run encoder failure triggers the software retry.
   onFallback?: (info: { fromCodec: string; toCodec: string; errorName: string }) => void
-  // The audio producer failed; the export continues without sound.
-  onAudioUnavailable?: (err: unknown) => void
+  // The soundtrack was lost (see AudioUnavailableStage); the export continues
+  // without sound. Fires at most once per export.
+  onAudioUnavailable?: (stage: AudioUnavailableStage, err: unknown) => void
   onRenderFrame: (time: number, dt: number) => void
   onSeek: (time: number) => void
 }
@@ -103,10 +120,16 @@ const KEYFRAME_INTERVAL_SEC = 2
 const MAX_ENCODE_QUEUE = 20 // backpressure: wait when queue exceeds this
 const PROGRESS_UPDATE_EVERY_N_FRAMES = 3
 
-const AUDIO_CODEC_STRING = 'mp4a.40.2' // AAC-LC
 const AUDIO_BITRATE = 192_000
-// Chunk size in frames; wall duration follows `buffer.sampleRate` (offline render is 44.1 kHz).
-const AUDIO_CHUNK_FRAMES = 4096 // e.g. ~93 ms at 44.1 kHz — good encoder cadence
+// The encoder is chosen before the offline render exists, so the probe uses
+// the format OfflineAudioRenderer always produces (44.1 kHz stereo). The
+// encode itself is configured from the real buffer.
+const AUDIO_PROBE_SAMPLE_RATE = 44_100
+const AUDIO_PROBE_CHANNELS = 2
+// Frames handed to Mediabunny per AudioSample (~3 s at 44.1 kHz). Mediabunny
+// owns encoder backpressure; slicing only gives progress and cancellation a
+// turn between pieces and bounds the copy to ~1 MB.
+const AUDIO_SLICE_FRAMES = 1 << 17
 const AAC_FRAME_SAMPLES = 1024
 // Upper bound on the audio sample rate the offline renderer might hand us,
 // for sizing the reserved moov before the buffer exists.
@@ -137,7 +160,6 @@ class PostEncodeError extends Error {
 export class VideoExporter {
   private cancelled = false
   private encoder: VideoEncoder | null = null
-  private audioEncoder: AudioEncoder | null = null
   private output: Output | null = null
   // Memoised across attempts: the offline render runs once per export even if
   // the encoder plan falls back.
@@ -152,13 +174,11 @@ export class VideoExporter {
 
   cancel(): void {
     this.cancelled = true
-    // Close the encoders eagerly so in-flight encode() calls surface as errors
-    // rather than silently queueing more work after the abort.
+    // Close the video encoder eagerly so in-flight encode() calls surface as
+    // errors rather than silently queueing more work after the abort. The
+    // audio encoder is Mediabunny's; cancelling the Output tears it down.
     if (this.encoder && this.encoder.state !== 'closed') {
       this.encoder.close()
-    }
-    if (this.audioEncoder && this.audioEncoder.state !== 'closed') {
-      this.audioEncoder.close()
     }
     void this.output?.cancel().catch(() => {})
   }
@@ -189,6 +209,21 @@ export class VideoExporter {
 
     const mode: ExportMode = opts.mode ?? 'av'
     let withAudio = mode === 'av' && opts.audio !== undefined
+    // Resolved once, before any attempt: a codec-plan retry must not re-probe,
+    // and with no encoder the audio track is never declared, so the offline
+    // render never starts.
+    let audioEncoder: AacEncoderKind | null = null
+    if (withAudio) {
+      audioEncoder = await resolveAacEncoder({
+        sampleRate: AUDIO_PROBE_SAMPLE_RATE,
+        numberOfChannels: AUDIO_PROBE_CHANNELS,
+        bitrate: AUDIO_BITRATE,
+      })
+      if (!audioEncoder) {
+        withAudio = false
+        opts.onAudioUnavailable?.('audio_encode', new Error('No AAC encoder available'))
+      }
+    }
     let attempt = 0
     for (let i = 0; i < plans.length; i++) {
       const plan = plans[i]!
@@ -206,7 +241,7 @@ export class VideoExporter {
           width,
           height,
           attempt,
-          withAudio,
+          audioEncoder: withAudio ? audioEncoder : null,
         })
       } catch (err) {
         const isCancel = err instanceof DOMException && err.name === 'AbortError'
@@ -248,7 +283,7 @@ export class VideoExporter {
       })
         .catch((err: unknown) => {
           console.error('Offline audio render failed:', err)
-          opts.onAudioUnavailable?.(err)
+          opts.onAudioUnavailable?.('audio_render', err)
           return null
         })
         .then((buf) => {
@@ -263,7 +298,7 @@ export class VideoExporter {
 
   // One complete mux+encode pass with a fixed codec plan. Retries re-enter with
   // a fresh Output/muxer; the audio render is reused, only its encode repeats
-  // (sub-second work compared to the minutes-long video pass it protects).
+  // (seconds at most, next to the minutes-long video pass it protects).
   private async runAttempt(
     opts: ExportOptions,
     plan: CodecPlan,
@@ -273,10 +308,11 @@ export class VideoExporter {
       width: number
       height: number
       attempt: number
-      withAudio: boolean
+      // null = no audio track this attempt.
+      audioEncoder: AacEncoderKind | null
     },
   ): Promise<ExportStats> {
-    const { fps, bitrate, width, height, withAudio } = cfg
+    const { fps, bitrate, width, height, audioEncoder } = cfg
     const dt = 1 / fps
     const totalFrames = Math.max(1, Math.ceil(opts.duration * fps))
 
@@ -292,9 +328,12 @@ export class VideoExporter {
       maximumPacketCount: totalFrames + 8,
     })
 
-    let audioSource: EncodedAudioPacketSource | null = null
-    if (withAudio) {
-      audioSource = new EncodedAudioPacketSource('aac')
+    let audioSource: AudioSampleSource | null = null
+    if (audioEncoder) {
+      audioSource = new AudioSampleSource({
+        codec: 'aac',
+        quality: new Quality({ bitrate: AUDIO_BITRATE }),
+      })
       // The renderer pads a tail past `duration`; +33% is Mediabunny's own
       // guidance for an estimate, +64 covers encoder priming/flush packets.
       const maxAudioPackets =
@@ -310,6 +349,11 @@ export class VideoExporter {
     let videoDone = false
     let audioEncodeMs = 0
     let audioMissing = false
+    // Set when this attempt is being torn down (failure/retry). The audio task
+    // outlives the attempt only as far as its render; it must not encode into
+    // — or report errors from — a cancelled Output.
+    let attemptOver = false
+    const audioStopped = (): boolean => this.cancelled || attemptOver
     this.audioReport = null
     const audioTask = !audioSource
       ? Promise.resolve()
@@ -319,22 +363,22 @@ export class VideoExporter {
               audioMissing = true
               return
             }
-            if (this.cancelled) return
+            if (audioStopped()) return
             const src = audioSource
             const t0 = performance.now()
-            await this.encodeAudio(buffer, src, (pct) => {
+            await this.encodeAudio(buffer, src, audioStopped, (pct) => {
               if (videoDone) opts.onProgress?.('Encoding audio', pct)
             })
             src.close()
             audioEncodeMs = performance.now() - t0
           })
           .catch((err: unknown) => {
-            // An audio ENCODE failure (no AAC encoder, mux error) is not a
+            // An audio ENCODE failure (encoder error, mux error) is not a
             // video-codec fault: degrade to a silent export on the same plan
             // instead of burning a full video pass on the fallback codec.
-            if (this.cancelled) return
+            if (audioStopped()) return
             console.error('Audio encode failed:', err)
-            opts.onAudioUnavailable?.(err)
+            opts.onAudioUnavailable?.('audio_encode', err)
             audioMissing = true
           })
 
@@ -444,6 +488,8 @@ export class VideoExporter {
       let outputBytes = 0
       let finalizeMs = 0
       try {
+        // Also drains the audio encoder: Mediabunny flushes sources here, and
+        // an encoder error on the last slice has no earlier place to surface.
         await output.finalize()
         finalized = true
         finalizeMs = performance.now() - finalizeStart
@@ -456,7 +502,18 @@ export class VideoExporter {
         triggerDownload(URL.createObjectURL(blob), opts.filename ?? 'midee.mp4')
       } catch (err) {
         const isCancel = err instanceof DOMException && err.name === 'AbortError'
-        throw isCancel ? err : new PostEncodeError(err)
+        if (isCancel) throw err
+        // With audio in play, a late audio-encoder failure and a mux failure
+        // look the same from here (the audio encoder is the only one Mediabunny
+        // runs). Retry silent once: if audio was the cause the user still gets
+        // their video; if not, the silent attempt fails the same way and that
+        // is the error reported.
+        if (audioSource && !finalized) {
+          console.error('Finalize failed with an audio track; retrying without audio:', err)
+          opts.onAudioUnavailable?.('audio_encode', err)
+          throw new AudioUnavailableError()
+        }
+        throw new PostEncodeError(err)
       }
       opts.onProgress?.('Saving', 1)
       opts.onProgress?.('Done', 1)
@@ -466,7 +523,8 @@ export class VideoExporter {
         codecString: plan.codecString,
         hw: plan.hw,
         attempts: cfg.attempt,
-        audioIncluded: withAudio,
+        audioIncluded: audioEncoder !== null,
+        audioEncoder,
         audioRenderMs: Math.round(this.audioRenderMs),
         audioEncodeMs: Math.round(audioEncodeMs),
         videoEncodeMs: Math.round(videoEncodeMs),
@@ -481,107 +539,55 @@ export class VideoExporter {
       this.encoder = null
       this.output = null
       if (!finalized) {
-        // Stop the attempt's audio encode before the next attempt starts its
-        // own, then release the muxer.
-        if (this.audioEncoder && this.audioEncoder.state !== 'closed') this.audioEncoder.close()
-        await audioTask.catch(() => {})
+        // Stop this attempt's audio encode, then release the muxer (which
+        // also closes Mediabunny's audio encoder and rejects any pending
+        // add()). The audio task isn't awaited: a render still in flight is
+        // memoised and picked up by the next attempt, and this attempt's
+        // copy bails out as soon as it resolves.
+        attemptOver = true
         await output.cancel().catch(() => {})
       }
     }
   }
 
+  // Hands the rendered buffer to Mediabunny slice by slice. Mediabunny owns
+  // the encoder (native or WASM, see resolveAacEncoder), its backpressure and
+  // the Safari description repair; the slices only give progress and
+  // cancellation a turn. `add()` rejects on an encoder or mux error.
   private async encodeAudio(
     audio: AudioBuffer,
-    audioSource: EncodedAudioPacketSource,
+    audioSource: AudioSampleSource,
+    stopped: () => boolean,
     onProgress: (pct: number) => void,
   ): Promise<void> {
-    if (typeof AudioEncoder === 'undefined' || typeof AudioData === 'undefined') {
-      // Silently skip audio if the browser lacks AudioEncoder (very rare where
-      // VideoEncoder is supported but AudioEncoder is not). Video still exports.
-      console.warn('AudioEncoder unavailable - exporting without audio')
-      return
-    }
-
-    let encoderError: Error | null = null
-    let audioMuxDrain = Promise.resolve()
-    const encoder = new AudioEncoder({
-      output: (chunk, meta) => {
-        audioMuxDrain = audioMuxDrain
-          .then(() => audioSource.add(EncodedPacket.fromEncodedChunk(chunk), meta))
-          .catch((e: unknown) => {
-            encoderError ??= e as Error
-          })
-      },
-      error: (e) => {
-        encoderError ??= e as Error
-      },
-    })
-    this.audioEncoder = encoder
-
-    encoder.configure({
-      codec: AUDIO_CODEC_STRING,
-      sampleRate: audio.sampleRate,
-      numberOfChannels: audio.numberOfChannels,
-      bitrate: AUDIO_BITRATE,
-    })
-
-    const channelCount = audio.numberOfChannels
-    const sampleRate = audio.sampleRate
-    const totalFrames = audio.length
-
-    const channels: Float32Array[] = []
-    for (let ch = 0; ch < channelCount; ch++) {
-      channels.push(audio.getChannelData(ch))
-    }
-
-    // AudioData copies from the provided buffer, so we can reuse one pack
-    // buffer across every chunk instead of allocating per-iteration.
-    const packed = new Float32Array(AUDIO_CHUNK_FRAMES * channelCount)
-
-    try {
-      let chunkIndex = 0
-      for (let offset = 0; offset < totalFrames; offset += AUDIO_CHUNK_FRAMES) {
-        if (encoderError) throw encoderError
-        if (this.cancelled) throw new DOMException('Export cancelled', 'AbortError')
-
-        const frames = Math.min(AUDIO_CHUNK_FRAMES, totalFrames - offset)
-        // f32-planar layout: [ch0 samples..., ch1 samples..., ...].
-        for (let ch = 0; ch < channelCount; ch++) {
-          packed.set(channels[ch]!.subarray(offset, offset + frames), ch * frames)
-        }
-
-        const data = new AudioData({
-          format: 'f32-planar',
-          sampleRate,
-          numberOfFrames: frames,
-          numberOfChannels: channelCount,
-          timestamp: Math.round((offset * 1_000_000) / sampleRate),
-          data: packed,
-        })
-        encoder.encode(data)
-        data.close()
-
-        onProgress(offset / totalFrames)
-
-        if (encoder.encodeQueueSize > MAX_ENCODE_QUEUE) {
-          while (encoder.encodeQueueSize > MAX_ENCODE_QUEUE / 2) {
-            if (this.cancelled) throw new DOMException('Export cancelled', 'AbortError')
-            await waitForDequeue(encoder)
-          }
-        } else if (++chunkIndex % 16 === 0) {
-          // This runs alongside the video loop on the same thread — give it
-          // (and the browser) a turn between bursts of chunks.
-          await yieldToEventLoop()
-        }
+    const { numberOfChannels, sampleRate, length } = audio
+    for (let offset = 0; offset < length; offset += AUDIO_SLICE_FRAMES) {
+      if (stopped()) throw new DOMException('Export cancelled', 'AbortError')
+      const frames = Math.min(AUDIO_SLICE_FRAMES, length - offset)
+      // f32-planar layout: [ch0 samples..., ch1 samples..., ...]. A fresh
+      // array per slice: the encoder may still read it after add() resolves.
+      const data = new Float32Array(frames * numberOfChannels)
+      for (let ch = 0; ch < numberOfChannels; ch++) {
+        audio.copyFromChannel(data.subarray(ch * frames, (ch + 1) * frames), ch, offset)
       }
-
-      await encoder.flush()
-      if (encoderError) throw encoderError
-      await audioMuxDrain
-      onProgress(1)
-    } finally {
-      if (encoder.state !== 'closed') encoder.close()
-      if (this.audioEncoder === encoder) this.audioEncoder = null
+      const sample = new AudioSample({
+        format: 'f32-planar',
+        sampleRate,
+        numberOfChannels,
+        numberOfFrames: frames,
+        timestamp: offset / sampleRate, // seconds
+        data,
+      })
+      try {
+        await audioSource.add(sample)
+      } finally {
+        sample.close()
+      }
+      if (stopped()) throw new DOMException('Export cancelled', 'AbortError')
+      onProgress((offset + frames) / length)
+      // Runs alongside the video loop on the same thread — give it (and the
+      // browser) a turn between slices.
+      await yieldToEventLoop()
     }
   }
 
@@ -657,7 +663,7 @@ async function buildCodecPlans(
 
 // Resolves when the encoder takes something off its queue, or after a short
 // timer in case the event is coalesced or never comes (closed encoder).
-function waitForDequeue(encoder: VideoEncoder | AudioEncoder): Promise<void> {
+function waitForDequeue(encoder: VideoEncoder): Promise<void> {
   return new Promise((resolve) => {
     const done = (): void => {
       clearTimeout(timer)

@@ -1365,9 +1365,15 @@ export class App {
                 trimAudioBuffer(await renderAudio(report), midi.duration),
               // av continues without sound — a real quality hit that used to
               // be invisible. Mark it as a degradation.
-              onAudioUnavailable: () => {
-                trackEvent('export_degraded', { stage: 'audio_render', output: settings.output })
-                this.showError(t('error.audio.renderFailed'))
+              onAudioUnavailable: (stage) => {
+                trackEvent('export_degraded', { stage, output: settings.output })
+                this.showError(
+                  t(
+                    stage === 'audio_render'
+                      ? 'error.audio.renderFailed'
+                      : 'error.audio.encodeFailed',
+                  ),
+                )
               },
             }
           : {}),
@@ -1409,6 +1415,8 @@ export class App {
         hw: stats.hw,
         attempts: stats.attempts,
         audio_included: stats.audioIncluded,
+        // 'wasm' = the browser had no AAC encoder (Safari ≤ 18 and similar).
+        audio_encoder: stats.audioEncoder,
         audio_render_ms: stats.audioRenderMs,
         audio_encode_ms: stats.audioEncodeMs,
         video_encode_ms: stats.videoEncodeMs,

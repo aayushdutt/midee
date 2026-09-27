@@ -30,9 +30,10 @@ export default defineConfig({
   // Pre-bundle deps reached only via dynamic `import()` from the export path. Lazy
   // discovery can re-run the dep optimizer while the tab still references old
   // `node_modules/.vite/deps/*` URLs → 504 (Outdated Optimize Dep) + failed dynamic
-  // import. Mediabunny → `import('./export/VideoExporter')`; lamejs → MP3 audio export.
+  // import. Mediabunny → `import('./export/VideoExporter')`; its AAC extension → WASM
+  // fallback in `export/aacEncoder.ts`; lamejs → MP3 audio export.
   optimizeDeps: {
-    include: ['mediabunny', '@breezystack/lamejs'],
+    include: ['mediabunny', '@mediabunny/aac-encoder', '@breezystack/lamejs'],
   },
   resolve: {
     alias: {

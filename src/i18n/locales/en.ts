@@ -251,6 +251,8 @@ export const en = {
   'error.recent.loadFailed':
     'Could not reopen that file - it may have been cleared from this browser.',
   'error.audio.renderFailed': 'Audio render failed - MP4 will be silent.',
+  'error.audio.encodeFailed':
+    'Audio encoding failed - MP4 will be silent. The Audio tab can still export the sound on its own.',
   'error.export.generic': 'Export failed - check console for details.',
   'error.export.gpuLost': 'The graphics context was lost during export - try a lower resolution.',
 

@@ -229,6 +229,8 @@ const es: Messages = {
   'error.recent.loadFailed':
     'No se pudo reabrir ese archivo - puede que se haya borrado de este navegador.',
   'error.audio.renderFailed': 'Falló el renderizado de audio - el MP4 será silencioso.',
+  'error.audio.encodeFailed':
+    'Falló la codificación de audio - el MP4 será silencioso. La pestaña Audio aún puede exportar el sonido por separado.',
   'error.export.generic': 'Falló la exportación - revisa la consola para más detalles.',
   'error.export.gpuLost':
     'Se perdió el contexto gráfico durante la exportación - prueba una resolución más baja.',

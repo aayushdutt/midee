@@ -220,6 +220,8 @@ const ja: Messages = {
   'error.recent.loadFailed':
     'このファイルを開き直せませんでした。このブラウザーから削除された可能性があります。',
   'error.audio.renderFailed': '音声のレンダリングに失敗しました。MP4 は無音になります。',
+  'error.audio.encodeFailed':
+    '音声のエンコードに失敗しました。MP4 は無音になります。「音声」タブから音声だけを書き出すことはできます。',
   'error.export.generic': '書き出しに失敗しました。詳細はコンソールを確認してください。',
   'error.export.gpuLost':
     '書き出し中にグラフィックスコンテキストが失われました。解像度を下げてお試しください。',

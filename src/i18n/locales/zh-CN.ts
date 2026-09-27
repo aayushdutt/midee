@@ -215,6 +215,8 @@ const zhCN: Messages = {
   'error.sample.fetchFailed': '无法加载该示例，请检查网络后重试。',
   'error.recent.loadFailed': '无法重新打开该文件，它可能已从此浏览器中清除。',
   'error.audio.renderFailed': '音频渲染失败，导出的 MP4 将没有声音。',
+  'error.audio.encodeFailed':
+    '音频编码失败，导出的 MP4 将没有声音。你仍可在“音频”标签页单独导出音频。',
   'error.export.generic': '导出失败，请查看控制台了解详情。',
   'error.export.gpuLost': '导出过程中图形上下文丢失，请尝试更低的分辨率。',
 

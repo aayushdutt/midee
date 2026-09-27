@@ -352,9 +352,10 @@ type EventMap = {
   // A recent card was clicked but the stored bytes were gone or unparseable —
   // the entry is dropped, so this is the only trace it ever existed.
   recent_load_failed: { target: 'play' | 'learn' }
-  // A non-fatal export degradation: audio render failed but the (video-only /
-  // av) export continued without sound. Distinct from export_failed.
-  export_degraded: { stage: 'audio_render'; output: string }
+  // A non-fatal export degradation: the soundtrack was lost (render failed, or
+  // no AAC encoder / the encode failed) but the export continued without
+  // sound. Distinct from export_failed.
+  export_degraded: { stage: 'audio_render' | 'audio_encode'; output: string }
   // Mid-export hardware-encoder failure recovered by the software retry
   // (see VideoExporter's codec plan ladder). High volume here = a platform
   // where 'prefer-hardware' probes pass but the encoder dies at runtime.

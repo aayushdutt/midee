@@ -70,9 +70,10 @@ test.describe('MP4 export (flagship, full WebCodecs path)', () => {
     test.skip(!process.env.E2E_HEAVY, 'heavy AV encode — run with E2E_HEAVY=1')
     await loadFixtureAndOpenExport(page)
 
-    // Default output is 'av' (video+audio). Use the smallest preset for speed: 720p.
-    await page.locator('#export-modal .res-card', { hasText: '720p' }).click()
-    await page.locator('#export-modal .fps-btn', { hasText: '24' }).click()
+    // Default output is 'av' (video+audio). Use the smallest preset for speed:
+    // 720p at 30 fps (the redesigned dialog's Quality/Motion segmented controls).
+    await page.locator('#export-modal .fps-btn', { hasText: '720p' }).click()
+    await page.locator('#export-modal .fps-btn', { hasText: '30 fps' }).click()
 
     const { bytes, suggestedFilename } = await runExportAndCapture(page)
 

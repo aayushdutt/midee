@@ -233,6 +233,8 @@ const fr: Messages = {
   'error.recent.loadFailed':
     'Impossible de rouvrir ce fichier - il a peut-être été effacé de ce navigateur.',
   'error.audio.renderFailed': 'Échec du rendu audio - le MP4 sera silencieux.',
+  'error.audio.encodeFailed':
+    'Échec de l’encodage audio - le MP4 sera silencieux. L’onglet Audio peut toujours exporter le son seul.',
   'error.export.generic': 'Échec de l’export - consultez la console pour plus de détails.',
   'error.export.gpuLost':
     'Le contexte graphique a été perdu pendant l’export - essayez une résolution plus basse.',

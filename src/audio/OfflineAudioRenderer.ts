@@ -43,8 +43,9 @@ export interface OfflineRenderOptions {
 
 // 44.1 kHz matches AAC output in the muxer — rendering at 48 kHz cost ~9% more
 // per render for no audible benefit on the downstream MP4 track. The exported
-// AudioBuffer is what the WebCodecs AudioEncoder consumes, so its sample rate
-// flows straight through to the MP4's audio stream.
+// AudioBuffer is what VideoExporter's AAC encoder consumes, so its sample rate
+// flows straight through to the MP4's audio stream. VideoExporter probes for an
+// encoder at this rate before the render exists (AUDIO_PROBE_SAMPLE_RATE).
 const DEFAULT_SAMPLE_RATE = 44_100
 
 // Small tail past midi.duration so release envelopes on the final notes don't

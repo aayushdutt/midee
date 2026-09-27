@@ -228,6 +228,8 @@ const pl: Messages & Record<PolishPluralKey, string> = {
   'error.recent.loadFailed':
     'Nie udało się ponownie otworzyć tego pliku - mógł zostać usunięty z tej przeglądarki.',
   'error.audio.renderFailed': 'Renderowanie audio nie powiodło się - MP4 będzie bez dźwięku.',
+  'error.audio.encodeFailed':
+    'Kodowanie audio nie powiodło się - MP4 będzie bez dźwięku. Samo audio nadal możesz wyeksportować w zakładce Audio.',
   'error.export.generic': 'Eksport nie powiódł się - sprawdź szczegóły w konsoli.',
   'error.export.gpuLost':
     'Kontekst graficzny został utracony podczas eksportu - spróbuj niższej rozdzielczości.',
