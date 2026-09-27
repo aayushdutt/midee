@@ -35,6 +35,10 @@ const FIXTURE_MID = fileURLToPath(new URL('../fixtures/multi-track.mid', import.
 const FIXTURE_DURATION_S = 1.95 // from `@tonejs/midi` parse of fixtures/multi-track.mid
 const SYNC_MID = fileURLToPath(new URL('../fixtures/sync-note.mid', import.meta.url))
 const SYNC_NOTE_S = 1 // the fixture's only note starts here
+// ~4.5 min: its offline audio render is still running when the test cancels.
+const LONG_MID = fileURLToPath(
+  new URL('../public/samples/chopin-nocturne-op9-2.mid', import.meta.url),
+)
 // Decoded frame vs the renderer's own canvas, both box-filtered to 128×72.
 // Measured 46 dB (720p30, 2026-09-27); adjacent frames differ at 32–39 dB, so a
 // wrong, black, shifted or colour-cast frame lands far below. Headroom left for
@@ -43,6 +47,11 @@ const MIN_FRAME_PSNR_DB = 38
 const MAX_AV_OFFSET_S = 0.1
 
 async function loadFixtureAndOpenExport(page: Page, midi = FIXTURE_MID): Promise<void> {
+  await loadFixture(page, midi)
+  await openExport(page)
+}
+
+async function loadFixture(page: Page, midi: string): Promise<void> {
   await page.goto('/')
 
   // Secure-context guard — WebCodecs encoders require it (spike finding).
@@ -55,10 +64,11 @@ async function loadFixtureAndOpenExport(page: Page, midi = FIXTURE_MID): Promise
 
   // Loading a file transitions to play mode; the export button un-hides once a file
   // is loaded and not still loading. Wait for it to be visible (not just attached).
-  const exportBtn = page.locator('#ts-record')
-  await expect(exportBtn).toBeVisible({ timeout: 30_000 })
-  await exportBtn.click()
+  await expect(page.locator('#ts-record')).toBeVisible({ timeout: 30_000 })
+}
 
+async function openExport(page: Page): Promise<void> {
+  await page.locator('#ts-record').click()
   // Modal opens by gaining the `open` class.
   await expect(page.locator('#export-modal')).toHaveClass(/open/, { timeout: 15_000 })
 }
@@ -101,6 +111,27 @@ function staleFrames(scores: FrameScore[]): number[] {
       ? [i]
       : [],
   )
+}
+
+// Playhead seconds per wall second over `windows` one-second windows, plus the
+// HUD time at each sample. Timed in-page so round trips don't count.
+function sampleClock(page: Page, windows: number): Promise<{ rates: number[]; times: string[] }> {
+  return page.evaluate(async (n) => {
+    const scrubber = document.querySelector<HTMLInputElement>('#hud-scrubber')!
+    const time = document.querySelector('#hud-time')!
+    const sample = () => ({ at: performance.now() / 1000, t: Number.parseFloat(scrubber.value) })
+    const rates: number[] = []
+    const times = [time.textContent?.trim() ?? '']
+    let prev = sample()
+    for (let i = 0; i < n; i++) {
+      await new Promise((r) => setTimeout(r, 1000))
+      const next = sample()
+      rates.push(Math.round(((next.t - prev.t) / (next.at - prev.at)) * 100) / 100)
+      times.push(time.textContent?.trim() ?? '')
+      prev = next
+    }
+    return { rates, times }
+  }, windows)
 }
 
 const hex = (s: string) => Uint8Array.from(s.match(/[0-9a-f]{2}/gi)!, (b) => Number.parseInt(b, 16))
@@ -258,6 +289,49 @@ test.describe('MP4 export (flagship, full WebCodecs path)', () => {
     const offsetMs = Math.round((audioOnset - videoOnset) * 1000)
     test.info().annotations.push({ type: 'av-offset-ms', description: String(offsetMs) })
     expect(Math.abs(offsetMs), 'audio − video onset (ms)').toBeLessThan(MAX_AV_OFFSET_S * 1000)
+  })
+
+  // The reported flow: play a piece, export, cancel part-way, press play. The
+  // offline render swaps Tone's global context — the one the clock and synth
+  // read — and playback started on top of it stuck at a negative time. Quick
+  // (cancelled as frames start) but still needs an H.264 encoder to get there.
+  test('playback runs normally after cancelling an AV export mid-render', async ({ page }) => {
+    test.skip(!process.env.E2E_HEAVY, 'needs an H.264 encoder — run with E2E_HEAVY=1')
+    await loadFixture(page, LONG_MID)
+    const play = page.locator('#hud-play')
+    // Loading autoplays after 250 ms; wait for it, or it can start behind the
+    // dialog and the export would resume it on cancel. Opening pauses.
+    await expect(play).toHaveAttribute('data-playing', 'true')
+    await openExport(page)
+    await expect(play).toHaveAttribute('data-playing', 'false')
+    await chooseVideoPreset(page, '720p', 30)
+    await page.locator('#export-modal .modal-btn--accent').click()
+
+    const progress = page.locator('#export-modal .export-progress:not(.hidden)')
+    await expect(progress.locator('.export-stage-label')).toHaveText(/Exporting/, {
+      timeout: 30_000,
+    })
+    await progress.locator('.modal-btn').click()
+    await expect(page.locator('#export-modal')).not.toHaveClass(/open/, { timeout: 15_000 })
+
+    const scrubber = page.locator('#hud-scrubber')
+    const from = Number.parseFloat(await scrubber.inputValue())
+    await play.hover()
+    await play.click()
+    await expect(play).toHaveAttribute('data-playing', 'true')
+    await expect
+      .poll(async () => Number.parseFloat(await scrubber.inputValue()), { timeout: 8_000 })
+      .toBeGreaterThan(from + 0.2)
+
+    // On the offline clock the playhead raced at render speed, froze, then
+    // snapped negative on hand-back — so check the rate over several seconds.
+    const { rates, times } = await sampleClock(page, 4)
+    test.info().annotations.push({ type: 'playhead-rates', description: rates.join(' ') })
+    for (const time of times) expect(time).toMatch(/^\d+:\d{2}$/)
+    for (const rate of rates) {
+      expect(rate).toBeGreaterThan(0.6)
+      expect(rate).toBeLessThan(1.4)
+    }
   })
 
   // NOT gated behind E2E_HEAVY: audio-only ships WAV/MP3 (both pure-JS, no codec),

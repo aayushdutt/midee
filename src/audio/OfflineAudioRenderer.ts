@@ -8,7 +8,14 @@
 // API pauses the render at a specified render-time point and yields back to
 // the main thread; we report progress, then `resume()` to continue.
 
-import { getContext, getTransport, OfflineContext, Part, setContext } from 'tone'
+import {
+  getContext,
+  getTransport,
+  OfflineContext,
+  Part,
+  setContext,
+  type ToneAudioBuffer,
+} from 'tone'
 import type { MidiFile } from '../core/midi/types'
 import { createInstrument, type InstrumentId, preloadSampleBuffers } from './instruments'
 import {
@@ -89,6 +96,7 @@ export async function renderAudioOffline(opts: OfflineRenderOptions): Promise<Au
   const prevRouting = getMasterBusRouting()
   setContext(offline)
 
+  let rendering: Promise<ToneAudioBuffer>
   try {
     opts.onRenderAudioProgressMode?.(typeof rawContext.suspend === 'function')
 
@@ -136,14 +144,20 @@ export async function renderAudioOffline(opts: OfflineRenderOptions): Promise<Au
       }
     }
 
-    const toneBuffer = await offline.render()
-    const raw = toneBuffer.get()
-    if (!raw) throw new Error('Offline audio render produced no buffer')
-    return raw
+    rendering = offline.render()
   } finally {
-    // Routing is module-global; a bench render must not leak 'raw' into the
-    // live bus.
-    setMasterBusRouting(prevRouting)
+    // Tone.Offline's order: the global context goes back as soon as the render
+    // is started — everything above captured the offline one. Holding it for
+    // the whole render put the app's MasterClock and synth (which read the
+    // global) on the offline clock when playback resumed after a cancelled
+    // export: stuck transport, negative time.
     setContext(prevContext)
+    // Routing is module-global; a bench render must not leak 'raw' into the
+    // live bus. The offline bus keeps what it was built with.
+    if (opts.busRouting) setMasterBusRouting(prevRouting)
   }
+
+  const raw = (await rendering).get()
+  if (!raw) throw new Error('Offline audio render produced no buffer')
+  return raw
 }

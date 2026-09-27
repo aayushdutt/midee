@@ -16,7 +16,12 @@ vi.mock('mediabunny', () => ({
 const CONFIG = { sampleRate: 44_100, numberOfChannels: 2, bitrate: 192_000 }
 
 // Fresh module per test: registration state is module-global by design.
-async function load(): Promise<typeof import('./aacEncoder')> {
+// doMock (not hoisted vi.mock) so a test can swap in a failing chunk — once
+// per test: two doMocks queued for one path can land in either order.
+async function load(
+  chunk: () => { registerAacEncoder: () => void } = () => ({ registerAacEncoder }),
+): Promise<typeof import('./aacEncoder')> {
+  vi.doMock('@mediabunny/aac-encoder', chunk)
   vi.resetModules()
   return import('./aacEncoder')
 }
@@ -25,9 +30,6 @@ describe('resolveAacEncoder', () => {
   beforeEach(() => {
     Object.assign(env, { native: true, registered: false })
     registerAacEncoder.mockClear()
-    // doMock (not hoisted vi.mock) so a test can swap in a failing chunk;
-    // factories survive resetModules, so each test sets its own.
-    vi.doMock('@mediabunny/aac-encoder', () => ({ registerAacEncoder }))
   })
 
   it('uses the native encoder and never loads WASM when the browser has AAC', async () => {
@@ -53,10 +55,9 @@ describe('resolveAacEncoder', () => {
 
   it('returns null when the WASM chunk cannot load', async () => {
     env.native = false
-    vi.doMock('@mediabunny/aac-encoder', () => {
+    const { resolveAacEncoder } = await load(() => {
       throw new Error('chunk failed to load')
     })
-    const { resolveAacEncoder } = await load()
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(await resolveAacEncoder(CONFIG)).toBeNull()
   })
