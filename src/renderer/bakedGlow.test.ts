@@ -115,11 +115,11 @@ function frame(glow: BakedGlow, notes: Note[], tint: number | null = null) {
   glow.end(tint)
 }
 
-afterEach(() => setGlowMode('filter', 'average'))
+afterEach(() => setGlowMode('baked', 'average'))
 
 describe('glow mode switch', () => {
-  it('defaults to the shipped filter with filter-parity tint', () => {
-    expect(glowSettings()).toEqual({ mode: 'filter', tint: 'average' })
+  it('defaults to the baked glow with filter-parity tint', () => {
+    expect(glowSettings()).toEqual({ mode: 'baked', tint: 'average' })
   })
 
   it('keeps the tint unless one is given', () => {

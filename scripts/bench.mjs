@@ -257,14 +257,15 @@ usage: npm run bench [-- <flags>]        build (${OUT_DIR}/) + run
   --overlay a,b     exportreal only: what covers the canvas during the export —
                     none (default), modal (the export dialog's blurred scrim, as
                     shipped), opaque (same scrim, no blur), bare (only the canvas)
-  --configs a,b     exportstages: subset of base, bakedglow, noparticles, noglow,
+  --configs a,b     exportstages: subset of base, filterglow, noparticles, noglow,
                     labels, bare, glass; exportquality: subset of hw-rt, hw-q,
                     sw-rt, sw-eq (default all; Safari ignores sw, so hw-rt,hw-q
                     there)
   --glow filter|baked
-                    note-glow path for every suite (default filter, as
-                    shipped; baked = src/renderer/bakedGlow.ts). baked results
-                    key their own baseline rows (+glow-baked)
+                    note-glow path for every suite (default baked, as shipped
+                    since 2026-09-28 — src/renderer/bakedGlow.ts; filter = the
+                    old GlowFilter). filter results key their own baseline
+                    rows (+glow-filter)
   --cold hw|sw      encodemax only: which encoder the cold-start probe opens
                     the page with (default hw)
   --hw hw|sw        exportstages only: encode with prefer-hardware (default,
@@ -818,9 +819,9 @@ function startSink() {
 
 // Suites parameterised beyond the fixture: one entry per variant, the label
 // appended to the fixture so each variant keys its own baseline row.
-// --glow baked rides on every suite; 'filter' (shipped) keeps plain labels.
+// --glow filter rides on every suite; 'baked' (shipped) keeps plain labels.
 function variantsFor(suite, args) {
-  const glow = args.glow === 'baked' ? { label: '+glow-baked', query: '&glow=baked' } : { label: '', query: '' }
+  const glow = args.glow === 'filter' ? { label: '+glow-filter', query: '&glow=filter' } : { label: '', query: '' }
   if (!RES_SUITES.has(suite)) return [glow]
   // exportreal × --overlay: 'none' keeps the plain label, so it compares
   // against the existing baseline row.

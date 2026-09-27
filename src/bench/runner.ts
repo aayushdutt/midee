@@ -28,7 +28,7 @@
 // `&res=720p|1080p|4k&fps=30|60` like `exportreal`.
 //
 // `&glow=filter|baked` (+ `&glowTint=average|note`) picks the note-glow path
-// for any suite (renderer/bakedGlow.ts); absent = the shipped 'filter'.
+// for any suite (renderer/bakedGlow.ts); absent = the shipped default ('baked').
 
 import { INSTRUMENTS, type InstrumentId, preloadSampleBuffers } from '../audio/instruments'
 import { parseMidiFile } from '../core/midi/parser'
@@ -1549,8 +1549,9 @@ async function suiteExportQuality(
 // Configs price each effect against the new-visitor look — app.ts's store
 // defaults, theme 'sunset' + particles 'embers' + labels off — pinned so
 // browser profiles with different saved settings measure the same scene.
-// `bakedglow` is `base` with the baked note glow; the other glow configs use
-// the page's `&glow=` mode (default the shipped filter).
+// `filterglow` is `base` with the old GlowFilter note glow (the shipped glow
+// is baked since 2026-09-28); the other glow configs use the page's `&glow=`
+// mode (default: shipped).
 // `&configs=base,bare` runs a subset (e.g. for slow headless 4K); `&hw=sw`
 // encodes with prefer-software instead of the product's prefer-hardware;
 // `&queue=N` sets the loop's backpressure depth (default 2, as shipped).
@@ -1568,11 +1569,11 @@ interface StageConfig {
 const STAGE_CONFIGS: readonly StageConfig[] = [
   { name: 'base', theme: 'sunset', particles: 'embers', glow: true, labels: false },
   {
-    name: 'bakedglow',
+    name: 'filterglow',
     theme: 'sunset',
     particles: 'embers',
     glow: true,
-    glowMode: 'baked',
+    glowMode: 'filter',
     labels: false,
   },
   { name: 'noparticles', theme: 'sunset', particles: 'none', glow: true, labels: false },
@@ -2525,10 +2526,10 @@ function trackHiddenTime(): () => number {
 }
 
 // `&glow=` / `&glowTint=` (see header). Also applied when there is no suite:
-// a bench build opened as `/?glow=baked` is the manual glow A/B.
+// a bench build opened as `/?glow=filter` is the manual glow A/B.
 function applyGlowParams(params: URLSearchParams): void {
-  const mode = params.get('glow') ?? 'filter'
-  const tint = params.get('glowTint') ?? 'average'
+  const mode = params.get('glow') ?? glowSettings().mode
+  const tint = params.get('glowTint') ?? glowSettings().tint
   if (mode !== 'filter' && mode !== 'baked') {
     throw new Error(`bench: glow must be filter|baked, got ${mode}`)
   }

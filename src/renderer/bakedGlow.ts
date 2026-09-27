@@ -9,8 +9,13 @@ import {
 } from 'pixi.js'
 import { GlowFilter } from 'pixi-filters'
 
-// Baked note glow — a cheap stand-in for NoteRenderer's GlowFilter, behind an
-// A/B switch (`setGlowMode`; default 'filter' = the shipped look).
+// Baked note glow — a cheap stand-in for NoteRenderer's GlowFilter, and the
+// default since 2026-09-28 (`setGlowMode('filter')` keeps the filter for A/B).
+// Measured on export: weak-GPU proxy (headless SwiftShader 720p) 25.6 → 51.6
+// fps, the same as no glow at all; Safari M4 1080p +19 %; Chrome M4 unchanged
+// (encoder-bound) with 13–29 % less GPU per frame. Visual A/B vs the filter:
+// 56–76 dB whole-frame PSNR, differences only at sounding-note edges
+// (docs/EXPORT_PERF_MEASUREMENTS_2026-09-27.md; bench suite `glowshots`).
 //
 // Why: GlowFilter is a brute-force ring sampler. Every output pixel reads the
 // texture ≈ 2π·quality·distance² times (29 angles × 15 steps = 435 for the
@@ -57,7 +62,7 @@ export type GlowMode = 'filter' | 'baked'
 // (differs only when notes from differently coloured tracks sound together).
 export type GlowTint = 'average' | 'note'
 
-const settings: { mode: GlowMode; tint: GlowTint } = { mode: 'filter', tint: 'average' }
+const settings: { mode: GlowMode; tint: GlowTint } = { mode: 'baked', tint: 'average' }
 
 // Module-level so it flips without UI: the bench's `&glow=baked` URL param
 // (bench/runner.ts), or devtools under `npm run dev`:

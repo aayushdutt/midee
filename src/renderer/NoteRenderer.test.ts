@@ -147,9 +147,10 @@ interface MockNode {
 }
 
 describe('glow mode switch', () => {
-  afterEach(() => setGlowMode('filter', 'average'))
+  afterEach(() => setGlowMode('baked', 'average'))
 
   it('swaps the GlowFilter for baked halo sprites and back', () => {
+    setGlowMode('filter')
     const viewport = new Viewport({
       canvasWidth: 800,
       canvasHeight: 500,
