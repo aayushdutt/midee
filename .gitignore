@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# Bench build (npm run bench:build) — kept apart from dist/, which e2e builds.
+dist-bench/
 
 # Logs
 *.log

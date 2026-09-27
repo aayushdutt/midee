@@ -23,9 +23,11 @@
     "preview:serp": "node scripts/preview-serp.mjs",
     "dotplot": "node scripts/dotplot.mjs",
     "reels": "node scripts/reels.mjs",
-    "bench": "VITE_ENABLE_BENCH=1 npx vite build && node scripts/bench.mjs",
+    "bench": "npm run bench:build && node scripts/bench.mjs",
+    "bench:build": "VITE_ENABLE_BENCH=1 npx vite build --outDir dist-bench",
     "bench:run": "node scripts/bench.mjs",
-    "bench:update": "VITE_ENABLE_BENCH=1 npx vite build && node scripts/bench.mjs --update"
+    "bench:real": "npm run bench:build && node scripts/bench.mjs --browser chrome,safari --suite exportreal",
+    "bench:update": "npm run bench:build && node scripts/bench.mjs --update"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

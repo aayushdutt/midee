@@ -5,6 +5,9 @@
 // result on `window.__BENCH_RESULT` (errors → `window.__BENCH_ERROR`).
 // `?bench=list` publishes the fixture ids on `window.__BENCH_FIXTURES` so the
 // driver discovers them from here — this file is the single source of truth.
+// With `&report=<url>` (real-browser mode, `bench.mjs --browser`) the same
+// list/result/error — plus throttled progress — is also POSTed there as JSON,
+// since the driver can't read globals out of a tab it only `open -a`'d.
 //
 // Measurement rules this file enforces (the v1 harness broke both):
 //   · CPU suites drive `renderManualFrame` under `pauseAutoRender()` — the
@@ -14,10 +17,12 @@
 //     ~0.1 ms without cross-origin isolation, so single sub-ms frames are
 //     mostly timer noise. A batch gives 0.01 ms/frame resolution.
 
-import { INSTRUMENTS, type InstrumentId } from '../audio/instruments'
+import { INSTRUMENTS, type InstrumentId, preloadSampleBuffers } from '../audio/instruments'
 import { parseMidiFile } from '../core/midi/parser'
 import type { MidiFile } from '../core/midi/types'
+import { resolveExportBitrate, resolveExportRender, trimAudioBuffer } from '../export/exportMath'
 import type { AppCtxValue } from '../store/AppCtx'
+import type { ExportResolution } from '../ui/ExportModal'
 
 export interface BenchFixture {
   id: string
@@ -51,6 +56,7 @@ export type BenchSuite =
   | 'pacing'
   | 'export'
   | 'exportlab'
+  | 'exportreal'
   | 'audiorender'
   | 'headroom'
   | 'voiceload'
@@ -214,6 +220,43 @@ async function loadFixture(ctx: AppCtxValue, id: string): Promise<MidiFile> {
 
 function progress(phase: string): void {
   window.__BENCH_PROGRESS = phase
+  // Real-browser mode: the driver's only window into a stuck run. Throttled
+  // so a per-frame progress call never turns into per-frame network traffic.
+  const now = performance.now()
+  if (reportUrl && now - lastProgressPost >= 1000) {
+    lastProgressPost = now
+    void postReport({ kind: 'progress', phase })
+  }
+}
+
+// `&report=<url>` sink (see header). Loopback only — a bench build must never
+// beacon anywhere else, whatever URL it was opened with.
+let reportUrl: string | null = null
+let lastProgressPost = Number.NEGATIVE_INFINITY
+
+function initReport(params: URLSearchParams): void {
+  const raw = params.get('report')
+  if (!raw) return
+  try {
+    const url = new URL(raw)
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') reportUrl = url.href
+  } catch {
+    // malformed → no reporting; the driver times out with "no contact"
+  }
+}
+
+// A string body keeps this a CORS "simple request" (text/plain, no
+// preflight); the driver's sink answers OPTIONS anyway. `ua` rides along so
+// the driver can key the env on the browser version actually running.
+function postReport(body: Record<string, unknown>): Promise<void> {
+  if (!reportUrl) return Promise.resolve()
+  return fetch(reportUrl, {
+    method: 'POST',
+    body: JSON.stringify({ ...body, ua: navigator.userAgent }),
+  }).then(
+    () => {},
+    (err: unknown) => console.warn('[bench] report POST failed', err),
+  )
 }
 
 // Sweep positions across the meat of the piece — skip the sparse head and the
@@ -814,6 +857,159 @@ function yieldNow(): Promise<void> {
   return s?.yield ? s.yield() : new Promise((r) => setTimeout(r, 0))
 }
 
+// ── exportreal: the shipped exporter, end to end ───────────────────────────
+// `export` above replicates the loop to time its micro-costs; this suite runs
+// the REAL `VideoExporter.export()` wired the way `App.startExport` wires it —
+// render plan + bitrate from exportMath, mode 'av', the offline audio
+// producer overlapping the video loop, codec-plan fallback, finalize — and
+// takes the MP4 through `deliver` instead of a download. It answers "how long
+// does a user wait", per browser, which is why the driver's real-browser mode
+// (`--browser chrome,safari`) exists: headless has no hardware encoder.
+//
+// URL params: `res` = 720p|1080p|4k (landscape; default 1080p), `fps` = 30|60
+// (default 30). Only the first EXPORTREAL_CAP_S seconds are exported so runs
+// are bounded and comparable across fixtures: the renderer keeps the full
+// piece (frames 0..cap match a full export's), the audio renders the piece
+// truncated at the cap. Instrument pinned to 'upright' (the new-visitor
+// default, self-hosted samples), decoded before the clock starts.
+
+type ExportRealRes = Extract<ExportResolution, '720p' | '1080p' | '4k'>
+const EXPORTREAL_RES: readonly ExportRealRes[] = ['720p', '1080p', '4k']
+const EXPORTREAL_CAP_S = 20
+const EXPORTREAL_INSTRUMENT: InstrumentId = 'upright'
+
+function exportRealParams(): { res: ExportRealRes; fps: number } {
+  const params = new URLSearchParams(window.location.search)
+  const res = params.get('res') ?? '1080p'
+  const fps = Number(params.get('fps') ?? 30)
+  if (!EXPORTREAL_RES.includes(res as ExportRealRes)) {
+    throw new Error(`exportreal: res must be ${EXPORTREAL_RES.join('|')}, got ${res}`)
+  }
+  if (fps !== 30 && fps !== 60) throw new Error(`exportreal: fps must be 30|60, got ${fps}`)
+  return { res: res as ExportRealRes, fps }
+}
+
+async function suiteExportReal(
+  ctx: AppCtxValue,
+  fixtureId: string,
+): Promise<Record<string, number>> {
+  const { res, fps } = exportRealParams()
+  const full = await loadFixture(ctx, fixtureId)
+  const [{ VideoExporter }, { renderAudioOffline }, { truncateMidi }] = await Promise.all([
+    import('../export/VideoExporter'),
+    import('../audio/OfflineAudioRenderer'),
+    import('./audioFixtures'),
+  ])
+  const midi = full.duration > EXPORTREAL_CAP_S ? truncateMidi(full, EXPORTREAL_CAP_S) : full
+  progress(`exportreal:samples:${EXPORTREAL_INSTRUMENT}`)
+  await preloadSampleBuffers(EXPORTREAL_INSTRUMENT)
+
+  const { renderer, clock, store, synth } = ctx.services
+  // Same plan app.ts computes. Landscape presets only: exportFraming() is a
+  // no-op for them, so the live viewport stays untouched there too.
+  const originalResolution = renderer.canvasSize.resolution
+  const plan = resolveExportRender(res, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    resolution: originalResolution,
+  })
+  clock.pause()
+  // Gates the clock subscribers (scrubber, milestones) off, as in a real export.
+  store.setState('status', 'exporting')
+  renderer.pauseAutoRender()
+  renderer.resize(plan.logicalWidth, plan.logicalHeight, plan.resolution)
+  const { width, height } = renderer.canvasSize
+
+  const exporter = new VideoExporter(renderer.canvas)
+  let glLost = false
+  const onGlLost = (e: Event): void => {
+    e.preventDefault()
+    glLost = true
+    exporter.cancel()
+  }
+  renderer.canvas.addEventListener('webglcontextlost', onGlLost)
+
+  // `performance.memory` is Chrome-only and a snapshot per access (read it
+  // fresh each sample). Real Chrome and the Playwright driver (which passes
+  // --enable-precise-memory-info) report precise values; other Chromium
+  // setups serve a coarse cached bucket — a flat line. Fewer than 3 distinct
+  // samples = unusable → -1.
+  const heap: number[] = []
+  const sampleHeap = (): void => {
+    const mb = heapMB() // 0 where unsupported
+    if (mb > 0) heap.push(mb)
+  }
+  sampleHeap()
+  const heapTimer = setInterval(sampleHeap, 250)
+
+  let deliveredBytes = 0
+  try {
+    progress(`exportreal:${fixtureId}@${res}${fps}`)
+    const t0 = performance.now()
+    const stats = await exporter.export({
+      fps,
+      duration: midi.duration,
+      mode: 'av',
+      filename: 'bench.mp4',
+      bitrate: resolveExportBitrate(res),
+      audio: async (report) =>
+        trimAudioBuffer(
+          await renderAudioOffline({
+            midi,
+            instrumentId: EXPORTREAL_INSTRUMENT,
+            volume: store.state.volume,
+            disabledTrackIds: synth.getDisabledTrackIds(),
+            onProgress: report,
+          }),
+          midi.duration,
+        ),
+      onAudioUnavailable: (stage, err) =>
+        console.warn(`[bench] exportreal lost audio (${stage})`, err),
+      onSeek: (t) => clock.seek(t),
+      onRenderFrame: (t, dt) => renderer.renderManualFrame(t, dt),
+      onProgress: (stage, pct) => progress(`exportreal:${stage}:${Math.round(pct * 100)}%`),
+      deliver: (blob) => {
+        deliveredBytes = blob.size
+      },
+    })
+    const wallMs = performance.now() - t0
+    sampleHeap()
+    if (deliveredBytes === 0) throw new Error('exportreal: exporter delivered no file')
+
+    const heapPrecise = new Set(heap).size >= 3
+    return {
+      wallMs: Math.round(wallMs),
+      videoEncodeMs: stats.videoEncodeMs,
+      encodeFps: round(stats.framesEncoded / (Math.max(1, stats.videoEncodeMs) / 1000)),
+      realtimeFactor: round(wallMs / 1000 / midi.duration),
+      audioRenderMs: stats.audioRenderMs,
+      audioEncodeMs: stats.audioEncodeMs,
+      finalizeMs: stats.finalizeMs,
+      outputMB: round(stats.outputBytes / 1_048_576),
+      attempts: stats.attempts,
+      hw: stats.hw === 'prefer-hardware' ? 1 : 0,
+      audioIncluded: stats.audioIncluded ? 1 : 0,
+      audioWasm: stats.audioEncoder === 'wasm' ? 1 : 0,
+      peakHeapMB: heapPrecise ? round(Math.max(...heap)) : -1,
+      frames: stats.framesEncoded,
+      durationS: round(midi.duration),
+      width,
+      height,
+      fps,
+    }
+  } catch (err) {
+    if (glLost) throw new Error(`exportreal: WebGL context lost at ${res}`)
+    throw err
+  } finally {
+    clearInterval(heapTimer)
+    renderer.canvas.removeEventListener('webglcontextlost', onGlLost)
+    renderer.resize(window.innerWidth, window.innerHeight, originalResolution)
+    renderer.resumeAutoRender()
+    clock.seek(0)
+    store.setState('status', 'ready')
+  }
+}
+
 // ── audiorender: offline audio render cost per instrument ─────────────────
 // How long the "Rendering audio" export stage takes relative to the piece
 // (realtime factor), for a sampled instrument and a convolution-reverb synth.
@@ -1008,6 +1204,7 @@ const SUITES: Record<
   pacing: suitePacing,
   export: suiteExport,
   exportlab: suiteExportLab,
+  exportreal: suiteExportReal,
   audiorender: suiteAudioRender,
   headroom: suiteHeadroom,
   voiceload: suiteVoiceload,
@@ -1017,6 +1214,7 @@ export async function maybeRunBench(ctx: AppCtxValue): Promise<void> {
   const params = new URLSearchParams(window.location.search)
   const suiteParam = params.get('bench')
   if (!suiteParam) return
+  initReport(params)
 
   if (suiteParam === 'list') {
     const { AUDIO_FIXTURE_IDS } = await import('./audioFixtures')
@@ -1024,6 +1222,11 @@ export async function maybeRunBench(ctx: AppCtxValue): Promise<void> {
     // in place by the time it appears.
     window.__BENCH_AUDIO_FIXTURES = [...AUDIO_FIXTURE_IDS]
     window.__BENCH_FIXTURES = BENCH_FIXTURES.map((f) => f.id)
+    await postReport({
+      kind: 'list',
+      midi: window.__BENCH_FIXTURES,
+      audio: window.__BENCH_AUDIO_FIXTURES,
+    })
     return
   }
 
@@ -1033,15 +1236,22 @@ export async function maybeRunBench(ctx: AppCtxValue): Promise<void> {
     if (!run) throw new Error(`unknown bench suite: ${suiteParam}`)
     const fixture = params.get('fixture') ?? BENCH_FIXTURES[0]!.id
     const metrics = await run(ctx, fixture)
-    window.__BENCH_RESULT = {
+    const result: BenchResult = {
       schema: 2,
       suite,
       fixture,
       env: captureEnv(ctx),
       metrics,
     }
+    window.__BENCH_RESULT = result
+    await postReport({ kind: 'result', result })
   } catch (err) {
     window.__BENCH_ERROR = err instanceof Error ? err.message : String(err)
     console.error('[bench]', err)
+    await postReport({
+      kind: 'error',
+      error: window.__BENCH_ERROR,
+      progress: window.__BENCH_PROGRESS ?? null,
+    })
   }
 }

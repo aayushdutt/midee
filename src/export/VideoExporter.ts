@@ -103,6 +103,8 @@ export interface ExportOptions {
   // The soundtrack was lost (see AudioUnavailableStage); the export continues
   // without sound. Fires at most once per export.
   onAudioUnavailable?: (stage: AudioUnavailableStage, err: unknown) => void
+  // Receives the finished MP4 instead of the browser download (bench); default downloads it.
+  deliver?: (blob: Blob, filename: string) => void
   onRenderFrame: (time: number, dt: number) => void
   onSeek: (time: number) => void
 }
@@ -499,7 +501,9 @@ export class VideoExporter {
         if (!buffer) throw new Error('Export produced no file buffer')
         outputBytes = buffer.byteLength
         const blob = new Blob([buffer], { type: 'video/mp4' })
-        triggerDownload(URL.createObjectURL(blob), opts.filename ?? 'midee.mp4')
+        const filename = opts.filename ?? 'midee.mp4'
+        if (opts.deliver) opts.deliver(blob, filename)
+        else triggerDownload(URL.createObjectURL(blob), filename)
       } catch (err) {
         const isCancel = err instanceof DOMException && err.name === 'AbortError'
         if (isCancel) throw err
