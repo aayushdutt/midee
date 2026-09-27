@@ -193,7 +193,8 @@ const fr: Messages = {
   'export.speed.drama.tip': 'Chute plus lente - cinématographique',
   'export.est.minutes': 'environ {min} min',
   'export.est.soon': 'moins d’une minute',
-  'export.warn.large': 'Fichier volumineux · risque de manquer de mémoire sur cet appareil',
+  'export.warn.large':
+    'Fichier volumineux · risque de manquer de mémoire dans cette fenêtre du navigateur',
   'export.audioFormat': 'Format',
   'export.audio.mp3.hint': 'Léger · lisible partout',
   'export.audio.wav.hint': 'Sans perte · fichier plus lourd',
@@ -238,6 +239,8 @@ const fr: Messages = {
   'error.export.generic': 'Échec de l’export - consultez la console pour plus de détails.',
   'error.export.gpuLost':
     'Le contexte graphique a été perdu pendant l’export - essayez une résolution plus basse.',
+  'error.export.storage':
+    'Impossible d’enregistrer la vidéo - libérez de l’espace disque ou essayez une résolution plus basse.',
 
   // ── Mode error boundary ────────────────────────────────────
   'modeError.title': 'Quelque chose n’a pas fonctionné',

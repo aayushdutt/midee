@@ -161,7 +161,8 @@ const ja: Messages = {
   'export.speed.drama.tip': 'ゆっくり落ちる · 映画のような雰囲気',
   'export.est.minutes': '約 {min} 分',
   'export.est.soon': '1 分以内',
-  'export.warn.large': 'ファイルが大きめ · この端末ではメモリが足りなくなる可能性があります',
+  'export.warn.large':
+    'ファイルが大きめ · このブラウザウィンドウではメモリが足りなくなる可能性があります',
   'export.audioFormat': '形式',
   'export.audio.mp3.hint': '軽量 · どこでも再生できます',
   'export.audio.wav.hint': 'ロスレス · ファイルは大きめ',
@@ -225,6 +226,8 @@ const ja: Messages = {
   'error.export.generic': '書き出しに失敗しました。詳細はコンソールを確認してください。',
   'error.export.gpuLost':
     '書き出し中にグラフィックスコンテキストが失われました。解像度を下げてお試しください。',
+  'error.export.storage':
+    '動画ファイルを保存できませんでした。ディスクの空き容量を増やすか、解像度を下げてお試しください。',
 
   'modeError.title': '問題が発生しました',
   'modeError.retry': 'もう一度試す',

@@ -5,11 +5,14 @@
 // the codec process, so overlapping them costs no extra CPU and the wall time
 // becomes max(audio, video) instead of the sum.
 //
-// Output is muxed into memory with `fastStart: 'reserve'` (the moov is
-// reserved up front, so the file is held once, not assembled twice) and
-// handed to the browser as a normal download — the downloads UI is the one
-// place a user can open or reveal the file, which the File System Access
-// path could not offer.
+// Output is muxed with `fastStart: 'reserve'` (the moov is reserved up front)
+// into an export sink (exportSink.ts): an OPFS file on disk where the browser
+// allows it, else memory — a 4K export in memory peaked at ~3.5× the file
+// (opfsExports.ts). Either way the result is handed to the browser as a normal
+// download — the downloads UI is the one place a user can open or reveal the
+// file, which the File System Access path could not offer. A failure writing
+// the OPFS file is not a codec fault: the attempt re-runs in memory when the
+// file is small enough, else the export fails with ExportStorageError.
 //
 // Resilience: codec selection runs two probe passes (hardware-preferred, then
 // software-preferred) and the export retries ONCE on a software plan when the
@@ -30,7 +33,6 @@
 import {
   AudioSample,
   AudioSampleSource,
-  BufferTarget,
   EncodedPacket,
   EncodedVideoPacketSource,
   Mp4OutputFormat,
@@ -40,6 +42,14 @@ import {
 import { type AacEncoderKind, resolveAacEncoder } from './aacEncoder'
 import { downloadBlob } from './download'
 import { isWebKit } from './engine'
+import { type ExportSink, openExportSink } from './exportSink'
+import {
+  canRetryInMemory,
+  ExportStorageError,
+  estimateExportBytes,
+  type MemorySinkReason,
+  type OutputSinkKind,
+} from './opfsExports'
 
 export type ExportStage =
   | 'Rendering audio'
@@ -88,8 +98,13 @@ export interface ExportStats {
   audioEncodeMs: number
   videoEncodeMs: number
   finalizeMs: number
+  // Commit + hand-over after finalize: an OPFS close() (Chrome renames, Safari
+  // copies the file) or the in-memory Blob copy.
+  saveMs: number
   outputBytes: number
   framesEncoded: number
+  outputSink: OutputSinkKind // where the shipped file was assembled
+  outputSinkReason: MemorySinkReason | null // why memory; null on OPFS
 }
 
 // Produces the audio to mux. Called once, right after the muxer starts, so the
@@ -116,6 +131,8 @@ export interface ExportOptions {
   onPlan?: (info: ExportPlanInfo) => void
   // Fired when a mid-run encoder failure triggers the software retry.
   onFallback?: (info: { fromCodec: string; toCodec: string; errorName: string }) => void
+  // Fired per attempt once its output sink is open (failure / interrupt telemetry).
+  onSink?: (info: { kind: OutputSinkKind; reason: MemorySinkReason | null }) => void
   // The soundtrack was lost (see AudioUnavailableStage); the export continues
   // without sound. Fires at most once per export.
   onAudioUnavailable?: (stage: AudioUnavailableStage, err: unknown) => void
@@ -281,6 +298,15 @@ export class VideoExporter {
         opts.onAudioUnavailable?.('audio_encode', new Error('No AAC encoder available'))
       }
     }
+    // Upper bound on the file, for the sink's quota check and the memory retry.
+    const estimatedBytes = estimateExportBytes(
+      bitrate,
+      withAudio ? AUDIO_BITRATE : 0,
+      opts.duration,
+    )
+    // Set once an OPFS attempt failed to write its file: every later attempt
+    // (this retry, and any codec fallback after it) muxes in memory.
+    let memoryReason: MemorySinkReason | null = null
     let attempt = 0
     for (let i = 0; i < plans.length; i++) {
       const plan = plans[i]!
@@ -291,8 +317,12 @@ export class VideoExporter {
         hw: plan.hw,
         attempt,
       })
+      // A fresh sink per attempt; the finally discards its file unless
+      // finish() handed it to the download.
+      const sink = await openExportSink(estimatedBytes, memoryReason)
+      opts.onSink?.({ kind: sink.kind, reason: sink.reason })
       try {
-        return await this.runAttempt(opts, plan, {
+        return await this.runAttempt(opts, plan, sink, {
           fps,
           bitrate,
           width,
@@ -301,6 +331,16 @@ export class VideoExporter {
           audioEncoder: withAudio ? audioEncoder : null,
         })
       } catch (err) {
+        if (sink.failure !== null && !this.cancelled) {
+          // The FILE failed (quota exceeded mid-write, disk I/O, commit), not
+          // the codec — whatever error the muxer surfaced it as. Same plan
+          // again in memory if the file is small enough for that.
+          if (!canRetryInMemory(estimatedBytes)) throw new ExportStorageError(sink.failure)
+          console.warn('Export file write failed; retrying in memory:', sink.failure)
+          memoryReason = 'storage_failed'
+          i--
+          continue
+        }
         const isCancel = err instanceof DOMException && err.name === 'AbortError'
         if (isCancel) throw err
         if (err instanceof PostEncodeError) throw err.inner
@@ -319,6 +359,8 @@ export class VideoExporter {
           errorName: err instanceof Error ? err.name : 'UnknownError',
         })
         console.warn(`Export attempt with ${plan.label} (${plan.hw}) failed; retrying`, err)
+      } finally {
+        await sink.abort()
       }
     }
     // Unreachable: the loop either returns or rethrows on the last plan.
@@ -354,11 +396,12 @@ export class VideoExporter {
   }
 
   // One complete mux+encode pass with a fixed codec plan. Retries re-enter with
-  // a fresh Output/muxer; the audio render is reused, only its encode repeats
-  // (seconds at most, next to the minutes-long video pass it protects).
+  // a fresh Output/muxer and sink; the audio render is reused, only its encode
+  // repeats (seconds at most, next to the minutes-long video pass it protects).
   private async runAttempt(
     opts: ExportOptions,
     plan: CodecPlan,
+    sink: ExportSink,
     cfg: {
       fps: number
       bitrate: number
@@ -373,10 +416,9 @@ export class VideoExporter {
     const dt = 1 / fps
     const totalFrames = Math.max(1, Math.ceil(opts.duration * fps))
 
-    const bufferTarget = new BufferTarget()
     const output = new Output({
       format: new Mp4OutputFormat({ fastStart: 'reserve' }),
-      target: bufferTarget,
+      target: sink.target,
     })
     this.output = output
     const videoSource = new EncodedVideoPacketSource(plan.muxerCodec)
@@ -433,7 +475,9 @@ export class VideoExporter {
             // An audio ENCODE failure (encoder error, mux error) is not a
             // video-codec fault: degrade to a silent export on the same plan
             // instead of burning a full video pass on the fallback codec.
-            if (audioStopped()) return
+            // A failed file write isn't an audio fault either — check() and
+            // export() handle that.
+            if (audioStopped() || sink.failure !== null) return
             console.error('Audio encode failed:', err)
             opts.onAudioUnavailable?.('audio_encode', err)
             audioMissing = true
@@ -482,6 +526,9 @@ export class VideoExporter {
 
     const check = (): void => {
       this.throwIfStopped(encoderError)
+      // The file can't be written any more: stop encoding into it (the muxer
+      // would surface it too, one flush later). export() classifies it.
+      if (sink.failure !== null) throw sink.failure
       if (audioMissing) throw new AudioUnavailableError()
     }
 
@@ -555,6 +602,7 @@ export class VideoExporter {
       opts.onProgress?.('Finalizing', 1)
       let outputBytes = 0
       let finalizeMs = 0
+      let saveMs = 0
       try {
         // Also drains the audio encoder: Mediabunny flushes sources here, and
         // an encoder error on the last slice has no earlier place to surface.
@@ -563,16 +611,20 @@ export class VideoExporter {
         finalizeMs = performance.now() - finalizeStart
 
         opts.onProgress?.('Saving', 0)
-        const buffer = bufferTarget.buffer
-        if (!buffer) throw new Error('Export produced no file buffer')
-        outputBytes = buffer.byteLength
-        const blob = new Blob([buffer], { type: 'video/mp4' })
+        const saveStart = performance.now()
+        // OPFS: commits the file and returns it disk-backed; memory: the Blob.
+        const blob = await sink.finish()
+        saveMs = performance.now() - saveStart
+        outputBytes = blob.size
         const filename = opts.filename ?? 'midee.mp4'
         if (opts.deliver) opts.deliver(blob, filename)
         else downloadBlob(blob, filename)
       } catch (err) {
         const isCancel = err instanceof DOMException && err.name === 'AbortError'
         if (isCancel) throw err
+        // The file failed to write or commit — a storage fault, not an audio
+        // one; export() decides between a memory retry and ExportStorageError.
+        if (sink.failure !== null) throw err
         // With audio in play, a late audio-encoder failure and a mux failure
         // look the same from here (the audio encoder is the only one Mediabunny
         // runs). Retry silent once: if audio was the cause the user still gets
@@ -604,8 +656,11 @@ export class VideoExporter {
         audioEncodeMs: Math.round(audioEncodeMs),
         videoEncodeMs: Math.round(videoEncodeMs),
         finalizeMs: Math.round(finalizeMs),
+        saveMs: Math.round(saveMs),
         outputBytes,
         framesEncoded: totalFrames,
+        outputSink: sink.kind,
+        outputSinkReason: sink.reason,
       }
     } finally {
       videoDone = true

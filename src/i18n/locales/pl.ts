@@ -169,7 +169,7 @@ const pl: Messages & Record<PolishPluralKey, string> = {
   'export.speed.drama.tip': 'Wolniejsze opadanie - filmowo',
   'export.est.minutes': 'około {min} min',
   'export.est.soon': 'poniżej minuty',
-  'export.warn.large': 'Duży plik · na tym urządzeniu może zabraknąć pamięci',
+  'export.warn.large': 'Duży plik · w tym oknie przeglądarki może zabraknąć pamięci',
   'export.audioFormat': 'Format',
   'export.audio.mp3.hint': 'Mały · odtworzysz wszędzie',
   'export.audio.wav.hint': 'Bezstratny · większy plik',
@@ -233,6 +233,8 @@ const pl: Messages & Record<PolishPluralKey, string> = {
   'error.export.generic': 'Eksport nie powiódł się - sprawdź szczegóły w konsoli.',
   'error.export.gpuLost':
     'Kontekst graficzny został utracony podczas eksportu - spróbuj niższej rozdzielczości.',
+  'error.export.storage':
+    'Nie udało się zapisać pliku wideo - zwolnij miejsce na dysku lub spróbuj niższej rozdzielczości.',
 
   'modeError.title': 'Coś poszło nie tak',
   'modeError.retry': 'Spróbuj ponownie',

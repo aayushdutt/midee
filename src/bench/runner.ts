@@ -1184,6 +1184,10 @@ async function suiteExportReal(
       audioRenderMs: stats.audioRenderMs,
       audioEncodeMs: stats.audioEncodeMs,
       finalizeMs: stats.finalizeMs,
+      // OPFS commit / memory Blob. `opfs` 0 = muxed in memory (Playwright's
+      // default off-the-record context gets a small in-RAM OPFS quota).
+      saveMs: stats.saveMs,
+      opfs: stats.outputSink === 'opfs' ? 1 : 0,
       outputMB: round(stats.outputBytes / 1_048_576),
       attempts: stats.attempts,
       hw: stats.hw === 'prefer-hardware' ? 1 : 0,

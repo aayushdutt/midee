@@ -4,7 +4,9 @@
 // be reading a multi-GB file — or waiting on iOS Safari's "Download?" prompt —
 // long after the click, and revoking early breaks the download ("WebKitBlobResource
 // error 1" on iOS; Chrome has a similar race). Cost: the last export's Blob is
-// kept until the next one or until the page goes away.
+// kept until the next one or until the page goes away — for an MP4 streamed to
+// OPFS that Blob is a reference to the file on disk, not a copy in RAM, and
+// the file itself lives until the next export (opfsExports.ts).
 
 let lastUrl: string | null = null
 

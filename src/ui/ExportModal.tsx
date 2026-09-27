@@ -3,6 +3,7 @@ import { createStore } from 'solid-js/store'
 import { Portal, render } from 'solid-js/web'
 import type { MidiFile } from '../core/midi/types'
 import { overallProgress, type ProgressMode, stageEtaSeconds } from '../export/exportMath'
+import { previewExportSink } from '../export/opfsExports'
 import type { ExportStage } from '../export/VideoExporter'
 import { t } from '../i18n'
 import {
@@ -320,11 +321,22 @@ function ExportView(props: ViewProps) {
   // ── Caption ──────────────────────────────────────────────────────────────
   // Line 2 is empty until an export on this device has been timed — the
   // caption reserves its height in CSS so it never shifts when it appears.
+  const exportBytes = (): number =>
+    estimateBytes(resolutionFor(ui.format, ui.quality), props.deps.pieceDuration(), ui.includeAudio)
+  // Where this export's MP4 would be assembled (opfsExports.ts): streamed to
+  // disk in most browsers, in memory in private windows / older Safari. Only
+  // the memory path makes a big file risky. null until checked.
+  const [sinkKind, setSinkKind] = createSignal<'opfs' | 'memory' | null>(null)
+  createEffect(
+    on([props.isOpen, exportBytes], ([open, bytes]) => {
+      if (!open || bytes <= LARGE_EXPORT_BYTES) return
+      void previewExportSink(bytes).then((choice) => setSinkKind(choice.kind))
+    }),
+  )
   const caption = (): { specs: string; time: string; large: boolean } => {
     const d = dims()
     const duration = props.deps.pieceDuration()
     const secs = estimateSeconds(readThroughput(), d, ui.fps, duration)
-    const bytes = estimateBytes(resolutionFor(ui.format, ui.quality), duration, ui.includeAudio)
     return {
       specs: [`${d.width} × ${d.height}`, t('export.fps.unit', { fps: ui.fps })].join(' · '),
       time:
@@ -333,9 +345,9 @@ function ExportView(props: ViewProps) {
           : secs < 50
             ? t('export.est.soon')
             : t('export.est.minutes', { min: Math.ceil(secs / 60) }),
-      // The whole MP4 is assembled in memory before download; past ~1 GB
-      // that is a real risk on a small machine, so say so.
-      large: bytes > LARGE_EXPORT_BYTES,
+      // Past ~1 GB, an MP4 assembled in memory is a real risk on a small
+      // machine, so say so — but only where it would be (sinkKind above).
+      large: exportBytes() > LARGE_EXPORT_BYTES && sinkKind() === 'memory',
     }
   }
 

@@ -33,8 +33,9 @@ export interface ExportUiState {
   audioFormat: ExportAudioFormat
 }
 
-// Rough output size from the bitrate table; only used to warn when the
-// in-memory MP4 would be big enough to threaten a small machine.
+// Rough output size from the bitrate table; only used to warn when an MP4
+// assembled in memory (no OPFS: private windows, older Safari — see
+// export/opfsExports.ts) would be big enough to threaten a small machine.
 export function estimateBytes(
   resolution: ExportResolution,
   durationSec: number,

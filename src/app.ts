@@ -27,6 +27,13 @@ import {
   resolveExportRender,
   trimAudioBuffer,
 } from './export/exportMath'
+// Dependency-free (no Mediabunny): the boot sweep and the storage error type.
+import {
+  ExportStorageError,
+  type MemorySinkReason,
+  type OutputSinkKind,
+  sweepExportFiles,
+} from './export/opfsExports'
 import type { ExportStage, VideoExporter } from './export/VideoExporter'
 import { audioBufferToWav } from './export/wav'
 import { setLocale, t } from './i18n'
@@ -241,6 +248,7 @@ export class App {
         resolution: interrupted.resolution,
         fps: interrupted.fps,
         age_s: Math.max(0, Math.round((Date.now() - interrupted.ts) / 1000)),
+        output_sink: interrupted.sink ?? null,
       })
     }
 
@@ -578,6 +586,9 @@ export class App {
       prefetch(import('./ui/MidiPickerModal'))
     })
     whenIdle(() => prefetch(import('./modes/LearnController')))
+    // Other sessions' stale OPFS export files (killed tabs, old downloads).
+    // Never rejects; a no-op where OPFS export isn't available.
+    whenIdle(() => void sweepExportFiles())
 
     this.controls.updateMidiStatus(this.midiInput.status.value, '')
     this.dropzone.updateMidiStatus(this.midiInput.status.value, '')
@@ -1203,6 +1214,11 @@ export class App {
     let lastStage: ExportStage | 'start' = 'start'
     let lastPct = 0
     let lastPersistedPct = -1
+    // Where the current attempt's MP4 is being assembled (OPFS file or memory;
+    // see opfsExports.ts). Boxed like codecInfo below: set in a callback.
+    // Rides the in-flight marker so export_interrupted says which one died.
+    const sinkInfo: { current: { kind: OutputSinkKind; reason: MemorySinkReason | null } | null } =
+      { current: null }
     const onExportProgress = (stage: ExportStage, pct: number): void => {
       if (stage !== lastStage || pct - lastPersistedPct >= 0.1) {
         lastPersistedPct = pct
@@ -1213,6 +1229,7 @@ export class App {
           resolution: settings.resolution,
           fps: settings.fps,
           ts: Date.now(),
+          sink: sinkInfo.current?.kind ?? null,
         })
       }
       lastStage = stage
@@ -1389,6 +1406,9 @@ export class App {
         onPlan: (info) => {
           codecInfo.current = { codec: info.codec, hw: info.hw, attempts: info.attempt }
         },
+        onSink: (info) => {
+          sinkInfo.current = info
+        },
         onFallback: (info) =>
           trackEvent('export_fallback', {
             from_codec: info.fromCodec,
@@ -1428,7 +1448,13 @@ export class App {
         audio_encode_ms: stats.audioEncodeMs,
         video_encode_ms: stats.videoEncodeMs,
         finalize_ms: stats.finalizeMs,
+        // OPFS commit (Safari copies the whole file here) or the memory Blob.
+        save_ms: stats.saveMs,
         output_mb: Math.round((stats.outputBytes / 1_048_576) * 10) / 10,
+        // 'opfs' = streamed to disk; 'memory' + why (unsupported / unavailable
+        // / quota / storage_failed). See opfsExports.ts.
+        output_sink: stats.outputSink,
+        output_sink_reason: stats.outputSinkReason,
         encode_fps:
           stats.videoEncodeMs > 0
             ? Math.round(stats.framesEncoded / (stats.videoEncodeMs / 1000))
@@ -1453,7 +1479,9 @@ export class App {
       if (!isCancel) console.error('Export failed:', err)
       const errorMessage = glContextLost
         ? t('error.export.gpuLost')
-        : (err as Error).message || t('error.export.generic')
+        : err instanceof ExportStorageError
+          ? t('error.export.storage')
+          : (err as Error).message || t('error.export.generic')
       track(isCancel ? 'export_cancelled' : 'export_failed', {
         ...exportBase,
         stage: exportStage,
@@ -1475,6 +1503,8 @@ export class App {
               codec: codecInfo.current?.codec ?? null,
               hw: codecInfo.current?.hw ?? null,
               attempts: codecInfo.current?.attempts ?? 0,
+              output_sink: sinkInfo.current?.kind ?? null,
+              output_sink_reason: sinkInfo.current?.reason ?? null,
             }),
       })
       if (isCancel) {

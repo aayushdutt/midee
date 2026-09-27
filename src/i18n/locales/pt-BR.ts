@@ -190,7 +190,7 @@ const ptBR: Messages = {
   'export.speed.drama.tip': 'Queda mais lenta - cinematográfica',
   'export.est.minutes': 'cerca de {min} min',
   'export.est.soon': 'menos de um minuto',
-  'export.warn.large': 'Arquivo grande · pode ficar sem memória neste dispositivo',
+  'export.warn.large': 'Arquivo grande · pode ficar sem memória nesta janela do navegador',
   'export.audioFormat': 'Formato',
   'export.audio.mp3.hint': 'Pequeno · toca em qualquer lugar',
   'export.audio.wav.hint': 'Sem perdas · arquivo maior',
@@ -234,6 +234,8 @@ const ptBR: Messages = {
   'error.export.generic': 'Falha na exportação - verifique o console para detalhes.',
   'error.export.gpuLost':
     'O contexto gráfico foi perdido durante a exportação - tente uma resolução menor.',
+  'error.export.storage':
+    'Não foi possível salvar o vídeo - libere espaço em disco ou tente uma resolução menor.',
 
   // ── Mode error boundary ────────────────────────────────────
   'modeError.title': 'Algo deu errado',

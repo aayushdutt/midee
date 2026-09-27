@@ -190,7 +190,7 @@ export const en = {
   'export.speed.drama.tip': 'Slower fall - cinematic',
   'export.est.minutes': 'about {min} min',
   'export.est.soon': 'under a minute',
-  'export.warn.large': 'Large file · may run out of memory on this device',
+  'export.warn.large': 'Large file · may run out of memory in this browser window',
   'export.audioFormat': 'Format',
   'export.audio.mp3.hint': 'Small · plays anywhere',
   'export.audio.wav.hint': 'Lossless · larger file',
@@ -255,6 +255,8 @@ export const en = {
     'Audio encoding failed - MP4 will be silent. The Audio tab can still export the sound on its own.',
   'error.export.generic': 'Export failed - check console for details.',
   'error.export.gpuLost': 'The graphics context was lost during export - try a lower resolution.',
+  'error.export.storage':
+    "Couldn't save the video file - free up some disk space or try a lower resolution.",
 
   // ── Mode error boundary ────────────────────────────────────
   'modeError.title': 'Something went wrong',

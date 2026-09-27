@@ -160,7 +160,7 @@ const zhCN: Messages = {
   'export.speed.drama.tip': '下落更慢，更有电影感',
   'export.est.minutes': '约 {min} 分钟',
   'export.est.soon': '不到一分钟',
-  'export.warn.large': '文件较大 · 此设备可能内存不足',
+  'export.warn.large': '文件较大 · 此浏览器窗口可能内存不足',
   'export.audioFormat': '格式',
   'export.audio.mp3.hint': '体积小 · 随处可播',
   'export.audio.wav.hint': '无损 · 文件更大',
@@ -219,6 +219,7 @@ const zhCN: Messages = {
     '音频编码失败，导出的 MP4 将没有声音。你仍可在“音频”标签页单独导出音频。',
   'error.export.generic': '导出失败，请查看控制台了解详情。',
   'error.export.gpuLost': '导出过程中图形上下文丢失，请尝试更低的分辨率。',
+  'error.export.storage': '无法保存视频文件，请释放磁盘空间或尝试更低的分辨率。',
 
   'modeError.title': '出了点问题',
   'modeError.retry': '重试',

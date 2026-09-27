@@ -251,6 +251,9 @@ export interface ExportInflightMarker {
   resolution: string
   fps: number
   ts: number
+  // 'opfs' | 'memory' once the attempt's output sink is open. Absent in
+  // markers written before it existed.
+  sink?: string | null
 }
 
 export function markExportInflight(marker: ExportInflightMarker): void {
@@ -398,6 +401,9 @@ type EventMap = {
     resolution: string
     fps: number
     age_s: number
+    // Where the MP4 was being assembled: 'memory' deaths are the OOM
+    // suspects the OPFS sink exists for; null = before the sink opened.
+    output_sink: string | null
   }
 }
 

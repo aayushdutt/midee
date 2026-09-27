@@ -190,7 +190,7 @@ const es: Messages = {
   'export.speed.drama.tip': 'Caída más lenta - cinematográfica',
   'export.est.minutes': 'unos {min} min',
   'export.est.soon': 'menos de un minuto',
-  'export.warn.large': 'Archivo grande · puede quedarse sin memoria en este dispositivo',
+  'export.warn.large': 'Archivo grande · puede quedarse sin memoria en esta ventana del navegador',
   'export.audioFormat': 'Formato',
   'export.audio.mp3.hint': 'Pequeño · se reproduce en cualquier sitio',
   'export.audio.wav.hint': 'Sin pérdida · archivo más grande',
@@ -234,6 +234,8 @@ const es: Messages = {
   'error.export.generic': 'Falló la exportación - revisa la consola para más detalles.',
   'error.export.gpuLost':
     'Se perdió el contexto gráfico durante la exportación - prueba una resolución más baja.',
+  'error.export.storage':
+    'No se pudo guardar el vídeo - libera espacio en el disco o prueba una resolución más baja.',
 
   // ── Mode error boundary ────────────────────────────────────
   'modeError.title': 'Algo salió mal',
