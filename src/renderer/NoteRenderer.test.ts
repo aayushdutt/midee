@@ -1,9 +1,10 @@
-import { Container } from 'pixi.js'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Container, type Renderer } from 'pixi.js'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MidiTrack } from '../core/midi/types'
+import { setGlowMode } from './bakedGlow'
 import { createNoteMaterial } from './createNoteMaterial'
 import { NoteRenderer } from './NoteRenderer'
-import { THEMES } from './theme'
+import { sunsetTheme, THEMES } from './theme'
 import { Viewport } from './viewport'
 
 vi.mock('pixi.js', () => {
@@ -13,6 +14,7 @@ vi.mock('pixi.js', () => {
     renderable = true
     label = ''
     mask: MockContainer | null = null
+    filters: unknown[] | null = null
     addChild(child: MockContainer) {
       this.children.push(child)
       return child
@@ -33,10 +35,27 @@ vi.mock('pixi.js', () => {
       return this
     }
   }
-  return { Container: MockContainer, Graphics: MockGraphics }
+  class MockNineSliceSprite extends MockContainer {
+    texture: unknown = null
+    topHeight = 0
+    bottomHeight = 0
+    position = { x: 0, y: 0, set: vi.fn() }
+    tint = 0xffffff
+    blendMode = 'normal'
+    setSize = vi.fn()
+  }
+  return {
+    Container: MockContainer,
+    Graphics: MockGraphics,
+    NineSliceSprite: MockNineSliceSprite,
+    RenderTexture: { create: vi.fn(() => ({ destroy: vi.fn() })) },
+    Texture: { EMPTY: {} },
+  }
 })
 vi.mock('pixi-filters', () => ({
   GlowFilter: class {
+    color = 0xffffff
+    outerStrength = 0
     constructor(public options: { distance: number }) {}
     get distance() {
       return this.options.distance
@@ -44,6 +63,8 @@ vi.mock('pixi-filters', () => ({
     destroy() {}
   },
 }))
+
+const pixiRenderer = { render: vi.fn() } as unknown as Renderer
 vi.mock('./noteLabels', () => ({
   NoteLabelLayer: class {
     container = new Container()
@@ -84,7 +105,7 @@ describe('material note consumption', () => {
         keyboardHeight: 100,
         pixelsPerSecond: 100,
       })
-      const renderer = new NoteRenderer(theme)
+      const renderer = new NoteRenderer(theme, pixiRenderer)
       renderer.setTracks([track])
       const material = vi.mocked(createNoteMaterial).mock.results.at(-1)!.value
       const place = vi.mocked(material.place)
@@ -115,4 +136,53 @@ describe('material note consumption', () => {
       renderer.destroy()
     })
   }
+})
+
+interface MockNode {
+  label: string
+  visible: boolean
+  filters: unknown[] | null
+  children: MockNode[]
+  tint?: number
+}
+
+describe('glow mode switch', () => {
+  afterEach(() => setGlowMode('filter', 'average'))
+
+  it('swaps the GlowFilter for baked halo sprites and back', () => {
+    const viewport = new Viewport({
+      canvasWidth: 800,
+      canvasHeight: 500,
+      keyboardHeight: 100,
+      pixelsPerSecond: 100,
+    })
+    const renderer = new NoteRenderer(sunsetTheme, pixiRenderer)
+    renderer.setTracks([track])
+    const notes = renderer.container as unknown as MockNode
+    // The bench toggles glowContainer.renderable: both paths must live in it.
+    const glow = notes.children.find((c) => c.label === 'note-glow')!
+    const baked = glow.children.find((c) => c.label === 'note-glow-baked')!
+    const halos = () => baked.children.filter((s) => s.visible)
+    const draw = (time: number) => renderer.draw([track], time, viewport, new Set([track.id]), null)
+
+    draw(3)
+    expect(glow.filters).toHaveLength(1)
+    expect(baked.visible).toBe(false)
+    expect(halos()).toHaveLength(0)
+
+    setGlowMode('baked')
+    draw(3)
+    expect(glow).toMatchObject({ filters: null, visible: true })
+    expect(baked.visible).toBe(true)
+    expect(halos().map((s) => s.tint)).toEqual([sunsetTheme.trackColors[0]])
+    draw(6.5) // past the note's end: nothing sounds
+    expect(glow.visible).toBe(false)
+    expect(halos()).toHaveLength(0)
+
+    setGlowMode('filter')
+    draw(3)
+    expect(glow.filters).toHaveLength(1)
+    expect(baked.visible).toBe(false)
+    renderer.destroy()
+  })
 })

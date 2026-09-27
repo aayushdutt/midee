@@ -1,6 +1,13 @@
-import { Container, Graphics } from 'pixi.js'
+import { Container, Graphics, type Renderer } from 'pixi.js'
 import { GlowFilter } from 'pixi-filters'
 import type { MidiTrack } from '../core/midi/types'
+import {
+  ACTIVE_NOTE_ALPHA,
+  BakedGlow,
+  GLOW_QUALITY,
+  type GlowMode,
+  glowSettings,
+} from './bakedGlow'
 import { createNoteMaterial } from './createNoteMaterial'
 import type { NoteMaterial, NoteMaterialId } from './NoteMaterial'
 import { NoteLabelLayer } from './noteLabels'
@@ -10,6 +17,8 @@ import { type Viewport, visibleNoteRange } from './viewport'
 // One Graphics object per track — same-color draws are batched together.
 // A separate glow container holds only the notes currently being struck,
 // so the expensive GlowFilter only runs over a small subset each frame.
+// Glow mode 'baked' (bakedGlow.ts, A/B switch) drops the filter and puts
+// pre-baked halo sprites under the same struck-note overlay instead.
 
 const PRACTICE_INACTIVE_ALPHA_SCALE = 0.24
 
@@ -20,6 +29,8 @@ export class NoteRenderer {
   private glowContainer: Container
   private glowGraphics: Graphics
   private glowFilter: GlowFilter
+  private bakedGlow: BakedGlow
+  private glowMode: GlowMode = 'filter'
   // Pitch-class labels ("E", "F♯") on the bars — opt-in, sits above the glow
   // so the filter never blooms the text.
   private labels = new NoteLabelLayer()
@@ -29,7 +40,11 @@ export class NoteRenderer {
   private clipWidth = 0
   private clipHeight = 0
 
-  constructor(private theme: Theme) {
+  // `renderer` is only used by the baked glow to render its halo textures.
+  constructor(
+    private theme: Theme,
+    renderer: Renderer,
+  ) {
     this.container = new Container()
     this.container.label = 'notes'
     this.materialClip.label = 'note-consumption-clip'
@@ -44,15 +59,27 @@ export class NoteRenderer {
       outerStrength: theme.noteGlowStrength,
       innerStrength: 0,
       color: 0xffffff,
-      quality: 0.3,
+      quality: GLOW_QUALITY,
     })
-    this.glowContainer.filters = [this.glowFilter]
 
+    // Halo sprites (baked mode) sit under the struck-note overlay rects.
+    this.bakedGlow = new BakedGlow(renderer)
+    this.glowContainer.addChild(this.bakedGlow.container)
     this.glowGraphics = new Graphics()
     this.glowContainer.addChild(this.glowGraphics)
+    this.applyGlowMode(glowSettings().mode)
     this.container.addChild(this.glowContainer)
     this.container.addChild(this.labels.container)
     this.updateTheme(theme)
+  }
+
+  // 'filter': GlowFilter over the overlay rects. 'baked': no filter; halo
+  // sprites under the same rects. Bakes are freed when leaving 'baked'.
+  private applyGlowMode(mode: GlowMode): void {
+    this.glowMode = mode
+    this.glowContainer.filters = mode === 'filter' ? [this.glowFilter] : null
+    this.bakedGlow.container.visible = mode === 'baked'
+    if (mode === 'filter') this.bakedGlow.release()
   }
 
   setLabelsEnabled(on: boolean): void {
@@ -94,6 +121,10 @@ export class NoteRenderer {
   ): void {
     const { noteRadius } = this.theme
     const nowLineY = viewport.nowLineY
+    const { mode: glowMode, tint: glowTint } = glowSettings()
+    if (glowMode !== this.glowMode) this.applyGlowMode(glowMode)
+    const baked = glowMode === 'baked' ? this.bakedGlow : null
+    baked?.begin(this.theme.noteGlowDistance, this.theme.noteGlowStrength, noteRadius)
     this.glowGraphics.clear()
     if (
       this.material &&
@@ -183,7 +214,8 @@ export class NoteRenderer {
           note.time + note.duration >= currentTime
         ) {
           this.glowGraphics.roundRect(x, y, w, h, noteRadius)
-          this.glowGraphics.fill({ color: noteColor, alpha: 0.9 })
+          this.glowGraphics.fill({ color: noteColor, alpha: ACTIVE_NOTE_ALPHA })
+          baked?.add(x, y, w, h, noteColor)
           sumR += colorR
           sumG += colorG
           sumB += colorB
@@ -200,9 +232,11 @@ export class NoteRenderer {
         (Math.round(sumR / activeCount) << 16) |
         (Math.round(sumG / activeCount) << 8) |
         Math.round(sumB / activeCount)
-      this.glowFilter.color = avgColor
+      if (baked) baked.end(glowTint === 'average' ? avgColor : null)
+      else this.glowFilter.color = avgColor
       this.glowContainer.visible = true
     } else {
+      baked?.end(null)
       this.glowContainer.visible = false
     }
   }
@@ -230,11 +264,12 @@ export class NoteRenderer {
         distance: theme.noteGlowDistance,
         outerStrength: theme.noteGlowStrength,
         innerStrength: 0,
-        quality: 0.3,
+        quality: GLOW_QUALITY,
       })
-      this.glowContainer.filters = [this.glowFilter]
+      if (this.glowMode === 'filter') this.glowContainer.filters = [this.glowFilter]
     }
     this.glowFilter.outerStrength = theme.noteGlowStrength
+    // Baked halos re-bake themselves when the glow params change (begin()).
   }
 
   clear(): void {
@@ -250,6 +285,7 @@ export class NoteRenderer {
   destroy(): void {
     this.material?.destroy()
     this.glowFilter.destroy()
+    this.bakedGlow.destroy()
     this.container.destroy({ children: true })
   }
 }

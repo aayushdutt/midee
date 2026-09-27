@@ -14,5 +14,9 @@ declare global {
     __BENCH_AUDIO_FIXTURES?: string[]
     /** Live phase marker — read by the driver to diagnose timeouts. */
     __BENCH_PROGRESS?: string
+    /** Set by `?bench=glowshots` — PNG data URLs keyed `<theme>-<moment>-<mode>`. */
+    __GLOW_SHOTS?: Record<string, string>
+    /** Set by `?bench=glowshots` — the fixture times each moment was rendered at. */
+    __GLOW_SHOT_TIMES?: Record<string, number>
   }
 }

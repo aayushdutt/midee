@@ -118,7 +118,18 @@ const EXPORTREAL_FPS = [30, 60]
 // What covers the canvas during exportreal (see applyExportOverlay in runner.ts).
 const EXPORT_OVERLAYS = ['none', 'modal', 'opaque', 'bare']
 // Suites that take the --res/--fps matrix (`&res=…&fps=…`).
-const RES_SUITES = new Set(['exportreal', 'exportlab', 'exportstages', 'encodemax', 'encodepar'])
+const RES_SUITES = new Set([
+  'exportreal',
+  'exportlab',
+  'exportstages',
+  'glowshots',
+  'encodemax',
+  'encodepar',
+  'exportquality',
+])
+// Where pages store files through the sink (`POST /f/<token>/<name>`):
+// exportquality's MP4s, for ffprobe / AVFoundation checks outside the browser.
+const EXPORTS_DIR = resolve(BENCH_DIR, 'exports')
 // Which of a suite's repeated runs is kept (lowest score wins). Default is
 // the frame median; suites without one say what "best" means here.
 const RUN_SCORE = {
@@ -151,6 +162,28 @@ const PIVOT_SUITES = {
   ],
   encodemax: ['fps', 'steady', 'lat', 'kbpf', 'dq'],
   encodepar: ['steady', 'fps', 'x'],
+  exportquality: [
+    'wall',
+    'fps',
+    'mb',
+    'kbps',
+    'tgt',
+    'psnr',
+    'psnrMin',
+    'ssim',
+    'ssimMin',
+    'bias',
+    'frames',
+    'ptsErr',
+    'reorders',
+    'keyOff',
+    'firstPts',
+    'onset',
+    'onsetD',
+    'hw',
+    'steps',
+    'saved',
+  ],
 }
 
 const DEFAULT_SUITES = ['frame', 'attribution', 'live', 'idle']
@@ -198,11 +231,15 @@ usage: npm run bench [-- <flags>]        build (${OUT_DIR}/) + run
 
   --suite a,b,c     suites: frame, attribution, live, idle, pacing, export,
                     exportlab, exportreal, exportstages, encodemax, encodepar,
-                    audiorender, headroom, voiceload
+                    exportquality, audiorender, headroom, voiceload
                     (default: frame,attribution,live,idle)
                     export = replica of the export loop (per-frame costs)
                     exportreal = the shipped VideoExporter end to end (audio
                     + video + mux, first 20 s of the piece; use --browser)
+                    exportquality = encoder knobs through the real exporter
+                    on deterministic frames: size, PSNR/SSIM vs the render,
+                    frame/pts/keyframe structure, A/V sync; MP4s saved to
+                    bench/exports/ (real-browser mode)
                     headroom = offline pre-clip peak per instrument on held
                     clusters (synthetic fixtures: cluster-ff, cluster-mf,
                     stack-185, pedal-piece)
@@ -220,8 +257,14 @@ usage: npm run bench [-- <flags>]        build (${OUT_DIR}/) + run
   --overlay a,b     exportreal only: what covers the canvas during the export —
                     none (default), modal (the export dialog's blurred scrim, as
                     shipped), opaque (same scrim, no blur), bare (only the canvas)
-  --configs a,b     exportstages only: subset of base, noparticles, noglow,
-                    labels, bare, glass (default all)
+  --configs a,b     exportstages: subset of base, bakedglow, noparticles, noglow,
+                    labels, bare, glass; exportquality: subset of hw-rt, hw-q,
+                    sw-rt, sw-eq (default all; Safari ignores sw, so hw-rt,hw-q
+                    there)
+  --glow filter|baked
+                    note-glow path for every suite (default filter, as
+                    shipped; baked = src/renderer/bakedGlow.ts). baked results
+                    key their own baseline rows (+glow-baked)
   --cold hw|sw      encodemax only: which encoder the cold-start probe opens
                     the page with (default hw)
   --hw hw|sw        exportstages only: encode with prefer-hardware (default,
@@ -334,6 +377,9 @@ function parseArgs(argv) {
       for (const o of args.overlay) {
         if (!EXPORT_OVERLAYS.includes(o)) die(`--overlay expects ${EXPORT_OVERLAYS.join('|')}, got ${o}`)
       }
+    } else if (a === '--glow') {
+      args.glow = next()
+      if (args.glow !== 'filter' && args.glow !== 'baked') die(`--glow expects filter|baked, got ${args.glow}`)
     } else if (a === '--configs') args.configs = next()
     else if (a === '--variants') args.variants = next()
     else if (a === '--queue') args.queue = Math.max(1, Number(next()))
@@ -674,7 +720,9 @@ function closeTabs(app, token) {
 }
 
 // Local POST sink for real-browser runs: `POST /r/<token>` with the page's
-// JSON (`kind`: progress | list | result | error). CORS `*` + OPTIONS so the
+// JSON (`kind`: progress | list | result | error), and `POST /f/<token>/<name>`
+// with a file the page wants kept (written to EXPORTS_DIR; only for a live
+// run's token, only plain `*.mp4` names). CORS `*` + OPTIONS so the
 // cross-port POST works whatever the page sends.
 const SINK_CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -688,6 +736,27 @@ function startSink() {
     if (req.method === 'OPTIONS') {
       res.writeHead(204, SINK_CORS)
       res.end()
+      return
+    }
+    const file = /^\/f\/(\w+)\/([^/]+)$/.exec(req.url ?? '')
+    if (file) {
+      let name = ''
+      try {
+        name = decodeURIComponent(file[2])
+      } catch {
+        // malformed escape → rejected below
+      }
+      const chunks = []
+      req.on('data', (c) => chunks.push(c))
+      req.on('end', () => {
+        const ok = req.method === 'POST' && slots.has(file[1]) && /^[\w.@+-]+\.mp4$/.test(name)
+        if (ok) {
+          mkdirSync(EXPORTS_DIR, { recursive: true })
+          writeFileSync(resolve(EXPORTS_DIR, name), Buffer.concat(chunks))
+        }
+        res.writeHead(ok ? 204 : 404, SINK_CORS)
+        res.end()
+      })
       return
     }
     const token = /^\/r\/(\w+)$/.exec(req.url ?? '')?.[1]
@@ -749,16 +818,18 @@ function startSink() {
 
 // Suites parameterised beyond the fixture: one entry per variant, the label
 // appended to the fixture so each variant keys its own baseline row.
+// --glow baked rides on every suite; 'filter' (shipped) keeps plain labels.
 function variantsFor(suite, args) {
-  if (!RES_SUITES.has(suite)) return [{ label: '', query: '' }]
+  const glow = args.glow === 'baked' ? { label: '+glow-baked', query: '&glow=baked' } : { label: '', query: '' }
+  if (!RES_SUITES.has(suite)) return [glow]
   // exportreal × --overlay: 'none' keeps the plain label, so it compares
   // against the existing baseline row.
   const overlays = suite === 'exportreal' ? args.overlay : ['none']
   return args.res.flatMap((res) =>
     args.fps.flatMap((fps) =>
       overlays.map((ov) => ({
-        label: `@${res}${fps}${ov === 'none' ? '' : `+${ov}`}`,
-        query: `&res=${res}&fps=${fps}${ov === 'none' ? '' : `&overlay=${ov}`}`,
+        label: `@${res}${fps}${ov === 'none' ? '' : `+${ov}`}${glow.label}`,
+        query: `&res=${res}&fps=${fps}${ov === 'none' ? '' : `&overlay=${ov}`}${glow.query}`,
       })),
     ),
   )
@@ -776,7 +847,9 @@ async function runSuite(target, args, suite, fixture, variantQuery) {
   let query = `bench=${suite}&fixture=${fixture}${variantQuery}`
   if (audio && args.instruments) query += `&instruments=${args.instruments.join(',')}`
   if (audio && args.protectionOff) query += '&protection=off'
-  if (suite === 'exportstages' && args.configs) query += `&configs=${args.configs}`
+  if ((suite === 'exportstages' || suite === 'exportquality') && args.configs) {
+    query += `&configs=${args.configs}`
+  }
   if (suite === 'encodemax' && args.cold) query += `&cold=${args.cold}`
   if (suite === 'exportstages' && args.hw) query += `&hw=${args.hw}`
   if (suite === 'exportstages' && args.queue) query += `&queue=${args.queue}`

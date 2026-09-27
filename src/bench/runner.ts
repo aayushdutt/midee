@@ -23,12 +23,19 @@
 // `exportlab` (capture/encoder knob sweep), `exportstages` (where one export
 // frame's time goes, per effect), `encodemax` (encoder ceiling on
 // pre-rendered frames), `encodepar` (parallel encoders, main thread vs
-// workers). All take `&res=720p|1080p|4k&fps=30|60` like `exportreal`.
+// workers), `exportquality` (output size / fidelity / structure / A/V sync of
+// encoder knobs through the real exporter). All take
+// `&res=720p|1080p|4k&fps=30|60` like `exportreal`.
+//
+// `&glow=filter|baked` (+ `&glowTint=average|note`) picks the note-glow path
+// for any suite (renderer/bakedGlow.ts); absent = the shipped 'filter'.
 
 import { INSTRUMENTS, type InstrumentId, preloadSampleBuffers } from '../audio/instruments'
 import { parseMidiFile } from '../core/midi/parser'
 import type { MidiFile } from '../core/midi/types'
 import { resolveExportBitrate, resolveExportRender, trimAudioBuffer } from '../export/exportMath'
+import type { EncoderOverrides } from '../export/VideoExporter'
+import { type GlowMode, glowSettings, setGlowMode } from '../renderer/bakedGlow'
 import type { ParticleStyle } from '../renderer/particleStyles'
 import { ALL_THEMES, type ThemeId } from '../renderer/theme'
 import type { AppCtxValue } from '../store/AppCtx'
@@ -81,6 +88,8 @@ export type BenchSuite =
   | 'exportstages'
   | 'encodemax'
   | 'encodepar'
+  | 'exportquality'
+  | 'glowshots'
   | 'audiorender'
   | 'headroom'
   | 'voiceload'
@@ -1203,6 +1212,320 @@ async function suiteExportReal(
   }
 }
 
+// ── exportquality: what an encoder knob costs in OUTPUT, not just speed ───
+// Before shipping latencyMode 'quality' or Chrome's software encoder (both
+// faster in exportlab), check the files: size, bitrate vs target, fidelity
+// against the frames the renderer drew, frame/timestamp/keyframe structure,
+// A/V sync — through the REAL VideoExporter. One page load per browser × res:
+//
+//   1. Deterministic frames. The look is pinned (exportstages 'base': sunset,
+//      embers, glow, no labels) and Math.random is swapped for a seeded PRNG
+//      around each renderManualFrame call only (classic particle styles draw
+//      from it at emission; the offline audio render running alongside never
+//      sees it). The keyboard grain is baked once per page, so it's shared.
+//   2. Reference: the export's frames (t = i/fps from 0, the first
+//      EXPORTQUALITY_CAP_S s) rendered without encoding; the luma of every
+//      EXPORTQUALITY_SAMPLE_EVERY-th frame is kept at native resolution
+//      (BT.709-weighted Y' of the canvas RGB — 20 planes ≈ 166 MB at 4K).
+//      Rendered twice: `refPsnr` = min PSNR between the passes (99 =
+//      bit-identical) proves the determinism the comparison rests on.
+//   3. Per config, VideoExporter.export() as the app calls it (mode 'av',
+//      upright audio, preset bitrate, encoder pre-warmed like the dialog does)
+//      with the knobs from ExportOptions.encoderOverrides, same seed. `wall` /
+//      `fps` come from these passes — nothing else runs in them. The MP4 is
+//      POSTed to the driver's sink (→ bench/exports/) for ffprobe/AVFoundation.
+//   4. Each MP4 is demuxed and decoded in-page (videoQuality.inspectMp4:
+//      Mediabunny + the browser's decoder, frames drawn through the browser's
+//      YUV→RGB honouring the file's colour tags) and scored on the same luma:
+//      PSNR, 8×8 block SSIM, bias; plus packets vs ceil(duration × fps), pts =
+//      i/fps in decode order (a decrease = B-frame reordering), first pts,
+//      keyframes every 2 s, and the decoded audio onset vs the shipped config's.
+//
+// Configs (`&configs=` picks a subset — Safari ignores prefer-software):
+//   hw-rt  shipped: prefer-hardware, realtime, preset bitrate
+//   hw-q   prefer-hardware, latencyMode 'quality'
+//   sw-rt  prefer-software, realtime, preset bitrate
+//   sw-eq  prefer-software, bitrate aimed at hw-rt's actual video kbps (needs
+//          hw-rt first; up to 2 proportional corrections while > 15 % off):
+//          the equal-size quality comparison
+// Metrics `<config>_<m>`: wall ms, fps (frames / video encode s), mb (file),
+// kbps (video, actual) vs tgt (requested), psnr/psnrMin, ssim/ssimMin, bias,
+// frames, ptsErr (max ms), reorders, keyOff, firstPts, onset (audio ms),
+// onsetD (vs hw-rt), hw (1 = the hardware plan shipped), steps (sw-eq
+// attempts; the last one is reported), saved (file stored).
+
+const EXPORTQUALITY_CAP_S = 20 // = exportreal, so hw-rt's wall time is comparable
+// 20 reference frames (166 MB of luma at 4K). Coprime with the 60/120-frame
+// GOP so the samples spread over GOP positions: a stride of 30 made every
+// other sample a keyframe, and encoders spend very differently on keyframes
+// (latencyMode 'quality' 1.5–3× more), which skewed mean PSNR.
+const EXPORTQUALITY_SAMPLE_EVERY = 31
+const EXPORTQUALITY_SEED = 0x6d1dee
+const EXPORTQUALITY_EQ_TOLERANCE = 0.15
+const EXPORTQUALITY_EQ_MAX_STEPS = 3
+
+interface QualityConfig {
+  name: string
+  overrides: EncoderOverrides
+  bitrate: 'preset' | 'match-hw'
+}
+
+const QUALITY_CONFIGS: readonly QualityConfig[] = [
+  {
+    name: 'hw-rt',
+    overrides: { hardwareAcceleration: 'prefer-hardware', latencyMode: 'realtime' },
+    bitrate: 'preset',
+  },
+  {
+    name: 'hw-q',
+    overrides: { hardwareAcceleration: 'prefer-hardware', latencyMode: 'quality' },
+    bitrate: 'preset',
+  },
+  {
+    name: 'sw-rt',
+    overrides: { hardwareAcceleration: 'prefer-software', latencyMode: 'realtime' },
+    bitrate: 'preset',
+  },
+  {
+    name: 'sw-eq',
+    overrides: { hardwareAcceleration: 'prefer-software', latencyMode: 'realtime' },
+    bitrate: 'match-hw',
+  },
+]
+
+// Renders the export's frames without encoding; keeps the luma of every
+// `sampleEvery`-th frame. Read back in the same task as the render, while the
+// WebGL drawing buffer is still intact.
+async function renderQualityReference(
+  ctx: AppCtxValue,
+  frames: number,
+  fps: number,
+  width: number,
+  height: number,
+): Promise<Map<number, Uint8Array>> {
+  const { renderer, clock } = ctx.services
+  const { lumaFromRgba, mulberry32, withRandom } = await import('./videoQuality')
+  renderer.pauseAutoRender() // clears particles + note tracking: same start as an export
+  const random = mulberry32(EXPORTQUALITY_SEED)
+  const scratch = new OffscreenCanvas(width, height).getContext('2d', { willReadFrequently: true })
+  if (!scratch) throw new Error('exportquality: no 2D context for reference frames')
+  const refs = new Map<number, Uint8Array>()
+  const dt = 1 / fps
+  for (let i = 0; i < frames; i++) {
+    const t = i * dt
+    clock.seek(t)
+    withRandom(random, () => renderer.renderManualFrame(t, dt))
+    if (i % EXPORTQUALITY_SAMPLE_EVERY === 0) {
+      scratch.drawImage(renderer.canvas, 0, 0)
+      refs.set(i, lumaFromRgba(scratch.getImageData(0, 0, width, height).data))
+    }
+    if (i % 10 === 9) await yieldNow()
+  }
+  return refs
+}
+
+// Stores an exported file through the driver's sink (`/f/<token>/<name>` next
+// to the report URL → bench/exports/). False without a sink (headless).
+async function saveExportFile(name: string, blob: Blob): Promise<boolean> {
+  if (!reportUrl) return false
+  try {
+    const url = `${reportUrl.replace('/r/', '/f/')}/${encodeURIComponent(name)}`
+    return (await fetch(url, { method: 'POST', body: blob })).ok
+  } catch {
+    return false
+  }
+}
+
+function browserTag(): string {
+  const ua = navigator.userAgent
+  if (ua.includes('HeadlessChrome')) return 'headless'
+  if (ua.includes('Chrome/')) return 'chrome'
+  if (ua.includes('Safari/')) return 'safari'
+  return 'other'
+}
+
+async function suiteExportQuality(
+  ctx: AppCtxValue,
+  fixtureId: string,
+): Promise<Record<string, number>> {
+  if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
+    throw new Error('WebCodecs unavailable - exportquality cannot run in this browser')
+  }
+  const { res: resParam, fps } = exportParams()
+  const res = resParam ?? '1080p'
+  const only = new URLSearchParams(window.location.search).get('configs')?.split(',')
+  const configs = only ? QUALITY_CONFIGS.filter((c) => only.includes(c.name)) : QUALITY_CONFIGS
+  if (configs.length === 0) throw new Error(`exportquality: no config matches ${only?.join(',')}`)
+
+  const full = await loadFixture(ctx, fixtureId)
+  const [{ VideoExporter }, { renderAudioOffline }, { truncateMidi }, warmup, vq] =
+    await Promise.all([
+      import('../export/VideoExporter'),
+      import('../audio/OfflineAudioRenderer'),
+      import('./audioFixtures'),
+      import('../export/encoderWarmup'),
+      import('./videoQuality'),
+    ])
+  const midi = full.duration > EXPORTQUALITY_CAP_S ? truncateMidi(full, EXPORTQUALITY_CAP_S) : full
+  progress(`exportquality:samples:${EXPORTREAL_INSTRUMENT}`)
+  await preloadSampleBuffers(EXPORTREAL_INSTRUMENT)
+
+  const { renderer, clock, store, synth } = ctx.services
+  const px = pixiOf(renderer)
+  const before = {
+    theme: renderer.currentTheme,
+    particles: px.particles.style,
+    labels: px.noteRenderer.labels.enabled,
+    glow: px.noteRenderer.glowContainer.renderable,
+  }
+  const exportCanvas = enterExportCanvas(ctx, res)
+  try {
+    applyStageConfig(ctx, STAGE_CONFIGS[0]!, glowSettings().mode) // pinned look: 'base'
+    const width = exportCanvas.width & ~1
+    const height = exportCanvas.height & ~1
+    const frames = Math.max(1, Math.ceil(midi.duration * fps))
+    const keyEvery = Math.max(1, Math.round(fps * 2)) // VideoExporter's KEYFRAME_INTERVAL_SEC
+    const presetBitrate = resolveExportBitrate(res)
+    const out: Record<string, number> = {
+      width,
+      height,
+      fps,
+      expectedFrames: frames,
+      durationS: round(midi.duration),
+    }
+
+    progress('exportquality:reference')
+    const refs = await renderQualityReference(ctx, frames, fps, width, height)
+    progress('exportquality:reference-check')
+    const again = await renderQualityReference(ctx, frames, fps, width, height)
+    let refPsnr = 99
+    for (const [i, luma] of refs) refPsnr = Math.min(refPsnr, vq.psnr(luma, again.get(i)!))
+    again.clear()
+    out.refPsnr = round(refPsnr)
+    out.samples = refs.size
+
+    // The dialog pre-warms the encoder before any export (Chrome's cold start).
+    await warmup.prewarmVideoEncoder()
+
+    const audio = async (report: (pct: number) => void): Promise<AudioBuffer> =>
+      trimAudioBuffer(
+        await renderAudioOffline({
+          midi,
+          instrumentId: EXPORTREAL_INSTRUMENT,
+          volume: store.state.volume,
+          disabledTrackIds: synth.getDisabledTrackIds(),
+          onProgress: report,
+        }),
+        midi.duration,
+      )
+
+    // One real export + its inspection.
+    const runConfig = async (c: QualityConfig, bitrate: number) => {
+      renderer.pauseAutoRender() // same start state as the reference
+      const random = vq.mulberry32(EXPORTQUALITY_SEED)
+      const exporter = new VideoExporter(renderer.canvas)
+      let blob: Blob | null = null
+      const t0 = performance.now()
+      const stats = await exporter.export({
+        fps,
+        duration: midi.duration,
+        mode: 'av',
+        filename: 'bench.mp4',
+        bitrate,
+        audio,
+        encoderOverrides: c.overrides,
+        onAudioUnavailable: (stage, err) =>
+          console.warn(`[bench] exportquality ${c.name} lost audio (${stage})`, err),
+        onSeek: (t) => clock.seek(t),
+        onRenderFrame: (t, dt) => vq.withRandom(random, () => renderer.renderManualFrame(t, dt)),
+        onProgress: (stage, pct) =>
+          progress(`exportquality:${c.name}:${stage}:${Math.round(pct * 100)}%`),
+        deliver: (b) => {
+          blob = b
+        },
+      })
+      const wallMs = performance.now() - t0
+      const file = blob as Blob | null
+      if (!file) throw new Error(`exportquality: ${c.name} delivered no file`)
+      progress(`exportquality:${c.name}:inspect`)
+      const report = await vq.inspectMp4(file, { fps, keyEvery, width, height, refs })
+      return { stats, wallMs, file, report }
+    }
+
+    const videoKbps: Record<string, number> = {}
+    let shippedOnset: number | null = null
+    const tag = `${browserTag()}-${fixtureId}-${res}${fps}`
+    const stamp = Date.now().toString(36)
+    for (const c of configs) {
+      let bitrate = presetBitrate
+      const hwKbps = videoKbps['hw-rt']
+      if (c.bitrate === 'match-hw') {
+        if (!hwKbps) {
+          out[`${c.name}_mb`] = -1 // needs hw-rt earlier in the same page
+          continue
+        }
+        // Both encoders undershoot the preset target on this content (the
+        // hardware one by ~7×), so aim straight at hw-rt's ACTUAL rate, then
+        // correct proportionally.
+        bitrate = Math.round(hwKbps * 1000)
+      }
+      progress(`exportquality:${c.name}`)
+      let r = await runConfig(c, bitrate)
+      let steps = 1
+      while (
+        c.bitrate === 'match-hw' &&
+        hwKbps &&
+        steps < EXPORTQUALITY_EQ_MAX_STEPS &&
+        Math.abs(r.report.videoKbps / hwKbps - 1) > EXPORTQUALITY_EQ_TOLERANCE
+      ) {
+        bitrate = Math.round((bitrate * hwKbps) / r.report.videoKbps)
+        progress(`exportquality:${c.name}:step${steps + 1}`)
+        r = await runConfig(c, bitrate)
+        steps++
+      }
+      const { stats, wallMs, file, report } = r
+      videoKbps[c.name] = report.videoKbps
+      if (c.name === 'hw-rt') shippedOnset = report.audioOnsetMs
+      const m = (k: string, v: number): void => {
+        out[`${c.name}_${k}`] = round(v)
+      }
+      m('wall', wallMs)
+      m('fps', stats.framesEncoded / (Math.max(1, stats.videoEncodeMs) / 1000))
+      m('mb', file.size / 1_048_576)
+      m('kbps', report.videoKbps)
+      m('tgt', bitrate / 1000)
+      m('psnr', report.psnrMean)
+      m('psnrMin', report.psnrMin)
+      m('ssim', report.ssimMean)
+      m('ssimMin', report.ssimMin)
+      m('bias', report.biasMean)
+      m('frames', report.frames)
+      m('ptsErr', report.ptsErrMaxMs)
+      m('reorders', report.reorders)
+      m('keyOff', report.keyOffCadence)
+      m('firstPts', report.firstPtsMs)
+      m('unmatched', report.unmatched)
+      m('onset', report.audioOnsetMs ?? -1)
+      m(
+        'onsetD',
+        report.audioOnsetMs !== null && shippedOnset !== null
+          ? report.audioOnsetMs - shippedOnset
+          : -1,
+      )
+      m('hw', stats.hw === 'prefer-hardware' ? 1 : 0)
+      m('steps', steps)
+      m('saved', (await saveExportFile(`${tag}-${c.name}-${stamp}.mp4`, file)) ? 1 : 0)
+    }
+    return out
+  } finally {
+    renderer.setTheme(before.theme)
+    renderer.setParticleStyle(before.particles)
+    renderer.setNoteLabels(before.labels)
+    px.noteRenderer.glowContainer.renderable = before.glow
+    exportCanvas.restore()
+  }
+}
+
 // ── exportstages: where one export frame's time goes ──────────────────────
 // Stage attribution for the shipped loop at a real preset size, per effect
 // configuration. Two passes per config over the same frames (the export's
@@ -1226,6 +1549,8 @@ async function suiteExportReal(
 // Configs price each effect against the new-visitor look — app.ts's store
 // defaults, theme 'sunset' + particles 'embers' + labels off — pinned so
 // browser profiles with different saved settings measure the same scene.
+// `bakedglow` is `base` with the baked note glow; the other glow configs use
+// the page's `&glow=` mode (default the shipped filter).
 // `&configs=base,bare` runs a subset (e.g. for slow headless 4K); `&hw=sw`
 // encodes with prefer-software instead of the product's prefer-hardware;
 // `&queue=N` sets the loop's backpressure depth (default 2, as shipped).
@@ -1236,11 +1561,20 @@ interface StageConfig {
   theme: ThemeId
   particles: ParticleStyle
   glow: boolean
+  glowMode?: GlowMode // unset = the page's `&glow=` mode
   labels: boolean
 }
 
 const STAGE_CONFIGS: readonly StageConfig[] = [
   { name: 'base', theme: 'sunset', particles: 'embers', glow: true, labels: false },
+  {
+    name: 'bakedglow',
+    theme: 'sunset',
+    particles: 'embers',
+    glow: true,
+    glowMode: 'baked',
+    labels: false,
+  },
   { name: 'noparticles', theme: 'sunset', particles: 'none', glow: true, labels: false },
   { name: 'noglow', theme: 'sunset', particles: 'embers', glow: false, labels: false },
   { name: 'labels', theme: 'sunset', particles: 'embers', glow: true, labels: true },
@@ -1258,10 +1592,11 @@ interface TimerQueryExt {
   GPU_DISJOINT_EXT: number
 }
 
-function applyStageConfig(ctx: AppCtxValue, c: StageConfig): void {
+function applyStageConfig(ctx: AppCtxValue, c: StageConfig, pageGlow: GlowMode): void {
   const { renderer } = ctx.services
   const theme = ALL_THEMES.find((t) => t.id === c.theme)
   if (!theme) throw new Error(`exportstages: unknown theme ${c.theme}`)
+  setGlowMode(c.glowMode ?? pageGlow)
   renderer.setTheme(theme)
   renderer.setParticleStyle(c.particles)
   renderer.setNoteLabels(c.labels)
@@ -1505,6 +1840,7 @@ async function suiteExportStages(
     particles: px.particles.style,
     labels: px.noteRenderer.labels.enabled,
     glow: px.noteRenderer.glowContainer.renderable,
+    glowMode: glowSettings().mode,
   }
   const exportCanvas = enterExportCanvas(ctx, res)
   try {
@@ -1541,7 +1877,7 @@ async function suiteExportStages(
     out.coldLat = await warmEncoder(config, renderer.canvas, fps)
     const t0 = midi.duration * 0.25
     for (const c of configs) {
-      applyStageConfig(ctx, c)
+      applyStageConfig(ctx, c, before.glowMode)
       // Shader compiles, glyph atlases, material textures: outside the timing.
       progress(`exportstages:${c.name}:warmup`)
       await stageSyncPass(ctx, gl, null, t0, STAGE_WARMUP_FRAMES, fps)
@@ -1555,6 +1891,7 @@ async function suiteExportStages(
     }
     return out
   } finally {
+    setGlowMode(before.glowMode)
     renderer.setTheme(before.theme)
     renderer.setParticleStyle(before.particles)
     renderer.setNoteLabels(before.labels)
@@ -2057,6 +2394,82 @@ async function suiteVoiceload(
 
 // ── entry point (called from main.tsx behind VITE_ENABLE_BENCH) ───────────
 
+// ── glowshots: the note glow, filter vs baked, on identical frames ─────────
+// Visual A/B for renderer/bakedGlow.ts. Renders a few chosen moments of the
+// fixture on the export canvas (`&res=`, default 1080p) once per glow path and
+// publishes the frames on `window.__GLOW_SHOTS` (PNG data URLs, keyed
+// `<theme>-<moment>-<mode>`) for a script to save, plus RGB PSNR between the
+// two paths per moment. Particles and labels off, so the glow is the only
+// difference. Moments: `dense` (most notes sounding), `lone` (exactly one),
+// `ending` (the dense chord's first note 40 ms before it ends — slivers at the
+// strike line). `&themes=a,b` (default sunset, the new-visitor theme).
+async function suiteGlowShots(ctx: AppCtxValue, fixtureId: string): Promise<Record<string, number>> {
+  const params = new URLSearchParams(window.location.search)
+  const res = exportParams().res ?? '1080p'
+  const themes = (params.get('themes') ?? 'sunset').split(',') as ThemeId[]
+  const midi = await loadFixture(ctx, fixtureId)
+  const notes = midi.tracks.flatMap((t) => t.notes)
+  const sounding = (t: number) => notes.filter((n) => n.time <= t && n.time + n.duration >= t)
+  let dense = 0
+  let lone = -1
+  for (let t = 0.5; t < Math.min(midi.duration, 60); t += 0.05) {
+    const n = sounding(t).length
+    if (n > sounding(dense).length) dense = t
+    if (n === 1 && lone < 0) lone = t
+  }
+  const firstEnd = Math.min(...sounding(dense).map((n) => n.time + n.duration))
+  const moments: Record<string, number> = { dense, ending: firstEnd - 0.04 }
+  if (lone >= 0) moments.lone = lone
+
+  const { renderer } = ctx.services
+  const pageGlow = glowSettings()
+  const restoreTheme = renderer.currentTheme
+  const exportCanvas = enterExportCanvas(ctx, res)
+  const { width, height } = exportCanvas
+  const grab = document.createElement('canvas')
+  grab.width = width
+  grab.height = height
+  const g = grab.getContext('2d', { willReadFrequently: true })!
+  const shots: Record<string, string> = {}
+  const out: Record<string, number> = { width, height }
+  try {
+    for (const theme of themes) {
+      for (const [moment, t] of Object.entries(moments)) {
+        const px: Partial<Record<GlowMode, Uint8ClampedArray>> = {}
+        for (const mode of ['filter', 'baked'] as const) {
+          applyStageConfig(
+            ctx,
+            { name: 'glowshots', theme, particles: 'none', glow: true, glowMode: mode, labels: false },
+            pageGlow.mode,
+          )
+          // A few frames up to t so per-frame state (active-note sets) settles.
+          for (let k = 3; k >= 0; k--) renderer.renderManualFrame(t - k / 30, 1 / 30)
+          g.clearRect(0, 0, width, height)
+          g.drawImage(renderer.canvas, 0, 0) // same task as the render
+          px[mode] = g.getImageData(0, 0, width, height).data
+          shots[`${theme}-${moment}-${mode}`] = grab.toDataURL('image/png')
+        }
+        let se = 0
+        const a = px.filter!
+        const b = px.baked!
+        for (let i = 0; i < a.length; i += 4) {
+          for (let c = 0; c < 3; c++) se += (a[i + c]! - b[i + c]!) ** 2
+        }
+        out[`${theme}_${moment}_psnr`] =
+          se === 0 ? 99 : round(10 * Math.log10((255 * 255) / (se / ((a.length / 4) * 3))))
+        out[`${theme}_${moment}_notes`] = sounding(t).length
+      }
+    }
+    window.__GLOW_SHOTS = shots
+    window.__GLOW_SHOT_TIMES = moments
+    return out
+  } finally {
+    setGlowMode(pageGlow.mode, pageGlow.tint)
+    renderer.setTheme(restoreTheme)
+    exportCanvas.restore()
+  }
+}
+
 const SUITES: Record<
   BenchSuite,
   (ctx: AppCtxValue, fixture: string) => Promise<Record<string, number>>
@@ -2072,6 +2485,8 @@ const SUITES: Record<
   exportstages: suiteExportStages,
   encodemax: suiteEncodeMax,
   encodepar: suiteEncodePar,
+  exportquality: suiteExportQuality,
+  glowshots: suiteGlowShots,
   audiorender: suiteAudioRender,
   headroom: suiteHeadroom,
   voiceload: suiteVoiceload,
@@ -2099,10 +2514,27 @@ function trackHiddenTime(): () => number {
   }
 }
 
+// `&glow=` / `&glowTint=` (see header). Also applied when there is no suite:
+// a bench build opened as `/?glow=baked` is the manual glow A/B.
+function applyGlowParams(params: URLSearchParams): void {
+  const mode = params.get('glow') ?? 'filter'
+  const tint = params.get('glowTint') ?? 'average'
+  if (mode !== 'filter' && mode !== 'baked') {
+    throw new Error(`bench: glow must be filter|baked, got ${mode}`)
+  }
+  if (tint !== 'average' && tint !== 'note') {
+    throw new Error(`bench: glowTint must be average|note, got ${tint}`)
+  }
+  setGlowMode(mode, tint)
+}
+
 export async function maybeRunBench(ctx: AppCtxValue): Promise<void> {
   const params = new URLSearchParams(window.location.search)
   const suiteParam = params.get('bench')
-  if (!suiteParam) return
+  if (!suiteParam) {
+    applyGlowParams(params)
+    return
+  }
   initReport(params)
 
   if (suiteParam === 'list') {
@@ -2124,6 +2556,7 @@ export async function maybeRunBench(ctx: AppCtxValue): Promise<void> {
     const suite = suiteParam as BenchSuite
     const run = SUITES[suite]
     if (!run) throw new Error(`unknown bench suite: ${suiteParam}`)
+    applyGlowParams(params)
     const fixture = params.get('fixture') ?? BENCH_FIXTURES[0]!.id
     const metrics = await run(ctx, fixture)
     metrics.hiddenMs = hiddenMs()

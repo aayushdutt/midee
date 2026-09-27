@@ -206,7 +206,7 @@ export class PianoRollRenderer {
     this.beatGrid = new BeatGrid()
     stage.addChild(this.beatGrid.graphics)
 
-    this.noteRenderer = new NoteRenderer(this.theme)
+    this.noteRenderer = new NoteRenderer(this.theme, this.app.renderer)
     stage.addChild(this.noteRenderer.container)
 
     this.liveNoteRenderer = new LiveNoteRenderer(this.theme)
