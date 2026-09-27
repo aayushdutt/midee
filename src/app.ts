@@ -18,6 +18,7 @@ import type { AppServices } from './core/services'
 // Both are dynamic-imported from startExport(). Import order matters: load the
 // offline-audio module first when audio is needed — do not block Tone on the
 // heavy VideoExporter chunk (see Promise.all removal below).
+import { downloadBlob } from './export/download'
 import { encoderPrewarmMs, prewarmVideoEncoder } from './export/encoderWarmup'
 import {
   exportFraming,
@@ -1342,12 +1343,7 @@ export class App {
           bytes = audioBufferToMp3(trimmed)
           mime = 'audio/mpeg'
         }
-        const url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: mime }))
-        const a = document.createElement('a')
-        a.href = url
-        a.download = filename
-        a.click()
-        setTimeout(() => URL.revokeObjectURL(url), 5000)
+        downloadBlob(new Blob([bytes.slice().buffer], { type: mime }), filename)
         exportModal.close()
         this.showSuccess(`↓ ${t('toast.export.ready', { filename })}`)
         track('export_completed', {

@@ -38,6 +38,7 @@ import {
   Quality,
 } from 'mediabunny'
 import { type AacEncoderKind, resolveAacEncoder } from './aacEncoder'
+import { downloadBlob } from './download'
 
 export type ExportStage =
   | 'Rendering audio'
@@ -433,7 +434,7 @@ export class VideoExporter {
         // Surface mux failures through check() rather than as an unobserved
         // rejection (a cancelled Output rejects any add() still queued).
         videoMuxDrain = videoMuxDrain
-          .then(() => videoSource.add(EncodedPacket.fromEncodedChunk(chunk), meta))
+          .then(() => videoSource.add(EncodedPacket.fromEncodedChunk(chunk), videoRangeMeta(meta)))
           .catch((e: unknown) => {
             encoderError ??= e as Error
           })
@@ -481,6 +482,9 @@ export class VideoExporter {
 
         const frame = new VideoFrame(this.canvas, {
           timestamp: Math.round((i * 1_000_000) / fps),
+          // Without it the last sample gets zero duration and QuickTime/Photos
+          // (AVFoundation) drop the final frame (599 of 600 shown).
+          duration: Math.round(1_000_000 / fps),
           visibleRect: { x: 0, y: 0, width, height },
           displayWidth: width,
           displayHeight: height,
@@ -550,7 +554,7 @@ export class VideoExporter {
         const blob = new Blob([buffer], { type: 'video/mp4' })
         const filename = opts.filename ?? 'midee.mp4'
         if (opts.deliver) opts.deliver(blob, filename)
-        else triggerDownload(URL.createObjectURL(blob), filename)
+        else downloadBlob(blob, filename)
       } catch (err) {
         const isCancel = err instanceof DOMException && err.name === 'AbortError'
         if (isCancel) throw err
@@ -742,10 +746,18 @@ function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-function triggerDownload(url: string, filename: string): void {
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 5000)
+// Safari's encoder reports `colorSpace.fullRange: true` for canvas frames it
+// encodes as limited ("video") range, and the muxer copies that into the MP4's
+// colr box. In realtime mode Safari also writes the correct flag into the
+// SPS, which ffmpeg-based players prefer, so it went unnoticed; in quality mode
+// it doesn't, and the video plays washed out (black ≈ 20/255) in VLC, mpv and
+// most upload transcoders. Every browser encodes canvas frames to video range
+// (Chrome already tags it so), so the container says so too.
+function videoRangeMeta(meta?: EncodedVideoChunkMetadata): EncodedVideoChunkMetadata | undefined {
+  const colorSpace = meta?.decoderConfig?.colorSpace
+  if (!meta?.decoderConfig || !colorSpace?.fullRange) return meta
+  return {
+    ...meta,
+    decoderConfig: { ...meta.decoderConfig, colorSpace: { ...colorSpace, fullRange: false } },
+  }
 }

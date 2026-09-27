@@ -2403,7 +2403,10 @@ async function suiteVoiceload(
 // difference. Moments: `dense` (most notes sounding), `lone` (exactly one),
 // `ending` (the dense chord's first note 40 ms before it ends — slivers at the
 // strike line). `&themes=a,b` (default sunset, the new-visitor theme).
-async function suiteGlowShots(ctx: AppCtxValue, fixtureId: string): Promise<Record<string, number>> {
+async function suiteGlowShots(
+  ctx: AppCtxValue,
+  fixtureId: string,
+): Promise<Record<string, number>> {
   const params = new URLSearchParams(window.location.search)
   const res = exportParams().res ?? '1080p'
   const themes = (params.get('themes') ?? 'sunset').split(',') as ThemeId[]
@@ -2439,7 +2442,14 @@ async function suiteGlowShots(ctx: AppCtxValue, fixtureId: string): Promise<Reco
         for (const mode of ['filter', 'baked'] as const) {
           applyStageConfig(
             ctx,
-            { name: 'glowshots', theme, particles: 'none', glow: true, glowMode: mode, labels: false },
+            {
+              name: 'glowshots',
+              theme,
+              particles: 'none',
+              glow: true,
+              glowMode: mode,
+              labels: false,
+            },
             pageGlow.mode,
           )
           // A few frames up to t so per-frame state (active-note sets) settles.
