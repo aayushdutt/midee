@@ -14,7 +14,9 @@
 //   --update                              merge results into baseline FOR THIS ENV
 //   --json                                machine-readable output
 //   --browser chrome,safari               real-browser mode (macOS), see below
-//   --res 720p,1080p,4k / --fps 30,60     exportreal preset matrix
+//   --res 720p,1080p,4k / --fps 30,60     preset matrix for the export-size suites
+//                                         (exportreal, exportlab, exportstages,
+//                                         encodemax, encodepar)
 //
 // Baseline entries are keyed `envKey :: suite :: fixture`, so numbers from
 // different device profiles never get compared against each other — the
@@ -28,7 +30,10 @@
 // to a local sink (:4478). Runs are strictly sequential (two exports would
 // contend for the encoder) and each tab is closed via osascript afterwards.
 // Env keys are `real|<browser>-<major>|<chip>`, taken from the UA the page
-// reports, so they never meet headless numbers.
+// reports, so they never meet headless numbers. A tab in the user's own
+// window goes hidden (and throttled) the moment they switch tabs, so
+// `chrome-iso` runs Chrome as a dedicated instance and Safari runs get their
+// own window; every result carries `hiddenMs` and hidden runs are flagged.
 //
 // The bench build lives in dist-bench/ (never dist/: e2e's webServer builds
 // that concurrently).
@@ -53,19 +58,97 @@ const DEFAULT_TIMEOUT_S = 300
 const execFileAsync = promisify(execFile)
 
 // Real browsers by --browser id: the macOS app to `open -a`, and where the
-// major version sits in its UA.
+// major version sits in its UA. `chrome-iso` is the same Chrome app run as a
+// separate, dedicated instance (see ISO_CHROME below).
 const REAL_BROWSERS = {
   chrome: { app: 'Google Chrome', version: /Chrome\/(\d+)/ },
+  'chrome-iso': { app: 'Google Chrome', version: /Chrome\/(\d+)/ },
   safari: { app: 'Safari', version: /Version\/(\d+)/ },
 }
-// exportreal presets (validated again in-page). Each res × fps pair is its own
+// `--browser chrome-iso`: the installed Chrome (real GPU, VideoToolbox) as a
+// second instance with its own profile under bench/, so bench tabs live in
+// their own window — a user browsing in their own Chrome can't switch the
+// bench tab into the background (a hidden tab's timers are throttled to ~1 Hz,
+// which silently wrecks export timings; seen 2026-09-27). The flags keep an
+// occluded window's page treated as visible. Tabs are opened and closed via
+// the DevTools HTTP endpoint on ISO_CHROME.port; the instance is quit when
+// the driver exits.
+const ISO_CHROME = {
+  port: 9333,
+  profile: resolve(BENCH_DIR, '.chrome-iso-profile'),
+  flags: [
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--autoplay-policy=no-user-gesture-required',
+  ],
+}
+// Where real-browser windows go: a secondary display when one is attached (e.g.
+// the laptop screen beside the main monitor), else the main one. Runs open
+// without taking focus, so a matrix can run while the user keeps working —
+// isolated Chrome ignores occlusion (flags above) and a visible Safari window
+// on another screen isn't throttled; `hiddenMs` still flags any run that was.
+// Top-left global coordinates: what --window-position and AppleScript bounds use.
+let benchWindowRect
+function benchWindow() {
+  if (benchWindowRect !== undefined) return benchWindowRect
+  const js =
+    'ObjC.import("AppKit");const s=$.NSScreen.screens;const m=s.objectAtIndex(0).frame;const r=[];' +
+    'for(let i=0;i<s.count;i++){const f=s.objectAtIndex(i).frame;' +
+    'r.push([f.origin.x,m.size.height-(f.origin.y+f.size.height),f.size.width,f.size.height])}JSON.stringify(r)'
+  try {
+    const out = spawnSync('osascript', ['-l', 'JavaScript', '-e', js], { encoding: 'utf8', timeout: 5000 })
+    const screens = JSON.parse(out.stdout)
+    const [x, y, w, h] = screens[1] ?? screens[0]
+    benchWindowRect = { x: x + 40, y: y + 40, w: Math.min(1280, w - 80), h: Math.min(800, h - 80) }
+  } catch {
+    benchWindowRect = null
+  }
+  return benchWindowRect
+}
+// Kill switches run on SIGINT/SIGTERM too: without them an interrupted run
+// orphans `vite preview` on :4477 (and the isolated Chrome).
+const cleanups = []
+// Export-size presets (validated again in-page). Each res × fps pair is its own
 // baseline row: `bach-prelude-c@1080p30`.
 const EXPORTREAL_RES = ['720p', '1080p', '4k']
 const EXPORTREAL_FPS = [30, 60]
+// Suites that take the --res/--fps matrix (`&res=…&fps=…`).
+const RES_SUITES = new Set(['exportreal', 'exportlab', 'exportstages', 'encodemax', 'encodepar'])
 // Which of a suite's repeated runs is kept (lowest score wins). Default is
 // the frame median; suites without one say what "best" means here.
 const RUN_SCORE = {
   exportreal: (m) => m.wallMs,
+}
+// Sweep suites: a bag of `<variant>_<metric>` cells with no single score, so
+// repeated runs are merged per metric (median; mean of two for --runs 2)
+// and printed as one variant × metric table per row. Values listed here are
+// the columns; every run's raw metrics also land in bench/latest.json.
+// See docs/EXPORT_PERF_MEASUREMENTS_2026-09-27.md.
+const PIVOT_SUITES = {
+  exportlab: ['fps', 'stall'],
+  // (scalars such as exportstages' coldLat print in the table heading)
+  exportstages: [
+    'fps',
+    'steady',
+    'lat',
+    'update',
+    'submit',
+    'capture',
+    'encodeCall',
+    'stall',
+    'yield',
+    'other',
+    'gpu',
+    'captureGpu',
+    'captureIdle',
+    'syncRt',
+    'gpuQuery',
+  ],
+  encodemax: ['fps', 'steady', 'lat', 'kbpf', 'dq'],
+  encodepar: ['steady', 'fps', 'x'],
 }
 
 const DEFAULT_SUITES = ['frame', 'attribution', 'live', 'idle']
@@ -112,7 +195,8 @@ usage: npm run bench [-- <flags>]        build (${OUT_DIR}/) + run
        npm run bench:real [-- <flags>]   build + exportreal in real Chrome + Safari
 
   --suite a,b,c     suites: frame, attribution, live, idle, pacing, export,
-                    exportlab, exportreal, audiorender, headroom, voiceload
+                    exportlab, exportreal, exportstages, encodemax, encodepar,
+                    audiorender, headroom, voiceload
                     (default: frame,attribution,live,idle)
                     export = replica of the export loop (per-frame costs)
                     exportreal = the shipped VideoExporter end to end (audio
@@ -125,17 +209,37 @@ usage: npm run bench [-- <flags>]        build (${OUT_DIR}/) + run
                     'piano' downloads samples from an external CDN)
   --protection off  headroom only: bypass the master bus's soft-clip ceiling
                     to read raw instrument levels (for setting trims)
-  --res a,b         exportreal only: 720p, 1080p, 4k (default 1080p)
-  --fps a,b         exportreal only: 30, 60 (default 30)
+  --res a,b         export-size suites: 720p, 1080p, 4k (default 1080p)
+  --fps a,b         export-size suites: 30, 60 (default 30)
+                    export-size suites: exportreal, exportlab (capture/encoder
+                    knob sweep), exportstages (per-stage ms + GPU drain per
+                    effect config), encodemax (encoder ceiling on pre-rendered
+                    frames), encodepar (1-4 parallel encoders, main vs worker)
+  --configs a,b     exportstages only: subset of base, noparticles, noglow,
+                    labels, bare, glass (default all)
+  --cold hw|sw      encodemax only: which encoder the cold-start probe opens
+                    the page with (default hw)
+  --hw hw|sw        exportstages only: encode with prefer-hardware (default,
+                    as shipped) or prefer-software
+  --queue N         exportstages only: backpressure depth (default 2, as shipped)
+  --variants a,b    exportlab only: run just these variants, incl. the opt-in
+                    queue sweep (q1, q2, q8, sw-q4, quality-q4)
   --quick           smoke mode: frame+idle, sparsest+densest fixture, 1 run
-  --runs N          repeats per suite, best run wins (default 2)
+  --runs N          repeats per suite, best run wins (default 2); sweep suites
+                    (exportlab, exportstages, encodemax, encodepar) report
+                    the per-metric median; all runs go to bench/latest.json
   --timeout S       per-run timeout in seconds (default ${DEFAULT_TIMEOUT_S})
 
-  --browser a,b     real-browser mode (macOS): chrome, safari. Opens each run
-                    in the real app via \`open -a\` (real GPU + hardware
+  --browser a,b     real-browser mode (macOS): chrome, chrome-iso, safari.
+                    Opens each run in the real app (real GPU + hardware
                     encoder), collects results on a local sink (:${SINK_PORT}),
                     runs strictly one at a time and closes each tab after.
-                    Keep the tab frontmost and the machine idle. First use may
+                    chrome = a tab in your running Chrome (\`open -a\`);
+                    chrome-iso = a dedicated second Chrome instance (own
+                    profile in bench/, background-throttling off) — use it
+                    whenever you keep browsing during the run; safari = a new
+                    Safari window per run. Keep the machine idle. Runs where
+                    the page was hidden are flagged (hiddenMs). First use may
                     ask to let the terminal control the browser (tab close).
                     Env key: real|<browser>-<major>|<chip>.
 
@@ -217,7 +321,15 @@ function parseArgs(argv) {
       for (const f of args.fps) {
         if (!EXPORTREAL_FPS.includes(f)) die(`--fps expects ${EXPORTREAL_FPS.join('|')}, got ${f}`)
       }
-    } else if (a === '--timeout') args.timeoutS = Math.max(10, Number(next()))
+    } else if (a === '--configs') args.configs = next()
+    else if (a === '--variants') args.variants = next()
+    else if (a === '--queue') args.queue = Math.max(1, Number(next()))
+    else if (a === '--cold' || a === '--hw') {
+      const v = next()
+      if (v !== 'hw' && v !== 'sw') die(`${a} expects hw|sw, got ${v}`)
+      args[a.slice(2)] = v
+    }
+    else if (a === '--timeout') args.timeoutS = Math.max(10, Number(next()))
     else if (a === '--device') {
       const preset = next()
       if (preset === 'phone') {
@@ -405,26 +517,114 @@ function realTarget(id, sink, args) {
       target.env ??= realEnvKey(id, msg.ua)
       return msg.kind === 'list' ? { midi: msg.midi, audio: msg.audio } : msg.result
     },
-    close: async () => {},
+    close: async () => {
+      if (id === 'chrome-iso') quitIsoChrome()
+    },
   }
   return target
+}
+
+// Opens `url` for one run and returns how to close it again. Safari gets a
+// new window rather than a tab (a tab in the user's window goes hidden the
+// moment they switch tabs); chrome-iso a tab in its own instance.
+async function openReal(id, url, token) {
+  const { app } = REAL_BROWSERS[id]
+  if (id === 'chrome-iso') {
+    await ensureIsoChrome()
+    // Encoded: /json/new cuts a raw URL at its first `&`.
+    const res = await fetch(`http://127.0.0.1:${ISO_CHROME.port}/json/new?${encodeURIComponent(url)}`, {
+      method: 'PUT',
+    })
+    if (!res.ok) throw new Error(`DevTools /json/new answered ${res.status}`)
+    const { id: tabId } = await res.json()
+    return () => fetch(`http://127.0.0.1:${ISO_CHROME.port}/json/close/${tabId}`).catch(() => {})
+  }
+  if (id === 'safari') {
+    // No `activate`: the window opens on benchWindow()'s screen without focus.
+    const win = benchWindow()
+    const script = [
+      'tell application "Safari"',
+      `  make new document with properties {URL:"${url}"}`,
+      ...(win ? [`  set bounds of front window to {${win.x}, ${win.y}, ${win.x + win.w}, ${win.y + win.h}}`] : []),
+      'end tell',
+    ].join('\n')
+    await execFileAsync('osascript', ['-e', script])
+  } else {
+    await execFileAsync('open', ['-g', '-a', app, url])
+  }
+  return () => closeTabs(app, token)
+}
+
+// ── isolated Chrome (`--browser chrome-iso`) ─────────────────────────────
+async function isoDevtoolsUp() {
+  try {
+    const res = await fetch(`http://127.0.0.1:${ISO_CHROME.port}/json/version`)
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+async function ensureIsoChrome() {
+  if (await isoDevtoolsUp()) return
+  mkdirSync(ISO_CHROME.profile, { recursive: true })
+  const win = benchWindow()
+  spawnSync('open', [
+    '-gna', // -g: launch without taking focus
+    'Google Chrome',
+    '--args',
+    `--user-data-dir=${ISO_CHROME.profile}`,
+    `--remote-debugging-port=${ISO_CHROME.port}`,
+    ...ISO_CHROME.flags,
+    ...(win ? [`--window-position=${win.x},${win.y}`, `--window-size=${win.w},${win.h}`] : []),
+    'about:blank',
+  ])
+  cleanups.push(quitIsoChrome)
+  for (let i = 0; i < 100; i++) {
+    if (await isoDevtoolsUp()) return
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  throw new BenchError('chrome-iso: the isolated Chrome never opened its DevTools port')
+}
+
+// The instance's browser process: the one launched with our profile that
+// isn't a `--type=` helper.
+function isoChromePid() {
+  const ps = spawnSync('ps', ['-Ao', 'pid=,command='], { encoding: 'utf8' }).stdout ?? ''
+  for (const line of ps.split('\n')) {
+    if (line.includes(`--user-data-dir=${ISO_CHROME.profile}`) && !line.includes('--type=')) {
+      return Number(line.trim().split(/\s+/)[0])
+    }
+  }
+  return null
+}
+
+function quitIsoChrome() {
+  const pid = isoChromePid()
+  if (pid) {
+    try {
+      process.kill(pid, 'SIGTERM')
+    } catch {
+      // already gone
+    }
+  }
 }
 
 // One run in a real browser: open the URL in the app, wait for the page's
 // POST, close the tab. The token ties the POST (and the tab) to this run, so
 // a straggler from an earlier tab can't be mistaken for it.
 async function runReal(id, sink, query, timeoutS) {
-  const { app } = REAL_BROWSERS[id]
   const token = `bench${randomBytes(6).toString('hex')}`
   const report = `http://localhost:${SINK_PORT}/r/${token}`
   const url = `http://localhost:${PORT}/?${query}&report=${encodeURIComponent(report)}`
   const wait = sink.expect(token, timeoutS * 1000)
+  let close = () => {}
   try {
     try {
-      await execFileAsync('open', ['-a', app, url])
+      close = await openReal(id, url, token)
     } catch (err) {
       wait.cancel()
-      throw new BenchError(`${id}: \`open -a "${app}"\` failed - ${err.stderr || err.message}`)
+      throw new BenchError(`${id}: could not open the run - ${err.stderr || err.message}`)
     }
     let msg
     try {
@@ -432,7 +632,7 @@ async function runReal(id, sink, query, timeoutS) {
     } catch {
       throw new BenchError(
         wait.slot.contacted
-          ? `${id}: timed out after ${timeoutS}s on ?${query} - last progress: ${wait.slot.progress ?? 'none'} (keep the tab frontmost - occluded tabs are throttled; --timeout raises the limit)`
+          ? `${id}: timed out after ${timeoutS}s on ?${query} - last progress: ${wait.slot.progress ?? 'none'} (keep the bench window visible - hidden tabs are throttled; --timeout raises the limit)`
           : `${id}: no word from the page after ${timeoutS}s on ?${query} - did the tab open http://localhost:${PORT} and load the bench build (${OUT_DIR}/)?`,
       )
     }
@@ -441,7 +641,7 @@ async function runReal(id, sink, query, timeoutS) {
     }
     return msg
   } finally {
-    closeTabs(app, token)
+    await close()
   }
 }
 
@@ -537,7 +737,7 @@ function startSink() {
 // Suites parameterised beyond the fixture: one entry per variant, the label
 // appended to the fixture so each variant keys its own baseline row.
 function variantsFor(suite, args) {
-  if (suite !== 'exportreal') return [{ label: '', query: '' }]
+  if (!RES_SUITES.has(suite)) return [{ label: '', query: '' }]
   return args.res.flatMap((res) =>
     args.fps.map((fps) => ({ label: `@${res}${fps}`, query: `&res=${res}&fps=${fps}` })),
   )
@@ -546,6 +746,8 @@ function variantsFor(suite, args) {
 // Repeat a suite `runs` times; keep the best run (lowest RUN_SCORE, default
 // the frame median) - the standard noise-floor convention. Non-frame metrics
 // come from that same winning run so the result stays internally consistent.
+// Sweep suites (PIVOT_SUITES) are merged per metric instead. Either way every
+// run's metrics ride along as `runs` (written to bench/latest.json).
 async function runSuite(target, args, suite, fixture, variantQuery) {
   const audio = AUDIO_SUITES.has(suite)
   // Offline audio suites are deterministic — repeats only cost time.
@@ -553,13 +755,45 @@ async function runSuite(target, args, suite, fixture, variantQuery) {
   let query = `bench=${suite}&fixture=${fixture}${variantQuery}`
   if (audio && args.instruments) query += `&instruments=${args.instruments.join(',')}`
   if (audio && args.protectionOff) query += '&protection=off'
+  if (suite === 'exportstages' && args.configs) query += `&configs=${args.configs}`
+  if (suite === 'encodemax' && args.cold) query += `&cold=${args.cold}`
+  if (suite === 'exportstages' && args.hw) query += `&hw=${args.hw}`
+  if (suite === 'exportstages' && args.queue) query += `&queue=${args.queue}`
+  if (suite === 'exportlab' && args.variants) query += `&variants=${args.variants}`
   const score = RUN_SCORE[suite] ?? ((m) => m.medianFrameMs ?? 0)
   let best = null
+  const all = []
   for (let i = 0; i < runs; i++) {
     const result = await target.run(query)
+    if (result.metrics.hiddenMs > 0) {
+      console.log(
+        `  ⚠ ${suite}/${fixture}${variantQuery}: page was hidden ${result.metrics.hiddenMs} ms - throttled timers, treat this run as invalid`,
+      )
+    }
+    all.push(result.metrics)
     if (!best || score(result.metrics) < score(best.metrics)) best = result
   }
-  return best
+  const metrics = PIVOT_SUITES[suite] ? medianMetrics(all) : best.metrics
+  return { ...best, metrics, runs: all }
+}
+
+// Per-key median across runs. Negative values are status codes (-1
+// unsupported, -2 failed): a key that failed in any run keeps the code.
+function medianMetrics(runs) {
+  const out = {}
+  for (const key of new Set(runs.flatMap((m) => Object.keys(m)))) {
+    const values = runs.map((m) => m[key]).filter((v) => v !== undefined)
+    const failed = values.find((v) => v < 0)
+    if (failed !== undefined) {
+      out[key] = failed
+      continue
+    }
+    const sorted = [...values].sort((a, b) => a - b)
+    const mid = sorted.length >> 1
+    const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+    out[key] = Math.round(median * 1000) / 1000
+  }
+  return out
 }
 
 // ── baseline ──────────────────────────────────────────────────────────────
@@ -734,6 +968,10 @@ function printReport(results, baseline, args) {
       for (const r of rows) printAudioTable(suite, r)
       continue
     }
+    if (PIVOT_SUITES[suite]) {
+      for (const r of rows) printPivotTable(suite, r)
+      continue
+    }
     const cols = SUITE_COLUMNS[suite] ?? Object.keys(rows[0].result.metrics)
     const header = ['fixture', ...cols.map((c) => COLUMN_LABELS[c] ?? c)]
     const table = [header]
@@ -803,6 +1041,32 @@ function printAudioTable(suite, r) {
   }
 }
 
+// Sweep suites: one table per row, variants as rows, PIVOT_SUITES[suite] as
+// columns. Keys without a `_` (width, fps, hw, …) go in the heading.
+function printPivotTable(suite, r) {
+  const { metrics } = r.result
+  const cols = PIVOT_SUITES[suite]
+  const keys = Object.keys(metrics)
+  const variants = [...new Set(keys.filter((k) => k.includes('_')).map((k) => k.split('_')[0]))]
+  const scalars = keys
+    .filter((k) => !k.includes('_'))
+    .map((k) => `${k}=${metrics[k]}`)
+    .join(' ')
+  const header = ['variant', ...cols]
+  const table = [header]
+  for (const v of variants) {
+    table.push([v, ...cols.map((m) => String(metrics[`${v}_${m}`] ?? '-'))])
+  }
+  const widths = header.map((_, i) => Math.max(...table.map((row) => row[i].length)))
+  console.log(`\n■ ${suite} / ${r.fixture}  (${scalars}; runs=${r.result.runs?.length ?? 1}, median)`)
+  for (let ri = 0; ri < table.length; ri++) {
+    const line = table[ri]
+      .map((cell, i) => (i === 0 ? cell.padEnd(widths[i]) : cell.padStart(widths[i])))
+      .join('   ')
+    console.log(`  ${ri === 0 ? dim(line) : line}`)
+  }
+}
+
 function dim(s) {
   return process.stdout.isTTY ? `\x1b[2m${s}\x1b[0m` : s
 }
@@ -816,7 +1080,21 @@ async function main() {
     die(`no ${OUT_DIR}/ - run \`npm run bench\` (builds first) or \`npm run bench:build\``)
   }
 
+  for (const sig of ['SIGINT', 'SIGTERM']) {
+    process.once(sig, () => {
+      for (const fn of cleanups.splice(0)) {
+        try {
+          fn()
+        } catch {
+          // best effort on the way out
+        }
+      }
+      process.exit(130)
+    })
+  }
+
   const server = await startPreview()
+  cleanups.push(() => server.kill('SIGTERM'))
   let sink = null
   const targets = []
   const results = []

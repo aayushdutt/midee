@@ -15,14 +15,35 @@
 //     headless rAF throttling is irrelevant.
 //   · Frames are timed in batches of 10: `performance.now()` quantizes to
 //     ~0.1 ms without cross-origin isolation, so single sub-ms frames are
-//     mostly timer noise. A batch gives 0.01 ms/frame resolution.
+//     mostly timer noise. A batch gives 0.01 ms/frame resolution. (Safari
+//     quantizes to 1 ms: the export-stage suites report per-frame MEANS over
+//     hundreds of frames, and `timerResMs` records the resolution seen.)
+//
+// Export-performance suites (docs/EXPORT_PERF_MEASUREMENTS_2026-09-27.md):
+// `exportlab` (capture/encoder knob sweep), `exportstages` (where one export
+// frame's time goes, per effect), `encodemax` (encoder ceiling on
+// pre-rendered frames), `encodepar` (parallel encoders, main thread vs
+// workers). All take `&res=720p|1080p|4k&fps=30|60` like `exportreal`.
 
 import { INSTRUMENTS, type InstrumentId, preloadSampleBuffers } from '../audio/instruments'
 import { parseMidiFile } from '../core/midi/parser'
 import type { MidiFile } from '../core/midi/types'
 import { resolveExportBitrate, resolveExportRender, trimAudioBuffer } from '../export/exportMath'
+import type { ParticleStyle } from '../renderer/particleStyles'
+import { ALL_THEMES, type ThemeId } from '../renderer/theme'
 import type { AppCtxValue } from '../store/AppCtx'
 import type { ExportResolution } from '../ui/ExportModal'
+import {
+  type EncodeRunResult,
+  type HwPref,
+  overallFps,
+  probeH264,
+  runEncodeLoop,
+  steadyFps,
+  waitForDequeue,
+  yieldNow,
+} from './encodeLoop'
+import type { EncodeWorkerReply } from './encodeWorker'
 
 export interface BenchFixture {
   id: string
@@ -57,6 +78,9 @@ export type BenchSuite =
   | 'export'
   | 'exportlab'
   | 'exportreal'
+  | 'exportstages'
+  | 'encodemax'
+  | 'encodepar'
   | 'audiorender'
   | 'headroom'
   | 'voiceload'
@@ -585,7 +609,7 @@ async function suiteExport(ctx: AppCtxValue, fixtureId: string): Promise<Record<
   const EXPORT_DT = 1 / FPS
   const FRAMES = 450 // 15 s of output video
   const BITRATE = 8_000_000
-  const MAX_QUEUE = 20 // mirrors VideoExporter's backpressure constant
+  const MAX_QUEUE = 2 // mirrors VideoExporter's backpressure constant
   const width = canvas.width & ~1
   const height = canvas.height & ~1
 
@@ -683,6 +707,18 @@ async function suiteExport(ctx: AppCtxValue, fixtureId: string): Promise<Record<
 // (VideoFrame(canvas) vs readPixels vs 2D copy vs ImageBitmap), encoder
 // latencyMode / hardware preference, and backpressure strategy. Each variant
 // runs the same frames on a fresh encoder; chunks are discarded.
+//
+// `&res=720p|1080p|4k` runs on the export's real canvas (the preset's render
+// plan and bitrate, as exportreal); without it, the window-size canvas at
+// 8 Mbps (the original behaviour). `&fps=` sets the frame step and encoder
+// framerate. Codec = VideoExporter's ladder, first level accepted.
+// Metrics: `<variant>_fps` (-1 unsupported, -2 failed, -3 starved: one
+// backpressure wait ran LAB_STARVED_MS without the queue draining — seen with
+// the `yield` poll in Chrome 154, whose scheduler.yield() continuations
+// outrank the task that delivers the encoder's dequeue), `<variant>_stall` ms.
+
+const LAB_STARVED_MS = 3000
+class LabStarved extends Error {}
 
 interface LabVariant {
   name: string
@@ -692,6 +728,7 @@ interface LabVariant {
   maxQueue: number
   wait: 'timeout' | 'dequeue' | 'yield'
   bitrateMode?: 'constant' | 'variable'
+  optIn?: boolean
 }
 
 const LAB_VARIANTS: LabVariant[] = [
@@ -708,7 +745,38 @@ const LAB_VARIANTS: LabVariant[] = [
   { name: 'readpx', capture: 'readpixels', maxQueue: 20, wait: 'dequeue' },
   { name: 'copy2d', capture: '2d', maxQueue: 20, wait: 'dequeue' },
   { name: 'bitmap', capture: 'bitmap', maxQueue: 20, wait: 'dequeue' },
+  // Queue-depth sweep (added after q4 beat the shipped depth of 20 by ~38 %
+  // in Chrome, 2026-09-27). Opt in with `&variants=` — not in the default run.
+  { name: 'q1', capture: 'canvas', maxQueue: 1, wait: 'dequeue', optIn: true },
+  { name: 'q2', capture: 'canvas', maxQueue: 2, wait: 'dequeue', optIn: true },
+  { name: 'q8', capture: 'canvas', maxQueue: 8, wait: 'dequeue', optIn: true },
+  {
+    name: 'sw-q4',
+    capture: 'canvas',
+    maxQueue: 4,
+    wait: 'dequeue',
+    hw: 'prefer-software',
+    optIn: true,
+  },
+  {
+    name: 'quality-q4',
+    capture: 'canvas',
+    maxQueue: 4,
+    wait: 'dequeue',
+    latencyMode: 'quality',
+    optIn: true,
+  },
 ]
+
+// `&variants=a,b` runs just those (opt-in ones included); default = every
+// variant not marked optIn.
+function labVariants(): LabVariant[] {
+  const only = new URLSearchParams(window.location.search).get('variants')?.split(',')
+  if (!only) return LAB_VARIANTS.filter((v) => !v.optIn)
+  const picked = LAB_VARIANTS.filter((v) => only.includes(v.name))
+  if (picked.length === 0) throw new Error(`exportlab: no variant matches ${only.join(',')}`)
+  return picked
+}
 
 async function suiteExportLab(
   ctx: AppCtxValue,
@@ -717,39 +785,45 @@ async function suiteExportLab(
   if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
     throw new Error('WebCodecs unavailable - exportlab cannot run in this browser')
   }
+  const { res, fps: FPS } = exportParams()
   const midi = await loadFixture(ctx, fixtureId)
   const { renderer, clock } = ctx.services
   const canvas = renderer.canvas
-  const FPS = 30
   const DT = 1 / FPS
   const FRAMES = 300
+  const exportCanvas = res ? enterExportCanvas(ctx, res) : null
+  if (!exportCanvas) renderer.pauseAutoRender()
   const width = canvas.width & ~1
   const height = canvas.height & ~1
+  const bitrate = res ? resolveExportBitrate(res) : 8_000_000
   const t0 = midi.duration * 0.25
   const keyEvery = FPS * 2
-  const out: Record<string, number> = {}
+  const out: Record<string, number> = { width, height, fps: FPS, timerResMs: timerResolutionMs() }
 
-  const gl = (renderer as unknown as { app: { renderer: { gl?: WebGL2RenderingContext } } }).app
-    .renderer.gl
+  const gl = pixiOf(renderer).app.renderer.gl
   const pixelBuf = new Uint8Array(width * height * 4)
   const off = new OffscreenCanvas(width, height)
   const ctx2d = off.getContext('2d')!
 
-  renderer.pauseAutoRender()
   try {
-    for (const v of LAB_VARIANTS) {
+    progress('exportlab:encoder-warmup')
+    const warmConfig = await probeH264({ width, height, fps: FPS, bitrate, hw: 'prefer-hardware' })
+    if (warmConfig) out.coldLat = await warmEncoder(warmConfig, canvas, FPS)
+    for (const v of labVariants()) {
       progress(`exportlab:${v.name}`)
-      const config: VideoEncoderConfig = {
-        codec: 'avc1.640028',
+      const probed = await probeH264({
         width,
         height,
-        bitrate: 8_000_000,
-        framerate: FPS,
-        hardwareAcceleration: v.hw ?? 'prefer-hardware',
+        fps: FPS,
+        bitrate,
+        hw: v.hw ?? 'prefer-hardware',
+      })
+      const config: VideoEncoderConfig | null = probed && {
+        ...probed,
         latencyMode: v.latencyMode ?? 'realtime',
         ...(v.bitrateMode ? { bitrateMode: v.bitrateMode } : {}),
       }
-      if (!(await VideoEncoder.isConfigSupported(config)).supported) {
+      if (!config || !(await VideoEncoder.isConfigSupported(config)).supported) {
         out[`${v.name}_fps`] = -1
         continue
       }
@@ -818,6 +892,9 @@ async function suiteExportLab(
             const s0 = performance.now()
             while (encoder.encodeQueueSize > v.maxQueue / 2) {
               if (encoderError) throw encoderError
+              // A wait that never lets the encoder's dequeue task run spins
+              // here forever — bail out and report -3 instead of hanging.
+              if (performance.now() - s0 > LAB_STARVED_MS) throw new LabStarved()
               if (v.wait === 'timeout') await sleep(0)
               else if (v.wait === 'yield') await yieldNow()
               else {
@@ -841,20 +918,49 @@ async function suiteExportLab(
         out[`${v.name}_stall`] = round(stallMs)
       } catch (err) {
         console.warn(`[exportlab] ${v.name} failed`, err)
-        out[`${v.name}_fps`] = -2
+        out[`${v.name}_fps`] = err instanceof LabStarved ? -3 : -2
       } finally {
         if (encoder.state !== 'closed') encoder.close()
       }
     }
   } finally {
-    renderer.resumeAutoRender()
+    if (exportCanvas) exportCanvas.restore()
+    else renderer.resumeAutoRender()
   }
   return out
 }
 
-function yieldNow(): Promise<void> {
-  const s = (globalThis as unknown as { scheduler?: { yield?: () => Promise<void> } }).scheduler
-  return s?.yield ? s.yield() : new Promise((r) => setTimeout(r, 0))
+// Pixi internals the export-stage suites reach: the GL context (forced GPU
+// drains, timer queries, readPixels capture), the bare submit, the note
+// glow container (no public glow toggle) and the current effect settings.
+// Shape-cast like `internals()` so a rename fails loudly here.
+interface PixiInternals {
+  app: {
+    renderer: { gl?: WebGL2RenderingContext; render(container: unknown): void }
+    stage: unknown
+  }
+  noteRenderer: {
+    glowContainer: { renderable: boolean }
+    labels: { enabled: boolean }
+  }
+  particles: { style: ParticleStyle }
+}
+
+function pixiOf(renderer: object): PixiInternals {
+  return renderer as unknown as PixiInternals
+}
+
+// Smallest observable performance.now() step (Chrome ~0.1 ms, Safari 1 ms
+// without cross-origin isolation). Busy-waits at most ~20 ticks.
+function timerResolutionMs(): number {
+  let min = Number.POSITIVE_INFINITY
+  for (let i = 0; i < 20; i++) {
+    const a = performance.now()
+    let b = a
+    while (b === a) b = performance.now()
+    min = Math.min(min, b - a)
+  }
+  return round(min)
 }
 
 // ── exportreal: the shipped exporter, end to end ───────────────────────────
@@ -873,27 +979,65 @@ function yieldNow(): Promise<void> {
 // truncated at the cap. Instrument pinned to 'upright' (the new-visitor
 // default, self-hosted samples), decoded before the clock starts.
 
-type ExportRealRes = Extract<ExportResolution, '720p' | '1080p' | '4k'>
-const EXPORTREAL_RES: readonly ExportRealRes[] = ['720p', '1080p', '4k']
+type ExportPresetRes = Extract<ExportResolution, '720p' | '1080p' | '4k'>
+const EXPORT_PRESET_RES: readonly ExportPresetRes[] = ['720p', '1080p', '4k']
 const EXPORTREAL_CAP_S = 20
 const EXPORTREAL_INSTRUMENT: InstrumentId = 'upright'
 
-function exportRealParams(): { res: ExportRealRes; fps: number } {
+// `&res=` / `&fps=` for the export-size suites. `res` is null when absent —
+// each suite picks its default (exportlab: the window canvas; others 1080p).
+function exportParams(): { res: ExportPresetRes | null; fps: number } {
   const params = new URLSearchParams(window.location.search)
-  const res = params.get('res') ?? '1080p'
+  const res = params.get('res')
   const fps = Number(params.get('fps') ?? 30)
-  if (!EXPORTREAL_RES.includes(res as ExportRealRes)) {
-    throw new Error(`exportreal: res must be ${EXPORTREAL_RES.join('|')}, got ${res}`)
+  if (res !== null && !EXPORT_PRESET_RES.includes(res as ExportPresetRes)) {
+    throw new Error(`bench: res must be ${EXPORT_PRESET_RES.join('|')}, got ${res}`)
   }
-  if (fps !== 30 && fps !== 60) throw new Error(`exportreal: fps must be 30|60, got ${fps}`)
-  return { res: res as ExportRealRes, fps }
+  if (fps !== 30 && fps !== 60) throw new Error(`bench: fps must be 30|60, got ${fps}`)
+  return { res: res as ExportPresetRes | null, fps }
+}
+
+// Puts the renderer where App.startExport puts it for a landscape preset:
+// clock paused, status 'exporting' (gates the clock subscribers — scrubber,
+// milestones — off), ticker paused, canvas resized to the preset's render
+// plan (resolveExportRender, the same call app.ts makes). Landscape presets
+// only: exportFraming() is a no-op for them, so the viewport needs nothing
+// else. `restore()` undoes it; call it from a finally.
+function enterExportCanvas(
+  ctx: AppCtxValue,
+  res: ExportPresetRes,
+): { width: number; height: number; restore(): void } {
+  const { renderer, clock, store } = ctx.services
+  const originalResolution = renderer.canvasSize.resolution
+  const plan = resolveExportRender(res, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+    resolution: originalResolution,
+  })
+  clock.pause()
+  store.setState('status', 'exporting')
+  renderer.pauseAutoRender()
+  renderer.resize(plan.logicalWidth, plan.logicalHeight, plan.resolution)
+  const { width, height } = renderer.canvasSize
+  return {
+    width,
+    height,
+    restore: () => {
+      renderer.resize(window.innerWidth, window.innerHeight, originalResolution)
+      renderer.resumeAutoRender()
+      clock.seek(0)
+      store.setState('status', 'ready')
+    },
+  }
 }
 
 async function suiteExportReal(
   ctx: AppCtxValue,
   fixtureId: string,
 ): Promise<Record<string, number>> {
-  const { res, fps } = exportRealParams()
+  const params = exportParams()
+  const res = params.res ?? '1080p'
+  const { fps } = params
   const full = await loadFixture(ctx, fixtureId)
   const [{ VideoExporter }, { renderAudioOffline }, { truncateMidi }] = await Promise.all([
     import('../export/VideoExporter'),
@@ -905,20 +1049,8 @@ async function suiteExportReal(
   await preloadSampleBuffers(EXPORTREAL_INSTRUMENT)
 
   const { renderer, clock, store, synth } = ctx.services
-  // Same plan app.ts computes. Landscape presets only: exportFraming() is a
-  // no-op for them, so the live viewport stays untouched there too.
-  const originalResolution = renderer.canvasSize.resolution
-  const plan = resolveExportRender(res, {
-    width: window.innerWidth,
-    height: window.innerHeight,
-    resolution: originalResolution,
-  })
-  clock.pause()
-  // Gates the clock subscribers (scrubber, milestones) off, as in a real export.
-  store.setState('status', 'exporting')
-  renderer.pauseAutoRender()
-  renderer.resize(plan.logicalWidth, plan.logicalHeight, plan.resolution)
-  const { width, height } = renderer.canvasSize
+  const exportCanvas = enterExportCanvas(ctx, res)
+  const { width, height } = exportCanvas
 
   const exporter = new VideoExporter(renderer.canvas)
   let glLost = false
@@ -1003,10 +1135,678 @@ async function suiteExportReal(
   } finally {
     clearInterval(heapTimer)
     renderer.canvas.removeEventListener('webglcontextlost', onGlLost)
-    renderer.resize(window.innerWidth, window.innerHeight, originalResolution)
-    renderer.resumeAutoRender()
-    clock.seek(0)
-    store.setState('status', 'ready')
+    exportCanvas.restore()
+  }
+}
+
+// ── exportstages: where one export frame's time goes ──────────────────────
+// Stage attribution for the shipped loop at a real preset size, per effect
+// configuration. Two passes per config over the same frames (the export's
+// contiguous t0 + i/fps steps, so particles evolve as in a real export):
+//
+//   loop — the VideoExporter loop replica: seek + scene update (CPU) → Pixi
+//          submit (CPU side of the GL calls) → VideoFrame(canvas) → encode(),
+//          backpressure at 20 → 10 via `dequeue`, yield every 10 frames.
+//          Every stage timed; `stall` is time blocked on backpressure, `fps`
+//          the loop's throughput (flush included), `steady` the encoder's
+//          output rate once warm, `lat` ms from the first encode() to the
+//          first chunk (encoder start-up). Chunks discarded (no mux).
+//   sync — same frames, no encoder, each bracketed by 1-px gl.readPixels (a
+//          full GPU drain) so GPU time becomes CPU-visible: drain after submit
+//          = the frame's GPU cost (draws + filters + MSAA resolve), drain
+//          after VideoFrame(canvas) = the capture's GPU-side copy. The idle
+//          drain (readPixels with nothing queued, `syncRt`) is subtracted.
+//          EXT_disjoint_timer_query_webgl2 times the submit on the GPU where
+//          exposed (`gpuQuery`, -1 elsewhere).
+//
+// Configs price each effect against the new-visitor look — app.ts's store
+// defaults, theme 'sunset' + particles 'embers' + labels off — pinned so
+// browser profiles with different saved settings measure the same scene.
+// `&configs=base,bare` runs a subset (e.g. for slow headless 4K); `&hw=sw`
+// encodes with prefer-software instead of the product's prefer-hardware;
+// `&queue=N` sets the loop's backpressure depth (default 2, as shipped).
+// Metrics: `<config>_<stage>`, per-frame means in ms unless named fps.
+
+interface StageConfig {
+  name: string
+  theme: ThemeId
+  particles: ParticleStyle
+  glow: boolean
+  labels: boolean
+}
+
+const STAGE_CONFIGS: readonly StageConfig[] = [
+  { name: 'base', theme: 'sunset', particles: 'embers', glow: true, labels: false },
+  { name: 'noparticles', theme: 'sunset', particles: 'none', glow: true, labels: false },
+  { name: 'noglow', theme: 'sunset', particles: 'embers', glow: false, labels: false },
+  { name: 'labels', theme: 'sunset', particles: 'embers', glow: true, labels: true },
+  { name: 'bare', theme: 'sunset', particles: 'none', glow: false, labels: false },
+  // A shipping material theme: textured layers per note, no glow filter.
+  { name: 'glass', theme: 'liquid-glass', particles: 'embers', glow: true, labels: false },
+]
+const STAGE_LOOP_FRAMES = 240
+const STAGE_SYNC_FRAMES = 120
+const STAGE_WARMUP_FRAMES = 20
+const STAGE_MAX_QUEUE = 2 // VideoExporter's MAX_ENCODE_QUEUE; `&queue=N` overrides
+
+interface TimerQueryExt {
+  TIME_ELAPSED_EXT: number
+  GPU_DISJOINT_EXT: number
+}
+
+function applyStageConfig(ctx: AppCtxValue, c: StageConfig): void {
+  const { renderer } = ctx.services
+  const theme = ALL_THEMES.find((t) => t.id === c.theme)
+  if (!theme) throw new Error(`exportstages: unknown theme ${c.theme}`)
+  renderer.setTheme(theme)
+  renderer.setParticleStyle(c.particles)
+  renderer.setNoteLabels(c.labels)
+  // No public glow switch: `renderable` survives NoteRenderer.draw, which
+  // rewrites `visible` every frame. The glow copies are skipped; the notes
+  // themselves still draw.
+  pixiOf(renderer).noteRenderer.glowContainer.renderable = c.glow
+  // Clears particles + active-note tracking so every config starts equal.
+  renderer.pauseAutoRender()
+}
+
+// Opens (and discards) one encoder on the current canvas so the browser's
+// encoder start-up — seconds for the first hardware encoder of a Chrome
+// session (encodemax `cold-*`) — is paid outside the timed variants.
+// Returns that first-output latency in ms.
+async function warmEncoder(
+  config: VideoEncoderConfig,
+  canvas: HTMLCanvasElement,
+  fps: number,
+): Promise<number> {
+  const frame = exportFrame(canvas, 0, canvas.width & ~1, canvas.height & ~1)
+  try {
+    const r = await runEncodeLoop({ config, pool: [frame], frames: 10, fps })
+    return round((r.outTimes[0] ?? r.endMs) - r.startMs)
+  } finally {
+    frame.close()
+  }
+}
+
+function exportFrame(
+  canvas: HTMLCanvasElement,
+  timestamp: number,
+  width: number,
+  height: number,
+): VideoFrame {
+  // Exactly VideoExporter's construction.
+  return new VideoFrame(canvas, {
+    timestamp,
+    visibleRect: { x: 0, y: 0, width, height },
+    displayWidth: width,
+    displayHeight: height,
+  })
+}
+
+async function stageLoopPass(
+  ctx: AppCtxValue,
+  config: VideoEncoderConfig,
+  t0: number,
+  frames: number,
+  fps: number,
+  maxQueue: number,
+): Promise<Record<string, number>> {
+  const { renderer, clock } = ctx.services
+  const px = pixiOf(renderer)
+  const canvas = renderer.canvas
+  const width = canvas.width & ~1
+  const height = canvas.height & ~1
+  const dt = 1 / fps
+  const keyEvery = Math.round(fps * 2)
+  const outTimes: number[] = []
+  let failure: Error | null = null
+  const encoder = new VideoEncoder({
+    output: () => {
+      outTimes.push(performance.now())
+    },
+    error: (e) => {
+      failure ??= e instanceof Error ? e : new Error(String(e))
+    },
+  })
+  encoder.configure(config)
+  let update = 0
+  let submit = 0
+  let capture = 0
+  let encodeCall = 0
+  let stall = 0
+  let yielded = 0
+  const start = performance.now()
+  try {
+    for (let i = 0; i < frames; i++) {
+      if (failure) throw failure
+      const t = t0 + i * dt
+      const a = performance.now()
+      clock.seek(t)
+      renderer.renderManualFrame(t, dt, false)
+      const b = performance.now()
+      px.app.renderer.render(px.app.stage)
+      const c = performance.now()
+      const frame = exportFrame(canvas, Math.round((i * 1_000_000) / fps), width, height)
+      const d = performance.now()
+      encoder.encode(frame, { keyFrame: i % keyEvery === 0 })
+      frame.close()
+      const e = performance.now()
+      update += b - a
+      submit += c - b
+      capture += d - c
+      encodeCall += e - d
+      if (encoder.encodeQueueSize > maxQueue) {
+        while (encoder.encodeQueueSize > maxQueue / 2) {
+          if (failure) throw failure
+          await waitForDequeue(encoder)
+        }
+        stall += performance.now() - e
+      } else if (i % 10 === 9) {
+        await yieldNow()
+        yielded += performance.now() - e
+      }
+    }
+    const flushStart = performance.now()
+    await encoder.flush()
+    if (failure) throw failure
+    const end = performance.now()
+    const n = frames
+    const accounted = update + submit + capture + encodeCall + stall + yielded
+    return {
+      update: update / n,
+      submit: submit / n,
+      capture: capture / n,
+      encodeCall: encodeCall / n,
+      stall: stall / n,
+      yield: yielded / n,
+      other: Math.max(0, flushStart - start - accounted) / n,
+      flushMs: end - flushStart,
+      fps: n / ((end - start) / 1000),
+      steady: steadyFps([outTimes]),
+      lat: (outTimes[0] ?? end) - start,
+    }
+  } finally {
+    if (encoder.state !== 'closed') encoder.close()
+  }
+}
+
+async function stageSyncPass(
+  ctx: AppCtxValue,
+  gl: WebGL2RenderingContext,
+  timerExt: TimerQueryExt | null,
+  t0: number,
+  frames: number,
+  fps: number,
+): Promise<Record<string, number>> {
+  const { renderer, clock } = ctx.services
+  const px = pixiOf(renderer)
+  const canvas = renderer.canvas
+  const width = canvas.width & ~1
+  const height = canvas.height & ~1
+  const dt = 1 / fps
+  const pixel = new Uint8Array(4)
+  const drain = (): void => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
+  const queries: WebGLQuery[] = []
+  let rt = 0
+  let gpu = 0
+  let captureIdle = 0
+  let captureGpu = 0
+  for (let i = 0; i < frames; i++) {
+    const t = t0 + i * dt
+    drain()
+    const a = performance.now()
+    drain()
+    const b = performance.now()
+    clock.seek(t)
+    renderer.renderManualFrame(t, dt, false)
+    const query = timerExt ? gl.createQuery() : null
+    if (query && timerExt) gl.beginQuery(timerExt.TIME_ELAPSED_EXT, query)
+    px.app.renderer.render(px.app.stage)
+    if (query && timerExt) {
+      gl.endQuery(timerExt.TIME_ELAPSED_EXT)
+      queries.push(query)
+    }
+    const d = performance.now()
+    drain()
+    const e = performance.now()
+    const frame = exportFrame(canvas, 0, width, height)
+    const f = performance.now()
+    drain()
+    const g = performance.now()
+    frame.close()
+    rt += b - a
+    gpu += e - d
+    captureIdle += f - e
+    captureGpu += g - f
+    if (i % 10 === 9) await yieldNow()
+  }
+  const n = frames
+  const rtMs = rt / n
+  return {
+    syncRt: rtMs,
+    gpu: Math.max(0, gpu / n - rtMs),
+    captureIdle: captureIdle / n,
+    captureGpu: Math.max(0, captureGpu / n - rtMs),
+    gpuQuery: await readTimerQueries(gl, timerExt, queries),
+  }
+}
+
+// Mean GPU ms of the queries, or -1 (no extension, disjoint, or no results).
+// WebGL withholds results until control returns to the event loop.
+async function readTimerQueries(
+  gl: WebGL2RenderingContext,
+  ext: TimerQueryExt | null,
+  queries: WebGLQuery[],
+): Promise<number> {
+  const last = queries[queries.length - 1]
+  if (!ext || !last) return -1
+  for (let tries = 0; tries < 20; tries++) {
+    await sleep(16)
+    if (gl.getQueryParameter(last, gl.QUERY_RESULT_AVAILABLE)) break
+  }
+  const disjoint = gl.getParameter(ext.GPU_DISJOINT_EXT) === true
+  let sum = 0
+  let n = 0
+  for (const q of queries) {
+    if (gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) {
+      sum += Number(gl.getQueryParameter(q, gl.QUERY_RESULT)) / 1e6
+      n++
+    }
+    gl.deleteQuery(q)
+  }
+  return disjoint || n === 0 ? -1 : sum / n
+}
+
+async function suiteExportStages(
+  ctx: AppCtxValue,
+  fixtureId: string,
+): Promise<Record<string, number>> {
+  if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
+    throw new Error('WebCodecs unavailable - exportstages cannot run in this browser')
+  }
+  const { res: resParam, fps } = exportParams()
+  const res = resParam ?? '1080p'
+  const only = new URLSearchParams(window.location.search).get('configs')?.split(',')
+  const configs = only ? STAGE_CONFIGS.filter((c) => only.includes(c.name)) : STAGE_CONFIGS
+  if (configs.length === 0) throw new Error(`exportstages: no config matches ${only?.join(',')}`)
+
+  const midi = await loadFixture(ctx, fixtureId)
+  const { renderer } = ctx.services
+  const px = pixiOf(renderer)
+  const gl = px.app.renderer.gl
+  if (!gl || typeof gl.createQuery !== 'function') {
+    throw new Error('exportstages: needs the renderer on WebGL2')
+  }
+  const before = {
+    theme: renderer.currentTheme,
+    particles: px.particles.style,
+    labels: px.noteRenderer.labels.enabled,
+    glow: px.noteRenderer.glowContainer.renderable,
+  }
+  const exportCanvas = enterExportCanvas(ctx, res)
+  try {
+    const width = exportCanvas.width & ~1
+    const height = exportCanvas.height & ~1
+    // VideoExporter's first plan: hardware-preferred, software if refused.
+    // `&hw=sw` starts from prefer-software instead (Chrome's OpenH264 out-runs
+    // VideoToolbox in encodemax — this prices the loop around it).
+    const target = { width, height, fps, bitrate: resolveExportBitrate(res) }
+    const params = new URLSearchParams(window.location.search)
+    const swFirst = params.get('hw') === 'sw'
+    const maxQueue = Math.max(1, Number(params.get('queue') ?? STAGE_MAX_QUEUE))
+    let hw: HwPref = swFirst ? 'prefer-software' : 'prefer-hardware'
+    let config = await probeH264({ ...target, hw })
+    if (!config) {
+      hw = 'prefer-software'
+      config = await probeH264({ ...target, hw })
+    }
+    if (!config) throw new Error(`exportstages: no H.264 encoder for ${width}x${height}`)
+    const timerExt = gl.getExtension('EXT_disjoint_timer_query_webgl2') as TimerQueryExt | null
+    const out: Record<string, number> = {
+      width,
+      height,
+      fps,
+      hw: hw === 'prefer-hardware' ? 1 : 0,
+      queue: maxQueue,
+      timerResMs: timerResolutionMs(),
+      timerQuery: timerExt ? 1 : 0,
+    }
+    // Encoder start-up outside the timed configs: a browser session's first
+    // hardware encoder pays seconds of start-up in Chrome (encodemax `cold-*`),
+    // which would otherwise land on whichever config runs first.
+    progress('exportstages:encoder-warmup')
+    out.coldLat = await warmEncoder(config, renderer.canvas, fps)
+    const t0 = midi.duration * 0.25
+    for (const c of configs) {
+      applyStageConfig(ctx, c)
+      // Shader compiles, glyph atlases, material textures: outside the timing.
+      progress(`exportstages:${c.name}:warmup`)
+      await stageSyncPass(ctx, gl, null, t0, STAGE_WARMUP_FRAMES, fps)
+      renderer.pauseAutoRender()
+      progress(`exportstages:${c.name}:loop`)
+      const loop = await stageLoopPass(ctx, config, t0, STAGE_LOOP_FRAMES, fps, maxQueue)
+      renderer.pauseAutoRender()
+      progress(`exportstages:${c.name}:sync`)
+      const sync = await stageSyncPass(ctx, gl, timerExt, t0, STAGE_SYNC_FRAMES, fps)
+      for (const [k, v] of Object.entries({ ...loop, ...sync })) out[`${c.name}_${k}`] = round(v)
+    }
+    return out
+  } finally {
+    renderer.setTheme(before.theme)
+    renderer.setParticleStyle(before.particles)
+    renderer.setNoteLabels(before.labels)
+    px.noteRenderer.glowContainer.renderable = before.glow
+    exportCanvas.restore()
+  }
+}
+
+// ── encodemax: the encoder's own ceiling ──────────────────────────────────
+// Renders POOL_SIZE consecutive export frames once at the preset size, then
+// encodes them in a cycle with NO rendering — per hardware preference
+// (hw = prefer-hardware, nopref = no-preference, sw = prefer-software) ×
+// frame source:
+//   canvas — VideoFrame(canvas) snapshots, the product's source (GPU-backed
+//            in real browsers, so any RGBA→YUV conversion or readback the
+//            browser does on the way into the encoder is included)
+//   i420 / nv12 — CPU planar YUV built once from the same pixels: the
+//            encoder with the cheapest input it can get
+// encodemax canvas vs exportstages loop fps = what render + capture +
+// scheduling cost; canvas vs i420/nv12 = the browser's frame-conversion cost.
+// Metrics per `<hw>-<src>` cell: `fps` (whole run), `steady` (warm output
+// rate), `kbpf` (kB per frame — sanity), `dq` (dequeue events seen), `lat`
+// (ms from first encode() to first output — encoder start-up); -1
+// unsupported, -2 failed.
+
+const POOL_SIZE = 8
+const ENCODEMAX_FRAMES: Record<ExportPresetRes, number> = { '720p': 450, '1080p': 300, '4k': 180 }
+const ENCODE_HW: ReadonlyArray<readonly [string, HwPref]> = [
+  ['hw', 'prefer-hardware'],
+  ['nopref', 'no-preference'],
+  ['sw', 'prefer-software'],
+]
+
+type PoolSource = 'canvas' | 'i420' | 'nv12'
+type FramePool = Record<PoolSource, VideoFrame[]>
+
+function closePool(pool: FramePool): void {
+  for (const frames of Object.values(pool)) for (const f of frames) f.close()
+}
+
+// POOL_SIZE consecutive export frames from 25% into the piece (after a short
+// run-in so particles are alive, like frame N of a real export). CPU copies
+// (`cpu: true`) go through a 2D canvas → planar YUV.
+async function buildFramePool(
+  ctx: AppCtxValue,
+  midi: MidiFile,
+  fps: number,
+  cpu: boolean,
+): Promise<FramePool> {
+  const { renderer, clock } = ctx.services
+  const canvas = renderer.canvas
+  const width = canvas.width & ~1
+  const height = canvas.height & ~1
+  const t0 = midi.duration * 0.25
+  const pool: FramePool = { canvas: [], i420: [], nv12: [] }
+  const scratch = cpu
+    ? new OffscreenCanvas(width, height).getContext('2d', { willReadFrequently: true })
+    : null
+  for (let i = -10; i < POOL_SIZE; i++) {
+    const t = t0 + i / fps
+    clock.seek(t)
+    renderer.renderManualFrame(t, 1 / fps)
+    if (i < 0) continue
+    const frame = exportFrame(canvas, 0, width, height)
+    pool.canvas.push(frame)
+    if (scratch) {
+      scratch.drawImage(frame, 0, 0)
+      const rgba = scratch.getImageData(0, 0, width, height).data
+      const init = { codedWidth: width, codedHeight: height, timestamp: 0 }
+      pool.i420.push(
+        new VideoFrame(rgbaToYuv420(rgba, width, height, false), { ...init, format: 'I420' }),
+      )
+      pool.nv12.push(
+        new VideoFrame(rgbaToYuv420(rgba, width, height, true), { ...init, format: 'NV12' }),
+      )
+    }
+    await yieldNow()
+  }
+  return pool
+}
+
+// RGBA → 4:2:0 limited-range YUV, I420 (planar) or NV12 (interleaved UV).
+// Chroma taken from each 2×2 block's top-left pixel: colour accuracy is
+// irrelevant here, only that the encoder sees real picture content in its
+// native layout. `w`/`h` must be even.
+function rgbaToYuv420(rgba: Uint8ClampedArray, w: number, h: number, nv12: boolean): Uint8Array {
+  const ySize = w * h
+  const cw = w >> 1
+  const ch = h >> 1
+  const out = new Uint8Array(ySize + 2 * cw * ch)
+  for (let i = 0, p = 0; i < ySize; i++, p += 4) {
+    out[i] = ((66 * rgba[p]! + 129 * rgba[p + 1]! + 25 * rgba[p + 2]! + 128) >> 8) + 16
+  }
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      const p = (2 * y * w + 2 * x) * 4
+      const r = rgba[p]!
+      const g = rgba[p + 1]!
+      const b = rgba[p + 2]!
+      const u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128
+      const v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128
+      const c = y * cw + x
+      if (nv12) {
+        out[ySize + 2 * c] = u
+        out[ySize + 2 * c + 1] = v
+      } else {
+        out[ySize + c] = u
+        out[ySize + cw * ch + c] = v
+      }
+    }
+  }
+  return out
+}
+
+async function suiteEncodeMax(
+  ctx: AppCtxValue,
+  fixtureId: string,
+): Promise<Record<string, number>> {
+  if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
+    throw new Error('WebCodecs unavailable - encodemax cannot run in this browser')
+  }
+  const params = new URLSearchParams(window.location.search)
+  const { res: resParam, fps } = exportParams()
+  const res = resParam ?? '1080p'
+  const midi = await loadFixture(ctx, fixtureId)
+  const exportCanvas = enterExportCanvas(ctx, res)
+  let pool: FramePool | null = null
+  try {
+    const width = exportCanvas.width & ~1
+    const height = exportCanvas.height & ~1
+    const bitrate = resolveExportBitrate(res)
+    const frames = ENCODEMAX_FRAMES[res]
+    const out: Record<string, number> = { width, height, fps, frames }
+    progress('encodemax:pool')
+    pool = await buildFramePool(ctx, midi, fps, true)
+    // Cold start first, from a CPU source: the page's first encoder pays the
+    // browser's encoder start-up (seconds for Chrome's first hardware encoder
+    // of a session), which would otherwise land on whichever matrix cell runs
+    // first. `cold-hw_lat` is that cost (`&cold=sw` probes a software encoder
+    // first instead → `cold-sw_lat`); hw-canvas's own `lat` then isolates
+    // canvas-path set-up.
+    const coldName = params.get('cold') === 'sw' ? 'sw' : 'hw'
+    progress(`encodemax:cold-${coldName}`)
+    const coldConfig = await probeH264({
+      width,
+      height,
+      fps,
+      bitrate,
+      hw: coldName === 'sw' ? 'prefer-software' : 'prefer-hardware',
+    })
+    if (coldConfig) {
+      const r = await runEncodeLoop({ config: coldConfig, pool: pool.i420, frames: 30, fps })
+      out[`cold-${coldName}_lat`] = round((r.outTimes[0] ?? r.endMs) - r.startMs)
+      out[`cold-${coldName}_fps`] = round(overallFps([r]))
+    }
+    for (const [hwName, hw] of ENCODE_HW) {
+      const config = await probeH264({ width, height, fps, bitrate, hw })
+      for (const src of ['canvas', 'i420', 'nv12'] as const) {
+        const cell = `${hwName}-${src}`
+        progress(`encodemax:${cell}`)
+        if (!config) {
+          out[`${cell}_fps`] = -1
+          continue
+        }
+        try {
+          const r = await runEncodeLoop({ config, pool: pool[src], frames, fps })
+          out[`${cell}_fps`] = round(overallFps([r]))
+          out[`${cell}_steady`] = round(steadyFps([r.outTimes]))
+          out[`${cell}_kbpf`] = round(r.bytes / 1024 / r.frames)
+          out[`${cell}_dq`] = r.dequeues
+          out[`${cell}_lat`] = round((r.outTimes[0] ?? r.endMs) - r.startMs)
+        } catch (err) {
+          console.warn(`[encodemax] ${cell} failed`, err)
+          out[`${cell}_fps`] = -2
+        }
+      }
+    }
+    return out
+  } finally {
+    if (pool) closePool(pool)
+    exportCanvas.restore()
+  }
+}
+
+// ── encodepar: do parallel encoders add throughput? ───────────────────────
+// K = 1..4 concurrent VideoEncoders fed encodemax's pre-rendered pool, each
+// encoding ENCODEPAR_FRAMES[res] frames, driven either from the main thread
+// (K interleaved async loops) or from one DedicatedWorker per encoder
+// (encodeWorker.ts; pool clones transferred, all workers released together).
+// Plans: hw-canvas, sw-canvas, sw-i420. Reports the aggregate steady-state
+// rate over the window where all K run (`steady`), whole-run `fps`, and the
+// scaling factor vs K=1 of the same plan and mode (`x`). This is the
+// question behind segment-parallel export: can K encoders digest more
+// frames per second than one?
+
+const ENCODEPAR_FRAMES: Record<ExportPresetRes, number> = { '720p': 240, '1080p': 160, '4k': 80 }
+const ENCODEPAR_MAX_K = 4
+const ENCODEPAR_CELL_TIMEOUT_MS = 180_000
+const ENCODEPAR_PLANS: ReadonlyArray<{ name: string; hw: HwPref; src: PoolSource }> = [
+  { name: 'hw-canvas', hw: 'prefer-hardware', src: 'canvas' },
+  { name: 'sw-canvas', hw: 'prefer-software', src: 'canvas' },
+  { name: 'sw-i420', hw: 'prefer-software', src: 'i420' },
+]
+
+function nextWorkerReply(w: Worker): Promise<EncodeWorkerReply> {
+  return new Promise((resolve, reject) => {
+    w.onmessage = (e: MessageEvent) => resolve(e.data as EncodeWorkerReply)
+    w.onerror = (e) => reject(new Error(`encode worker: ${e.message}`))
+  })
+}
+
+async function encodeInWorkers(
+  config: VideoEncoderConfig,
+  pool: readonly VideoFrame[],
+  k: number,
+  frames: number,
+  fps: number,
+): Promise<EncodeRunResult[]> {
+  const workers: Worker[] = []
+  try {
+    for (let i = 0; i < k; i++) {
+      workers.push(new Worker(new URL('./encodeWorker.ts', import.meta.url), { type: 'module' }))
+    }
+    await Promise.all(
+      workers.map(async (w) => {
+        const reply = nextWorkerReply(w)
+        const clones = pool.map((f) => f.clone())
+        try {
+          w.postMessage({ kind: 'setup', config, pool: clones, frames, fps }, clones)
+        } catch (err) {
+          for (const c of clones) c.close()
+          throw err
+        }
+        const r = await reply
+        if (r.kind !== 'ready') throw new Error(`encode worker setup: ${JSON.stringify(r)}`)
+      }),
+    )
+    const done = workers.map((w) => nextWorkerReply(w))
+    for (const w of workers) w.postMessage({ kind: 'go' })
+    return (await Promise.all(done)).map((r) => {
+      if (r.kind !== 'done') throw new Error(r.kind === 'error' ? r.error : 'unexpected reply')
+      return r.result
+    })
+  } finally {
+    for (const w of workers) w.terminate()
+  }
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms} ms`)), ms)
+  })
+  return Promise.race([p, expiry]).finally(() => clearTimeout(timer))
+}
+
+async function suiteEncodePar(
+  ctx: AppCtxValue,
+  fixtureId: string,
+): Promise<Record<string, number>> {
+  if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
+    throw new Error('WebCodecs unavailable - encodepar cannot run in this browser')
+  }
+  const { res: resParam, fps } = exportParams()
+  const res = resParam ?? '1080p'
+  const midi = await loadFixture(ctx, fixtureId)
+  const exportCanvas = enterExportCanvas(ctx, res)
+  let pool: FramePool | null = null
+  try {
+    const width = exportCanvas.width & ~1
+    const height = exportCanvas.height & ~1
+    const bitrate = resolveExportBitrate(res)
+    const frames = ENCODEPAR_FRAMES[res]
+    const out: Record<string, number> = { width, height, fps, frames }
+    progress('encodepar:pool')
+    pool = await buildFramePool(ctx, midi, fps, true)
+    for (const plan of ENCODEPAR_PLANS) {
+      const config = await probeH264({ width, height, fps, bitrate, hw: plan.hw })
+      for (const mode of ['main', 'worker'] as const) {
+        let single = 0
+        for (let k = 1; k <= ENCODEPAR_MAX_K; k++) {
+          const cell = `${plan.name}-${mode}-k${k}`
+          progress(`encodepar:${cell}`)
+          if (!config) {
+            out[`${cell}_steady`] = -1
+            continue
+          }
+          const src = pool[plan.src]
+          try {
+            const runs = await withTimeout(
+              mode === 'main'
+                ? Promise.all(
+                    Array.from({ length: k }, () =>
+                      runEncodeLoop({ config, pool: src, frames, fps }),
+                    ),
+                  )
+                : encodeInWorkers(config, src, k, frames, fps),
+              ENCODEPAR_CELL_TIMEOUT_MS,
+              cell,
+            )
+            const steady = steadyFps(runs.map((r) => r.outTimes))
+            if (k === 1) single = steady
+            out[`${cell}_steady`] = round(steady)
+            out[`${cell}_fps`] = round(overallFps(runs))
+            out[`${cell}_x`] = single > 0 && steady > 0 ? round(steady / single) : -1
+          } catch (err) {
+            console.warn(`[encodepar] ${cell} failed`, err)
+            out[`${cell}_steady`] = -2
+          }
+        }
+      }
+    }
+    return out
+  } finally {
+    if (pool) closePool(pool)
+    exportCanvas.restore()
   }
 }
 
@@ -1205,9 +2005,34 @@ const SUITES: Record<
   export: suiteExport,
   exportlab: suiteExportLab,
   exportreal: suiteExportReal,
+  exportstages: suiteExportStages,
+  encodemax: suiteEncodeMax,
+  encodepar: suiteEncodePar,
   audiorender: suiteAudioRender,
   headroom: suiteHeadroom,
   voiceload: suiteVoiceload,
+}
+
+// Time the page spent hidden during the run, reported as `hiddenMs` on every
+// result. A hidden tab (user switched tabs, window occluded) gets throttled
+// timers and paused rAF, which silently turns a timing run into garbage — the
+// driver flags any run with hiddenMs > 0 so it can't pass for a slow one.
+function trackHiddenTime(): () => number {
+  let total = 0
+  let since = document.visibilityState === 'hidden' ? performance.now() : -1
+  const onChange = (): void => {
+    if (document.visibilityState === 'hidden') {
+      if (since < 0) since = performance.now()
+    } else if (since >= 0) {
+      total += performance.now() - since
+      since = -1
+    }
+  }
+  document.addEventListener('visibilitychange', onChange)
+  return () => {
+    document.removeEventListener('visibilitychange', onChange)
+    return Math.round(total + (since >= 0 ? performance.now() - since : 0))
+  }
 }
 
 export async function maybeRunBench(ctx: AppCtxValue): Promise<void> {
@@ -1230,12 +2055,14 @@ export async function maybeRunBench(ctx: AppCtxValue): Promise<void> {
     return
   }
 
+  const hiddenMs = trackHiddenTime()
   try {
     const suite = suiteParam as BenchSuite
     const run = SUITES[suite]
     if (!run) throw new Error(`unknown bench suite: ${suiteParam}`)
     const fixture = params.get('fixture') ?? BENCH_FIXTURES[0]!.id
     const metrics = await run(ctx, fixture)
+    metrics.hiddenMs = hiddenMs()
     const result: BenchResult = {
       schema: 2,
       suite,
