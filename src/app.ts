@@ -14,6 +14,11 @@ import { booleanPersisted, idPersisted, numberPersisted } from './core/persisten
 import { forgetRecent, readRecentMidi, rememberRecent } from './core/recentMidi'
 import { fetchSampleMidi, getSample } from './core/samples'
 import type { AppServices } from './core/services'
+// VideoExporter pulls Mediabunny; OfflineAudioRenderer pulls Tone + instruments.
+// Both are dynamic-imported from startExport(). Import order matters: load the
+// offline-audio module first when audio is needed — do not block Tone on the
+// heavy VideoExporter chunk (see Promise.all removal below).
+import { prewarmVideoEncoder } from './export/encoderWarmup'
 import {
   exportFraming,
   pitchSignature,
@@ -21,10 +26,6 @@ import {
   resolveExportRender,
   trimAudioBuffer,
 } from './export/exportMath'
-// VideoExporter pulls Mediabunny; OfflineAudioRenderer pulls Tone + instruments.
-// Both are dynamic-imported from startExport(). Import order matters: load the
-// offline-audio module first when audio is needed — do not block Tone on the
-// heavy VideoExporter chunk (see Promise.all removal below).
 import type { ExportStage, VideoExporter } from './export/VideoExporter'
 import { audioBufferToWav } from './export/wav'
 import { setLocale, t } from './i18n'
@@ -1547,6 +1548,9 @@ export class App {
       this.clock.pause()
       this.store.setState('status', 'paused')
     }
+    // Chrome's first encoder of a session takes ~5 s to start; pay it while
+    // the user is still choosing settings rather than inside the export.
+    void prewarmVideoEncoder()
     void this.exportHandle.get().then((m) => m.open())
   }
 

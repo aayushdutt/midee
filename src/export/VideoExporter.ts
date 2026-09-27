@@ -119,7 +119,15 @@ interface CodecPlan {
 const DEFAULT_FPS = 30
 const DEFAULT_BITRATE = 8_000_000
 const KEYFRAME_INTERVAL_SEC = 2
-const MAX_ENCODE_QUEUE = 20 // backpressure: wait when queue exceeds this
+// Backpressure: wait when the queue exceeds this, until it's down to half.
+// Shallow on purpose: every queued frame is a full-size GPU snapshot, and Chrome
+// keeps only 3–5 frames inside the encoder anyway. On an M4 (Chrome 154 /
+// Safari 26) depth 20 → 4 made real exports 26–55 % faster; 2 adds another
+// +18–20 % in Chrome at 720p/1080p and ties 4 in Safari; 1–8 all hit the
+// hardware ceiling at 4K; 8 and above get slower. Render-bound devices never
+// fill the queue, so depth doesn't matter there
+// (docs/EXPORT_PERF_MEASUREMENTS_2026-09-27.md).
+const MAX_ENCODE_QUEUE = 2
 const PROGRESS_UPDATE_EVERY_N_FRAMES = 3
 
 const AUDIO_BITRATE = 192_000
