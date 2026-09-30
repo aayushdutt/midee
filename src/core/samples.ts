@@ -1,6 +1,4 @@
-// Bundled sample pieces — fetched from /samples/*.mid on click.
-// Home-screen order is the order of this list. Gnossienne stays in
-// public/samples for the benchmark fixtures and is not listed here.
+// Home-screen samples, in display order. Fetched from /samples/*.mid.
 
 import { parseMidiFile } from './midi/parser'
 import type { MidiFile } from './midi/types'
