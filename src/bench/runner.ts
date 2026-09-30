@@ -61,6 +61,7 @@ export interface BenchFixture {
 // fast+dense, kunst-der-fuge maximizes simultaneously-active notes.
 export const BENCH_FIXTURES: readonly BenchFixture[] = [
   { id: 'bach-prelude-c', url: `${import.meta.env.BASE_URL}samples/bach-prelude-in-c.mid` },
+  { id: 'satie-gnossienne-1', url: `${import.meta.env.BASE_URL}samples/satie-gnossienne-1.mid` },
   {
     id: 'chopin-nocturne-op9-2',
     url: `${import.meta.env.BASE_URL}samples/chopin-nocturne-op9-2.mid`,

@@ -17,6 +17,15 @@ Attribution and license per file.
 - **Source:** https://commons.wikimedia.org/wiki/File:Chopin_-_Fantaisie-Impromptu.mid (originally http://www.piano-midi.de/)
 - The bytes are the Wikimedia file, unchanged.
 
+## satie-gnossienne-1.mid
+
+Kept for benchmarks. It is not one of the home-screen samples.
+
+- **Composition:** Erik Satie — *Gnossienne No. 1* — public-domain composition.
+- **Typesetter:** Knute Snortum (https://www.musicwithknute.com/)
+- **License:** [Creative Commons Attribution-ShareAlike 4.0 International](http://creativecommons.org/licenses/by-sa/4.0/)
+- **Source:** https://www.mutopiaproject.org/ftp/SatieE/Gnossienne/no_1/
+
 ## bach-prelude-in-c.mid
 
 - **Composition:** J.S. Bach — *Prelude No. 1 in C major*, BWV 846 (Well-Tempered Clavier, Book 1) — public-domain composition.
@@ -27,5 +36,5 @@ Attribution and license per file.
 ## License notes
 
 - The Bach file is in the public domain; no restrictions.
-- Both Chopin files are CC BY-SA. Redistribution is fine, attribution is required, and derivative renderings inherit the same license. The nocturne is CC BY-SA 3.0. Fantaisie-Impromptu is CC BY-SA 3.0 Germany.
+- The Satie and Chopin files are CC BY-SA. Redistribution is fine, attribution is required, and derivative renderings inherit the same license. Gnossienne No. 1 is CC BY-SA 4.0. The nocturne is CC BY-SA 3.0. Fantaisie-Impromptu is CC BY-SA 3.0 Germany.
 - Attribution is preserved in this file; if you fork the project, keep this README in the distribution.
