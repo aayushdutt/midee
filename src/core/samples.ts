@@ -1,7 +1,8 @@
 // Bundled sample pieces — fetched from /samples/*.mid on click. Files are
 // shipped in the repo under public/samples with per-file licensing attribution
-// in the accompanying README. All three are Creative Commons (public domain
-// for Bach; CC BY-SA for Satie + Chopin) sourced from the Mutopia Project.
+// in the accompanying README. Bach is public domain from the Mutopia Project.
+// Both Chopin files are CC BY-SA: the nocturne from Mutopia, Fantaisie-Impromptu
+// from Bernd Krueger via Wikimedia Commons, stored unchanged.
 
 import { parseMidiFile } from './midi/parser'
 import type { MidiFile } from './midi/types'
@@ -25,20 +26,20 @@ export const SAMPLES: readonly Sample[] = [
     displayName: 'Chopin - Nocturne Op. 9 No. 2',
   },
   {
+    id: 'chopin-fantaisie-impromptu-op66',
+    title: 'Fantaisie-Impromptu',
+    composer: 'Chopin',
+    accent: '#a78bfa',
+    url: `${import.meta.env.BASE_URL}samples/chopin-fantaisie-impromptu-op66.mid`,
+    displayName: 'Chopin - Fantaisie-Impromptu',
+  },
+  {
     id: 'bach-prelude-c',
     title: 'Prelude in C',
     composer: 'J.S. Bach',
     accent: '#f97316',
     url: `${import.meta.env.BASE_URL}samples/bach-prelude-in-c.mid`,
     displayName: 'Bach - Prelude in C (BWV 846)',
-  },
-  {
-    id: 'satie-gnossienne-1',
-    title: 'Gnossienne No. 1',
-    composer: 'Satie',
-    accent: '#a78bfa',
-    url: `${import.meta.env.BASE_URL}samples/satie-gnossienne-1.mid`,
-    displayName: 'Satie - Gnossienne No. 1',
   },
 ]
 
