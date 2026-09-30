@@ -1,8 +1,6 @@
-// Bundled sample pieces — fetched from /samples/*.mid on click. Files are
-// shipped in the repo under public/samples with per-file licensing attribution
-// in the accompanying README. Bach is public domain from the Mutopia Project.
-// Both Chopin files are CC BY-SA: the nocturne from Mutopia, Fantaisie-Impromptu
-// from Bernd Krueger via Wikimedia Commons, stored unchanged.
+// Bundled sample pieces — fetched from /samples/*.mid on click.
+// Home-screen order is the order of this list. Gnossienne stays in
+// public/samples for the benchmark fixtures and is not listed here.
 
 import { parseMidiFile } from './midi/parser'
 import type { MidiFile } from './midi/types'
