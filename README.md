@@ -10,8 +10,6 @@ no watermark.
 
 > [**midee.app**](https://midee.app) - open it and drop a file.
 
-<!-- Drop a hero gif/screenshot here when ready: docs/hero.gif -->
-
 ---
 
 ## Features
@@ -87,25 +85,6 @@ npm run build      # static bundle → dist/
 Firefox 130+.
 
 ---
-
-## Deferred visual styles
-
-Public builds expose Liquid Glass and Opal, alongside the classic palettes.
-Smoked Glass, Aurora Silk, Lacquer & Gold, and Ember Mist are retained for
-later, including their particle presets. To preview them locally:
-
-```bash
-VITE_ENABLE_FOR_LATER_VISUALS=1 npm run dev
-```
-
-The gate lives in `src/renderer/forLater/visuals.ts`; it controls the available
-catalogs used by menus, keyboard cycling, and saved-preference validation.
-Ember Mist’s note and strike renderers live in `src/renderer/forLater/`.
-The deferred note factory and mist strike layer are gated, allowing unused
-standalone renderers to be removed by the production bundler. `ALL_THEMES` and
-`ALL_PARTICLE_STYLES` preserve historical index order for storage migration;
-never reorder them to match the menu. Deferred saved IDs fall back to Sunset
-and Embers in a public build without overwriting the saved preference.
 
 ## Keyboard
 
