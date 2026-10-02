@@ -4,6 +4,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- Hide the skip link before the app stylesheet arrives; keep it focusable. -->
+  <style>
+    .skip-link:not(:focus) { position: fixed; top: 0; transform: translateY(-200%); }
+  </style>
   <title>midee - Free Online MIDI Player & Synthesia Alternative</title>
   <meta name="description"
     content="Open any MIDI file in your browser. Play it, visualize falling notes, practice with Learn mode, jam with a MIDI controller, loop ideas, and export MP4." />
@@ -95,10 +99,11 @@
 </head>
 
 <body>
-  <div id="app">
+  <a class="skip-link" href="#app">Skip to main content</a>
+  <main id="app" tabindex="-1">
     <canvas id="pianoroll"></canvas>
     <div id="ui-overlay"></div>
-  </div>
+  </main>
   <noscript>
     <div
       style="max-width:720px;margin:4rem auto;padding:2rem;font-family:system-ui,sans-serif;color:#e8e8f0;background:#0b0b10;border-radius:12px;line-height:1.55;">

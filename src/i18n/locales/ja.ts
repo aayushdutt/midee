@@ -232,7 +232,8 @@ const ja: Messages = {
   'modeError.title': '問題が発生しました',
   'modeError.retry': 'もう一度試す',
 
-  'doc.title.home': 'midee · MIDI をドロップして、歌わせよう',
+  'doc.title.home': 'midee - 無料オンライン MIDI プレーヤー・Synthesia の代替',
+  'a11y.skipToMain': 'メインコンテンツへ移動',
   'doc.title.live': 'midee · ライブ',
   'doc.title.learn': 'midee · 学習',
 

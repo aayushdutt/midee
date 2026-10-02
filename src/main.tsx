@@ -23,6 +23,7 @@ import { env } from './env'
 import { currentLocaleNativeName, initI18n, shouldShowLocaleHint, t } from './i18n'
 import { AppCtx } from './store/AppCtx'
 import { loadPostHog, registerAnalyticsContext } from './telemetry'
+import { installSkipLink } from './ui/SkipLink'
 import { showToast } from './ui/Toast'
 import { whenIdle } from './whenIdle'
 
@@ -59,6 +60,7 @@ whenIdle(() => {
 async function boot(): Promise<void> {
   await initI18n()
   const { ctx } = await createApp()
+  installSkipLink(() => ctx.store.state.mode)
   // Solid owns a dedicated child of #ui-overlay so its render() call doesn't
   // wipe the legacy UI (Controls, DropZone, TrackPanel, modals) that the
   // wrapped App class has already mounted into #ui-overlay directly.

@@ -1,4 +1,4 @@
-import { onMount } from 'solid-js'
+import { createEffect, onMount } from 'solid-js'
 import { t } from '../i18n'
 import { useApp } from '../store/AppCtx'
 
@@ -20,6 +20,8 @@ export function HomeMode() {
     trackPanel.close()
     dropzone.show()
     keyboardInput.enable()
+  })
+  createEffect(() => {
     document.title = t('doc.title.home')
   })
   return null

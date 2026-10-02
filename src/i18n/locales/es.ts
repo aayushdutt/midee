@@ -242,7 +242,8 @@ const es: Messages = {
   'modeError.retry': 'Reintentar',
 
   // ── Document title ──────────────────────────────────────────
-  'doc.title.home': 'midee - suelta un MIDI, míralo cantar',
+  'doc.title.home': 'midee - Reproductor MIDI gratuito online y alternativa a Synthesia',
+  'a11y.skipToMain': 'Saltar al contenido principal',
   'doc.title.live': 'midee · en vivo',
   'doc.title.learn': 'midee · aprender',
 

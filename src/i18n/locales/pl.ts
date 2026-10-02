@@ -239,7 +239,8 @@ const pl: Messages & Record<PolishPluralKey, string> = {
   'modeError.title': 'Coś poszło nie tak',
   'modeError.retry': 'Spróbuj ponownie',
 
-  'doc.title.home': 'midee - wrzuć MIDI i patrz, jak śpiewa',
+  'doc.title.home': 'midee - Darmowy odtwarzacz MIDI online i alternatywa dla Synthesia',
+  'a11y.skipToMain': 'Przejdź do głównej treści',
   'doc.title.live': 'midee · na żywo',
   'doc.title.learn': 'midee · nauka',
 

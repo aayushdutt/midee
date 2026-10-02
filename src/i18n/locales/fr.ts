@@ -247,7 +247,8 @@ const fr: Messages = {
   'modeError.retry': 'Réessayer',
 
   // ── Document title ──────────────────────────────────────────
-  'doc.title.home': 'midee - déposez un MIDI, regardez-le chanter',
+  'doc.title.home': 'midee - Lecteur MIDI gratuit en ligne et alternative à Synthesia',
+  'a11y.skipToMain': 'Aller au contenu principal',
   'doc.title.live': 'midee · direct',
   'doc.title.learn': 'midee · apprendre',
 

@@ -224,7 +224,8 @@ const zhCN: Messages = {
   'modeError.title': '出了点问题',
   'modeError.retry': '重试',
 
-  'doc.title.home': 'midee · 拖入 MIDI，看它唱起来',
+  'doc.title.home': 'midee - 免费在线 MIDI 播放器与 Synthesia 替代品',
+  'a11y.skipToMain': '跳转到主要内容',
   'doc.title.live': 'midee · 实时弹奏',
   'doc.title.learn': 'midee · 学习',
 

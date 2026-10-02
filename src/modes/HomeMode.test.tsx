@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import { setLocale, t } from '../i18n'
 import { renderWithApp } from '../test/renderWithApp'
 import { HomeMode } from './HomeMode'
 
@@ -8,6 +9,9 @@ import { HomeMode } from './HomeMode'
 // These tests prove the harness wires every slot HomeMode reaches and that the
 // mount side effects fire as the comments in HomeMode.tsx describe.
 describe('HomeMode', () => {
+  afterEach(async () => {
+    await setLocale('en')
+  })
   it('renders without throwing on useApp() inside the harness', () => {
     expect(() => renderWithApp(() => <HomeMode />)).not.toThrow()
   })
@@ -38,7 +42,12 @@ describe('HomeMode', () => {
 
   it('sets the document title to the home title', () => {
     renderWithApp(() => <HomeMode />)
-    // t('doc.title.home') resolves to the English fallback in jsdom.
-    expect(document.title).not.toBe('')
+    expect(document.title).toBe('midee - Free Online MIDI Player & Synthesia Alternative')
+  })
+  it('updates the descriptive title when the home locale changes', async () => {
+    renderWithApp(() => <HomeMode />)
+    await setLocale('fr')
+    expect(document.title).toBe(t('doc.title.home'))
+    expect(document.title).toContain('Lecteur MIDI gratuit')
   })
 })

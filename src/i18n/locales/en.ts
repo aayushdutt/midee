@@ -263,7 +263,8 @@ export const en = {
   'modeError.retry': 'Try again',
 
   // ── Document title (browser tab) ───────────────────────────
-  'doc.title.home': 'midee - drop a MIDI, watch it sing',
+  'doc.title.home': 'midee - Free Online MIDI Player & Synthesia Alternative',
+  'a11y.skipToMain': 'Skip to main content',
   'doc.title.live': 'midee · live',
   'doc.title.learn': 'midee · learn',
 

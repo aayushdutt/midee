@@ -242,7 +242,8 @@ const ptBR: Messages = {
   'modeError.retry': 'Tentar novamente',
 
   // ── Document title ──────────────────────────────────────────
-  'doc.title.home': 'midee - solte um MIDI, veja-o cantar',
+  'doc.title.home': 'midee - Player MIDI online gratuito e alternativa ao Synthesia',
+  'a11y.skipToMain': 'Pular para o conteúdo principal',
   'doc.title.live': 'midee · ao vivo',
   'doc.title.learn': 'midee · aprender',
 

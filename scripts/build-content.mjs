@@ -6,9 +6,12 @@ import { readFileSync, writeFileSync, readdirSync, mkdirSync, statSync } from 'n
 import { resolve, join, relative } from 'node:path'
 import { marked } from 'marked'
 import { renderFontTags } from './fonts-css.mjs'
-import { renderPosthogSnippet } from './posthog-snippet.mjs'
+import { createPosthogAsset } from './posthog-snippet.mjs'
 
-const posthogSnippet = renderPosthogSnippet()
+const posthogAsset = createPosthogAsset()
+const posthogSnippet = posthogAsset
+  ? `<script src="/assets/${posthogAsset.fileName}"></script>`
+  : ''
 
 const root = process.cwd()
 const contentDir = resolve(root, 'content')
@@ -405,6 +408,9 @@ ${items}
 }
 
 // MAIN
+if (posthogAsset) {
+  writeFileSync(resolve(distDir, 'assets', posthogAsset.fileName), posthogAsset.source, 'utf8')
+}
 const files = walkMd(contentDir)
 // Pre-parse every page's frontmatter so each rendered page can carry the
 // sitewide guides footer (see guidesFooter). Two passes over small files is
