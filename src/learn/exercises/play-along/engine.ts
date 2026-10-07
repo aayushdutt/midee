@@ -191,7 +191,7 @@ export class PlayAlongEngine {
             : track.notes
                 .filter(
                   (note) =>
-                    status.pending.has(note.pitch) && Math.abs(note.time - stepTime) <= 0.04,
+                    status.step!.pitches.has(note.pitch) && Math.abs(note.time - stepTime) <= 0.04,
                 )
                 .map((note) => ({ ...note, channel: track.channel, trackIndex })),
         )
@@ -323,6 +323,7 @@ export class PlayAlongEngine {
   }
 
   setWaitEnabled(enabled: boolean): void {
+    this.opts.services.keyLights?.setPracticeMode(enabled)
     this.practice.setEnabled(enabled)
   }
 

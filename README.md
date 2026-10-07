@@ -95,8 +95,10 @@ light device), open **Appearance → Key Lights**,
 allow MIDI access, and select the device under **Light device**. MIDI output
 requires a browser with Web MIDI support, such as desktop Chrome or Edge.
 
-Lights follow note on/off timing during playback and show pending notes in
-play-along practice. Pausing playback clears the lights. Drum tracks are skipped.
+Lights follow note on/off timing during playback. With play-along's **Wait**
+enabled, they show the entire required chord until it is completed; pressing
+part of the chord leaves all its lights on. Internal practice waits retain
+the chord, while an explicit pause clears the lights. Drum tracks are skipped.
 Use **Synthesia hands (estimated)** with KEEZI's **Visualizer → Synthesia** preset
 for hand colors: MIDI channel 12 means left hand with unknown finger, and 13
 means right hand with unknown finger. Hands are inferred from each track's

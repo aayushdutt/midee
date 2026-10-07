@@ -57,12 +57,18 @@ export class KeyLights {
   // clear() cancels both, so explicit note-offs must cover all touched keys.
   private touched = new Set<number>()
   private guidance: readonly LightNote[] | null = null
+  private shownGuidance = new Map<number, LightNote>()
+  private practiceMode = false
   private timer: ReturnType<typeof setInterval> | null = null
   private readonly unsubscribe: () => void
   private disposed = false
 
   constructor(private readonly clock: MasterClock) {
-    this.unsubscribe = clock.subscribeTransport(() => this.restart())
+    this.unsubscribe = clock.subscribeTransport(() => {
+      // Practice owns which chord is shown. Its clock pauses/seeks/resumes
+      // internally; those transitions must not reset or replay the LEDs.
+      if (!this.practiceMode && this.guidance === null) this.restart()
+    })
     window.addEventListener('pagehide', this.onPageHide)
   }
 
@@ -92,9 +98,10 @@ export class KeyLights {
   }
 
   load(midi: MidiFile | null): void {
-    if (midi === this.midi && this.guidance === null) return
+    if (midi === this.midi && this.guidance === null && !this.practiceMode) return
     this.midi = midi
     this.guidance = null
+    this.practiceMode = false
     this.disabled.clear()
     this.rebuild()
   }
@@ -106,8 +113,45 @@ export class KeyLights {
   }
 
   setGuidance(notes: readonly LightNote[] | null): void {
+    if (notes === null && this.guidance === null) return
+    const enteringGuidance = this.guidance === null
     this.guidance = notes
+    if (notes === null) this.restart()
+    else {
+      if (enteringGuidance) this.stop()
+      this.syncGuidance()
+    }
+  }
+
+  setPracticeMode(enabled: boolean): void {
+    if (enabled === this.practiceMode) return
+    this.practiceMode = enabled
+    this.guidance = null
     this.restart()
+  }
+
+  private syncGuidance(): void {
+    if (this.disposed || !this.output) return
+    const desired = new Map<number, LightNote>()
+    for (const note of this.guidance ?? []) {
+      const track = this.midi?.tracks[note.trackIndex]
+      if (track && this.disabled.has(track.id)) continue
+      desired.set(this.channel(note) * 128 + note.pitch, note)
+    }
+    for (const [key] of this.shownGuidance) {
+      if (desired.has(key)) continue
+      this.send([0x80 | Math.floor(key / 128), key % 128, 0])
+      if (!this.output) return
+      this.touched.delete(key)
+    }
+    for (const [key, note] of desired) {
+      if (this.shownGuidance.has(key)) continue
+      this.touched.add(key)
+      const velocity = Math.max(1, Math.min(127, Math.round(note.velocity * 127)))
+      this.send([0x90 | Math.floor(key / 128), note.pitch, velocity])
+      if (!this.output) return
+    }
+    this.shownGuidance = desired
   }
 
   private rebuild(): void {
@@ -179,10 +223,10 @@ export class KeyLights {
     this.stop()
     if (this.disposed || !this.output) return
     if (this.guidance) {
-      for (const note of this.guidance) this.emit(note, true)
+      this.syncGuidance()
       return
     }
-    if (!this.clock.playing || !this.midi) return
+    if (this.practiceMode || !this.clock.playing || !this.midi) return
     const time = this.clock.currentTime
     const held = new Map<number, LightNote>()
     // Reconstruct notes held at the new position, including a seek mid-note.
@@ -235,6 +279,7 @@ export class KeyLights {
     }
     this.counts.clear()
     this.touched.clear()
+    this.shownGuidance.clear()
   }
 
   private updateStatus(): void {

@@ -166,14 +166,15 @@ function makeServices(): {
 }
 
 describe('PlayAlongEngine', () => {
-  it('lights pending practice notes and clears them on user pause and exit', () => {
+  it('keeps the target chord lit and clears it on user pause and exit', () => {
     const { services, clock, learnState } = makeServices()
-    const lights = { load: vi.fn(), setGuidance: vi.fn() }
+    const lights = { load: vi.fn(), setGuidance: vi.fn(), setPracticeMode: vi.fn() }
     services.keyLights = lights as unknown as NonNullable<AppServices['keyLights']>
     const engine = new PlayAlongEngine({ services, learnState })
     const midi = makeMidi()
     engine.attach(midi)
     engine.setWaitEnabled(true)
+    expect(lights.setPracticeMode).toHaveBeenCalledWith(true)
     engine.play()
     clock.emit(2.01)
     expect(lights.load).toHaveBeenCalledWith(midi)
@@ -184,6 +185,7 @@ describe('PlayAlongEngine', () => {
     ])
     engine.onNoteOn({ pitch: 60, velocity: 1, clockTime: 2.01, source: 'midi' })
     expect(lights.setGuidance).toHaveBeenLastCalledWith([
+      expect.objectContaining({ pitch: 60 }),
       expect.objectContaining({ pitch: 64 }),
       expect.objectContaining({ pitch: 67 }),
     ])

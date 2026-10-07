@@ -201,16 +201,18 @@ describe('Key Lights MIDI output', () => {
     expect(send.mock.calls.every(([data]) => (data[0] & 0xf0) === 0x80)).toBe(true)
   })
 
-  it('shows pending practice notes while paused and clears accepted notes', () => {
+  it('updates guidance incrementally and keeps it stable during transport transitions', () => {
     enable()
     const note = { pitch: 64, velocity: 0.8, channel: 1, trackIndex: 0 }
     lights.setGuidance([note])
     expect(send).toHaveBeenCalledWith([0x91, 64, 102], undefined)
+    send.mockClear()
     clock.play()
     clock.pause()
-    expect(send).toHaveBeenLastCalledWith([0x91, 64, 102], undefined)
+    lights.setGuidance([{ ...note }])
+    expect(send).not.toHaveBeenCalled()
     lights.setGuidance([])
-    expect(send).toHaveBeenLastCalledWith([0x81, 64, 0])
+    expect(send).toHaveBeenLastCalledWith([0x81, 64, 0], undefined)
     lights.load(null)
   })
 
