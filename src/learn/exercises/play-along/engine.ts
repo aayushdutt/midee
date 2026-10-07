@@ -182,20 +182,7 @@ export class PlayAlongEngine {
           lights.setGuidance(null)
           return
         }
-        const stepTime = status.step.time
-        const notes = midi.tracks.flatMap((track, trackIndex) =>
-          track.isDrum ||
-          (this.state.hand === 'left' && averagePitch(track.notes) >= 60) ||
-          (this.state.hand === 'right' && averagePitch(track.notes) < 60)
-            ? []
-            : track.notes
-                .filter(
-                  (note) =>
-                    status.step!.pitches.has(note.pitch) && Math.abs(note.time - stepTime) <= 0.04,
-                )
-                .map((note) => ({ ...note, channel: track.channel, trackIndex })),
-        )
-        lights.setGuidance(notes)
+        lights.setGuidance(status.step.notes)
       }),
       services.clock.subscribe((t) => this.onTick(t)),
       watch(

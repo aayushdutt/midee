@@ -37,8 +37,9 @@ function song(): MidiFile {
 }
 
 // Model the Web MIDI boundary rather than merely spying on send(): timestamped
-// messages reach the device later, clear() cancels queued messages, and immediate
-// messages update the simulated LED state. The real clock/engines run together.
+// messages reach the device later and immediate messages update LED state.
+// The port deliberately has no clear(), like Chromium. Production must never
+// submit future timestamps, because those messages cannot be cancelled.
 function midiDevice() {
   const messages: number[][] = []
   const delivered: number[][] = []
@@ -66,12 +67,8 @@ function midiDevice() {
         queue.add(timer)
       }
     },
-    clear() {
-      for (const timer of queue) clearTimeout(timer)
-      queue.clear()
-    },
   } as unknown as MIDIOutput
-  return { messages, delivered, lit, port }
+  return { messages, delivered, lit, port, queue }
 }
 
 describe('Key Lights transport/practice integration', () => {
@@ -205,6 +202,7 @@ describe('Key Lights transport/practice integration', () => {
         vi.advanceTimersByTime(200)
         expect(device.lit.size, `pause at ${milliseconds} ms, speed ${speed}`).toBe(0)
         expect(device.messages).toHaveLength(afterPause)
+        expect(device.queue.size).toBe(0)
       }
     }
   })

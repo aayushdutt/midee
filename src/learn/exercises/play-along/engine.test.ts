@@ -166,6 +166,33 @@ function makeServices(): {
 }
 
 describe('PlayAlongEngine', () => {
+  it('lights only exact step notes, excluding an earlier same-pitch voice on another channel', () => {
+    const { services, clock, learnState } = makeServices()
+    const lights = { load: vi.fn(), setGuidance: vi.fn(), setPracticeMode: vi.fn() }
+    services.keyLights = lights as unknown as NonNullable<AppServices['keyLights']>
+    const midi = makeMidi()
+    midi.tracks[0]!.notes = [
+      { pitch: 55, time: 1.94, duration: 0.5, velocity: 1 },
+      { pitch: 60, time: 1.98, duration: 0.5, velocity: 1 },
+    ]
+    midi.tracks.push({
+      ...midi.tracks[0]!,
+      id: 'next',
+      channel: 1,
+      notes: [{ pitch: 60, time: 2, duration: 0.5, velocity: 1 }],
+    })
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(midi)
+    engine.seek(1.99)
+    engine.setWaitEnabled(true)
+    engine.play()
+    clock.emit(2)
+    expect(lights.setGuidance).toHaveBeenLastCalledWith([
+      expect.objectContaining({ pitch: 60, channel: 1, trackIndex: 1 }),
+    ])
+    engine.detach()
+  })
+
   it('keeps the target chord lit and clears it on user pause and exit', () => {
     const { services, clock, learnState } = makeServices()
     const lights = { load: vi.fn(), setGuidance: vi.fn(), setPracticeMode: vi.fn() }

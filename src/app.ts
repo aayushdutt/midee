@@ -37,6 +37,7 @@ import {
 import type { ExportStage, VideoExporter } from './export/VideoExporter'
 import { audioBufferToWav } from './export/wav'
 import { setLocale, t } from './i18n'
+import { bindPlayKeyLights } from './midi/bindPlayKeyLights'
 import { CaptureFanout } from './midi/CaptureFanout'
 import { ComputerKeyboardInput } from './midi/ComputerKeyboardInput'
 import { KeyLights } from './midi/KeyLights'
@@ -270,33 +271,12 @@ export class App {
     this.midiInput = new MidiInputManager(this.clock)
     this.keyLights = new KeyLights(this.clock)
     this.midiInput.setLightOutput(this.keyLights.settings.value.outputId)
-    let lightMode = this.store.state.mode
-    let lightSource: MidiFile | null = null
     this.unsubs.push(
       this.keyLights.settings.subscribe((settings) =>
         this.midiInput.setLightOutput(settings.outputId),
       ),
       this.midiInput.midiAccess.subscribe((access) => this.keyLights.setAccess(access)),
-      watch(
-        () =>
-          [
-            this.store.state.mode,
-            this.store.state.loadedMidi,
-            this.store.state.status === 'exporting',
-          ] as const,
-        ([mode, midi, exporting]) => {
-          const source = mode === 'play' && !exporting ? midi : null
-          // Status changes also re-run the effect: only rebuild for a new
-          // piece/mode or export, never re-strike notes on Play/Pause.
-          if (mode === lightMode && source === lightSource) return
-          lightMode = mode
-          lightSource = source
-          this.keyLights.load(source)
-          for (const id of this.synth.getDisabledTrackIds()) {
-            this.keyLights.setTrackEnabled(id, false)
-          }
-        },
-      ),
+      bindPlayKeyLights(this.keyLights, this.store, () => this.synth.getDisabledTrackIds()),
     )
     // Space is the sustain pedal only in Live; Play and Learn own it as the
     // transport / exercise key.
