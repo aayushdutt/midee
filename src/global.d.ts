@@ -1,6 +1,11 @@
 import type { BenchResult } from './bench/runner'
 
 declare global {
+  interface MIDIOutput {
+    /** Cancel MIDI messages queued with future timestamps (Web MIDI API). */
+    clear(): void
+  }
+
   // Bench-only fields. The runner module + these props are gated behind
   // `import.meta.env.VITE_ENABLE_BENCH` in main.tsx, so they're absent from
   // public prod builds.

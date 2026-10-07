@@ -9,6 +9,32 @@ import type { Messages } from './en'
 type PolishPluralKey = `tracks.notes.${'few' | 'many'}` | `postSession.stats.${'few' | 'many'}`
 
 const pl: Messages & Record<PolishPluralKey, string> = {
+  // MIDI key lights
+  'keyLights.synthesia': 'Ręce Synthesia (szacowane)',
+  'keyLights.synthesiaHint':
+    'Kanały 12/13 dla lewej/prawej ręki. Ręce są szacowane z wysokości dźwięków ścieżki; pliki z jedną ścieżką są dzielone przy środkowym C. Bez wskazówek palców.',
+  'keyLights.keeziHint':
+    'KEEZI: połącz przez KEENEKT. Użyj Visualizer → Synthesia dla kolorów rąk lub → DAW dla kanałów pliku/ścieżek.',
+  'keyLights.title': 'Podświetlenie klawiszy',
+  'keyLights.description':
+    'Podświetlaj klawisze podczas odtwarzania i ćwiczeń za pomocą KEEZI lub innej taśmy LED MIDI.',
+  'keyLights.connect': 'Włącz MIDI',
+  'keyLights.device': 'Urządzenie świetlne',
+  'keyLights.off': 'Wyłączone',
+  'keyLights.disconnected': 'Urządzenie odłączone',
+  'keyLights.colors': 'Kolory',
+  'keyLights.original': 'Kanały pliku',
+  'keyLights.track': 'Jeden kanał na ścieżkę',
+  'keyLights.single': 'Jeden kanał',
+  'keyLights.channel': 'Kanał',
+  'keyLights.colorHint':
+    'Kolory zależą od palety urządzenia. Dostępne kanały: 1–16; kolory na ekranie mogą się różnić.',
+  'keyLights.noDevices': 'Nie znaleziono wyjść MIDI. Podłącz urządzenie świetlne.',
+  'keyLights.unavailable':
+    'Wyjście Web MIDI jest niedostępne. Wypróbuj Chrome lub Edge na komputerze.',
+  'keyLights.blocked': 'Zezwól na urządzenia MIDI w ustawieniach witryny i spróbuj ponownie.',
+  'keyLights.error': 'Nie udało się wysłać MIDI. Podłącz ponownie lub wybierz urządzenie.',
+
   'home.kicker': 'midee · wizualizator MIDI',
   'home.title.html': 'Graj <em>nuty</em>,<br/>patrz, jak rozkwitają.',
   'home.subtitle':

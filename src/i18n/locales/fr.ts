@@ -4,6 +4,33 @@ import type { Messages } from './en'
 // missing. Technical terms (MIDI, MP4, BPM, fps) stay as-is across locales.
 
 const fr: Messages = {
+  // MIDI key lights
+  'keyLights.synthesia': 'Mains Synthesia (estimées)',
+  'keyLights.synthesiaHint':
+    'Canaux 12/13 pour les mains gauche/droite. Les mains sont estimées selon la hauteur des pistes ; les fichiers à une piste sont séparés au do central. Sans doigtés.',
+  'keyLights.keeziHint':
+    'KEEZI : connectez via KEENEKT. Utilisez Visualizer → Synthesia pour les mains, ou → DAW pour les canaux du fichier/des pistes.',
+  'keyLights.title': 'Lumières du clavier',
+  'keyLights.description':
+    'Éclairez les touches pendant la lecture et la pratique avec KEEZI ou un ruban lumineux MIDI.',
+  'keyLights.connect': 'Activer MIDI',
+  'keyLights.device': 'Appareil lumineux',
+  'keyLights.off': 'Désactivé',
+  'keyLights.disconnected': 'Appareil déconnecté',
+  'keyLights.colors': 'Couleurs',
+  'keyLights.original': 'Canaux du fichier',
+  'keyLights.track': 'Un canal par piste',
+  'keyLights.single': 'Canal unique',
+  'keyLights.channel': 'Canal',
+  'keyLights.colorHint':
+    'Les couleurs suivent la palette de votre appareil. Canaux 1–16 disponibles ; les couleurs à l’écran peuvent différer.',
+  'keyLights.noDevices': 'Aucune sortie MIDI. Connectez votre appareil lumineux.',
+  'keyLights.unavailable':
+    'La sortie Web MIDI est indisponible. Essayez Chrome ou Edge sur ordinateur.',
+  'keyLights.blocked': 'Autorisez les appareils MIDI dans les paramètres du site, puis réessayez.',
+  'keyLights.error':
+    'Impossible d’envoyer du MIDI. Reconnectez ou sélectionnez à nouveau votre appareil.',
+
   // ── Home / dropzone ─────────────────────────────────────────
   'home.kicker': 'midee · visualiseur MIDI',
   'home.title.html': 'Jouez des <em>notes</em>,<br/>voyez-les éclore.',

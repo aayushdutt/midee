@@ -1,6 +1,32 @@
 import type { Messages } from './en'
 
 const es: Messages = {
+  // MIDI key lights
+  'keyLights.synthesia': 'Manos Synthesia (estimadas)',
+  'keyLights.synthesiaHint':
+    'Canales 12/13 para mano izquierda/derecha. Las manos se estiman por la altura de las pistas; los archivos de una pista se dividen en do central. Sin digitación.',
+  'keyLights.keeziHint':
+    'KEEZI: conecta mediante KEENEKT. Usa Visualizer → Synthesia para colores por mano, o → DAW para canales del archivo o pistas.',
+  'keyLights.title': 'Luces del teclado',
+  'keyLights.description':
+    'Ilumina las teclas durante la reproducción y la práctica con KEEZI u otra tira de luces MIDI.',
+  'keyLights.connect': 'Activar MIDI',
+  'keyLights.device': 'Dispositivo de luces',
+  'keyLights.off': 'Desactivado',
+  'keyLights.disconnected': 'Dispositivo desconectado',
+  'keyLights.colors': 'Colores',
+  'keyLights.original': 'Canales del archivo',
+  'keyLights.track': 'Un canal por pista',
+  'keyLights.single': 'Un solo canal',
+  'keyLights.channel': 'Canal',
+  'keyLights.colorHint':
+    'Los colores siguen la paleta del dispositivo. Canales 1–16 disponibles; los colores en pantalla pueden diferir.',
+  'keyLights.noDevices': 'No hay salidas MIDI. Conecta tu dispositivo de luces.',
+  'keyLights.unavailable':
+    'La salida Web MIDI no está disponible. Prueba Chrome o Edge en un ordenador.',
+  'keyLights.blocked': 'Permite dispositivos MIDI en los ajustes del sitio y vuelve a intentarlo.',
+  'keyLights.error': 'No se pudo enviar MIDI. Reconecta o vuelve a seleccionar tu dispositivo.',
+
   // ── Home / dropzone ─────────────────────────────────────────
   'home.kicker': 'midee · visualizador MIDI',
   'home.title.html': 'Toca <em>notas</em>,<br/>míralas florecer.',

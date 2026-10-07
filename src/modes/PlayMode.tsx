@@ -52,6 +52,8 @@ export function PlayMode() {
     const midi = services.store.state.loadedMidi
     if (!midi) return
     services.renderer.loadMidi(midi)
+    // Re-entry follows Learn's cleanup, which releases its own light source.
+    services.keyLights?.load(midi)
     trackPanel.render(midi)
     dropzone.hide()
     keyboardInput.enable()

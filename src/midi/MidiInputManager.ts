@@ -86,13 +86,23 @@ export class MidiInputManager {
   readonly pedal = createEventSignal<boolean>(false)
 
   private access: MIDIAccess | null = null
+  private lightOutputId = ''
+  // Output devices share the same permission and hot-plug lifecycle as inputs.
+  readonly midiAccess = createEventSignal<MIDIAccess | null>(null)
 
   constructor(private readonly clock: MasterClock) {}
+
+  setLightOutput(outputId: string): void {
+    if (outputId === this.lightOutputId) return
+    this.lightOutputId = outputId
+    this.rebindInputs()
+  }
 
   async requestAccess(opts?: { silent?: boolean }): Promise<boolean> {
     if (this.status.value === 'unavailable') return false
 
     try {
+      if (this.access) return true
       this.access = await navigator.requestMIDIAccess({ sysex: false })
       this.access.onstatechange = () => this.rebindInputs()
       this.rebindInputs()
@@ -113,8 +123,21 @@ export class MidiInputManager {
 
     let anyConnected = false
     const names: string[] = []
+    const lightOutput = this.access.outputs.get(this.lightOutputId)
 
     for (const input of this.access.inputs.values()) {
+      // KEEZI's setup requires disabling its KEENEKT bridge as a music
+      // input: reflected output must not play/score itself. A lighted piano's
+      // own input remains usable, as do all separate keyboard controllers.
+      if (
+        lightOutput?.name &&
+        /keenekt/i.test(lightOutput.name) &&
+        input.name === lightOutput.name &&
+        input.manufacturer === lightOutput.manufacturer
+      ) {
+        input.onmidimessage = null
+        continue
+      }
       // Always overwrite — ensures we don't accumulate duplicate handlers
       input.onmidimessage = (e) => this.handleMessage(e)
       if (input.state === 'connected') {
@@ -129,6 +152,7 @@ export class MidiInputManager {
     // No device means no pedal source — clear any stuck state so subscribers
     // can release sustained notes instead of leaving them ringing forever.
     if (!anyConnected && this.pedal.value) this.pedal.set(false)
+    this.midiAccess.set(this.access)
   }
 
   private handleMessage(e: MIDIMessageEvent): void {
@@ -156,6 +180,7 @@ export class MidiInputManager {
     }
     this.access.onstatechange = null
     this.access = null
+    this.midiAccess.set(null)
     this.status.set('disconnected')
     this.deviceName.set('')
     if (this.pedal.value) this.pedal.set(false)

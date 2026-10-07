@@ -163,6 +163,7 @@ export class PlayAlongEngine {
 
     // Now build practice steps + apply filters against the correct time.
     this.practice.loadMidi(midi)
+    services.keyLights?.load(midi)
     this.applyHand(midi)
     this.applySpeed()
     batch(() => {
@@ -174,6 +175,28 @@ export class PlayAlongEngine {
     // store — see docs/done/SOLID_MIGRATION_PLAN.md §2.) Status watch keeps
     // `isPlaying` aligned with Learn's transport.
     this.unsubs.push(
+      this.practice.status.subscribe((status) => {
+        const lights = services.keyLights
+        if (!lights) return
+        if (!status.waiting || !this.state.userWantsToPlay || !status.step || !midi) {
+          lights.setGuidance(null)
+          return
+        }
+        const stepTime = status.step.time
+        const notes = midi.tracks.flatMap((track, trackIndex) =>
+          track.isDrum ||
+          (this.state.hand === 'left' && averagePitch(track.notes) >= 60) ||
+          (this.state.hand === 'right' && averagePitch(track.notes) < 60)
+            ? []
+            : track.notes
+                .filter(
+                  (note) =>
+                    status.pending.has(note.pitch) && Math.abs(note.time - stepTime) <= 0.04,
+                )
+                .map((note) => ({ ...note, channel: track.channel, trackIndex })),
+        )
+        lights.setGuidance(notes)
+      }),
       services.clock.subscribe((t) => this.onTick(t)),
       watch(
         () => learnState.state.status,
@@ -183,6 +206,7 @@ export class PlayAlongEngine {
   }
 
   detach(): void {
+    this.opts.services.keyLights?.load(null)
     this.active = false
     this.currentMidi = null
     this.pressedPitches.clear()
@@ -216,6 +240,7 @@ export class PlayAlongEngine {
 
   pause(): void {
     this.setState('userWantsToPlay', false)
+    this.opts.services.keyLights?.setGuidance(null)
     this.opts.services.clock.pause()
     this.opts.learnState.setState('status', 'paused')
   }
