@@ -1,8 +1,67 @@
-import { describe, expect, it } from 'vitest'
-import { backdateEventTime, parseMidiMessage } from './MidiInputManager'
+import { describe, expect, it, vi } from 'vitest'
+import type { MasterClock } from '../core/clock/MasterClock'
+import { backdateEventTime, MidiInputManager, parseMidiMessage } from './MidiInputManager'
 
-// Only the pure decode/timing helpers are tested here. Device hot-plug and
-// `requestMIDIAccess` wiring need a real MIDIAccess and are covered by e2e.
+// Decode/timing helpers and music-input filtering, with mocked MIDI ports.
+
+describe('Key Lights input filtering', () => {
+  it('disables a selected KEENEKT bridge input while retaining the piano input', async () => {
+    const bridge = {
+      id: 'bridge-in',
+      name: 'KEENEKT',
+      manufacturer: 'KEEZI',
+      state: 'connected',
+      onmidimessage: null,
+    }
+    const piano = {
+      id: 'piano-in',
+      name: 'Piano',
+      manufacturer: 'Casio',
+      state: 'connected',
+      onmidimessage: null,
+    }
+    const bridgeOutput = {
+      id: 'bridge-out',
+      name: 'KEENEKT',
+      manufacturer: 'KEEZI',
+      state: 'connected',
+    }
+    const pianoOutput = {
+      id: 'piano-out',
+      name: 'Piano',
+      manufacturer: 'Casio',
+      state: 'connected',
+    }
+    const access = {
+      inputs: new Map([
+        [bridge.id, bridge],
+        [piano.id, piano],
+      ]),
+      outputs: new Map([
+        [bridgeOutput.id, bridgeOutput],
+        [pianoOutput.id, pianoOutput],
+      ]),
+      onstatechange: null,
+    }
+    vi.stubGlobal('navigator', { requestMIDIAccess: vi.fn(async () => access) })
+    const manager = new MidiInputManager({} as MasterClock)
+    try {
+      manager.setLightOutput(bridgeOutput.id)
+      await manager.requestAccess()
+      expect(bridge.onmidimessage).toBeNull()
+      expect(piano.onmidimessage).toBeTypeOf('function')
+      expect(manager.deviceName.value).toBe('Piano')
+      manager.setLightOutput(pianoOutput.id)
+      expect(piano.onmidimessage).toBeTypeOf('function')
+      expect(bridge.onmidimessage).toBeTypeOf('function')
+      manager.setLightOutput('')
+      expect(bridge.onmidimessage).toBeTypeOf('function')
+    } finally {
+      manager.dispose()
+      vi.unstubAllGlobals()
+    }
+  })
+})
 
 describe('backdateEventTime', () => {
   it('shifts the clock time backwards for a past event (negative delta)', () => {

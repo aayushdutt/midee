@@ -7754,6 +7754,56 @@ body.appearance-open #top-strip.strip--dim {
   overscroll-behavior: contain;
 }
 
+.key-lights-settings {
+  display: grid;
+  gap: 10px;
+}
+
+.key-lights-settings p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.key-lights-field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.key-lights-field select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  color-scheme: dark;
+}
+
+.key-lights-field select:disabled {
+  opacity: 0.5;
+}
+
+.key-lights-help summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.key-lights-help summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.key-lights-help-body {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .customize-section {
   display: flex;
   flex-direction: column;

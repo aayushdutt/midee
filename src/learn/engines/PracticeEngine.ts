@@ -37,11 +37,21 @@ const ENGAGE_LEAD_SEC = 0.01
 // below a typical sixteenth-note at moderate tempos.
 const EARLY_ACCEPT_SEC = 0.12
 
+export interface PracticeNote {
+  pitch: number
+  velocity: number
+  channel: number
+  trackIndex: number
+}
+
 export interface PracticeStep {
   // Start time of the chord step (seconds).
   time: number
   // Pitches (MIDI numbers) the user must press to advance.
   pitches: ReadonlySet<number>
+  // Exact filtered/grouped notes, shared by guidance consumers so they do
+  // not reconstruct the chord or its track/channel identities independently.
+  notes: readonly PracticeNote[]
   // Furthest end time of any note in this step — handy for the HUD's "next
   // bar" affordance even though the engine itself doesn't consume it.
   latestEnd: number
@@ -328,13 +338,13 @@ export class PracticeEngine {
       return
     }
 
-    interface Onset {
+    interface Onset extends PracticeNote {
       time: number
       pitch: number
       end: number
     }
     const onsets: Onset[] = []
-    for (const track of this.midi.tracks) {
+    for (const [trackIndex, track] of this.midi.tracks.entries()) {
       if (track.isDrum) continue
       if (this.visibleTrackIds && !this.visibleTrackIds.has(track.id)) continue
       for (const note of track.notes) {
@@ -345,6 +355,9 @@ export class PracticeEngine {
           time: note.time,
           pitch: note.pitch,
           end: note.time + note.duration,
+          velocity: note.velocity,
+          channel: track.channel,
+          trackIndex,
         })
       }
     }
@@ -363,7 +376,7 @@ export class PracticeEngine {
         if (onsets[j]!.end > latestEnd) latestEnd = onsets[j]!.end
         j++
       }
-      steps.push({ time: head.time, pitches, latestEnd })
+      steps.push({ time: head.time, pitches, latestEnd, notes: onsets.slice(i, j) })
       i = j
     }
 

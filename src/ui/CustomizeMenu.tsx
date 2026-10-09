@@ -1,10 +1,13 @@
 import { createSignal, For } from 'solid-js'
 import { render } from 'solid-js/web'
 import { LOCALES, type LocaleCode, locale, t } from '../i18n'
+import type { KeyLights } from '../midi/KeyLights'
+import type { MidiInputManager } from '../midi/MidiInputManager'
 import type { ParticleStyle, ParticleStyleInfo } from '../renderer/particleStyles'
 import { accentCSS, type Theme } from '../renderer/theme'
 import { trackEvent } from '../telemetry'
 import { icons } from './icons'
+import { KeyLightsSettings } from './KeyLightsSettings'
 import { FEEDBACK_URL, isNarrowViewport } from './utils'
 
 // Aesthetics popover — collapses theme, particles, and chord overlay (three
@@ -75,6 +78,7 @@ function TriggerView(props: TriggerProps) {
 }
 
 interface MenuProps {
+  keyLights?: { lights: KeyLights; midiInput: MidiInputManager } | undefined
   themes: readonly Theme[]
   particles: readonly ParticleStyleInfo[]
   themeIndex: () => number
@@ -258,6 +262,8 @@ function MenuView(props: MenuProps) {
           </button>
         </div>
 
+        {props.keyLights && <KeyLightsSettings {...props.keyLights} />}
+
         <div class="customize-section customize-section--footer">
           <a
             class="customize-feedback-card"
@@ -367,6 +373,7 @@ export class CustomizeMenu {
     private themes: readonly Theme[],
     particles: readonly ParticleStyleInfo[],
     callbacks: CustomizeMenuCallbacks,
+    keyLights?: MenuProps['keyLights'],
   ) {
     const [themeIdx, setThemeIdx] = createSignal(0)
     const [particleIdx, setParticleIdx] = createSignal(0)
@@ -417,6 +424,7 @@ export class CustomizeMenu {
     this.disposeMenu = render(
       () => (
         <MenuView
+          keyLights={keyLights}
           themes={themes}
           particles={particles}
           themeIndex={themeIdx}

@@ -1,5 +1,6 @@
 import type { Metronome } from '../audio/Metronome'
 import type { SynthEngine } from '../audio/SynthEngine'
+import type { KeyLights } from '../midi/KeyLights'
 import type { PianoRollRenderer } from '../renderer/PianoRollRenderer'
 import type { AppStore } from '../store/state'
 import type { MasterClock } from './clock/MasterClock'
@@ -16,4 +17,5 @@ export interface AppServices {
   metronome: Metronome
   renderer: PianoRollRenderer
   input: InputBus
+  keyLights?: KeyLights
 }

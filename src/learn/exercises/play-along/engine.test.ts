@@ -166,6 +166,62 @@ function makeServices(): {
 }
 
 describe('PlayAlongEngine', () => {
+  it('lights only exact step notes, excluding an earlier same-pitch voice on another channel', () => {
+    const { services, clock, learnState } = makeServices()
+    const lights = { load: vi.fn(), setGuidance: vi.fn(), setPracticeMode: vi.fn() }
+    services.keyLights = lights as unknown as NonNullable<AppServices['keyLights']>
+    const midi = makeMidi()
+    midi.tracks[0]!.notes = [
+      { pitch: 55, time: 1.94, duration: 0.5, velocity: 1 },
+      { pitch: 60, time: 1.98, duration: 0.5, velocity: 1 },
+    ]
+    midi.tracks.push({
+      ...midi.tracks[0]!,
+      id: 'next',
+      channel: 1,
+      notes: [{ pitch: 60, time: 2, duration: 0.5, velocity: 1 }],
+    })
+    const engine = new PlayAlongEngine({ services, learnState })
+    engine.attach(midi)
+    engine.seek(1.99)
+    engine.setWaitEnabled(true)
+    engine.play()
+    clock.emit(2)
+    expect(lights.setGuidance).toHaveBeenLastCalledWith([
+      expect.objectContaining({ pitch: 60, channel: 1, trackIndex: 1 }),
+    ])
+    engine.detach()
+  })
+
+  it('keeps the target chord lit and clears it on user pause and exit', () => {
+    const { services, clock, learnState } = makeServices()
+    const lights = { load: vi.fn(), setGuidance: vi.fn(), setPracticeMode: vi.fn() }
+    services.keyLights = lights as unknown as NonNullable<AppServices['keyLights']>
+    const engine = new PlayAlongEngine({ services, learnState })
+    const midi = makeMidi()
+    engine.attach(midi)
+    engine.setWaitEnabled(true)
+    expect(lights.setPracticeMode).toHaveBeenCalledWith(true)
+    engine.play()
+    clock.emit(2.01)
+    expect(lights.load).toHaveBeenCalledWith(midi)
+    expect(lights.setGuidance).toHaveBeenLastCalledWith([
+      expect.objectContaining({ pitch: 60, channel: 0, trackIndex: 0 }),
+      expect.objectContaining({ pitch: 64, channel: 0, trackIndex: 0 }),
+      expect.objectContaining({ pitch: 67, channel: 0, trackIndex: 0 }),
+    ])
+    engine.onNoteOn({ pitch: 60, velocity: 1, clockTime: 2.01, source: 'midi' })
+    expect(lights.setGuidance).toHaveBeenLastCalledWith([
+      expect.objectContaining({ pitch: 60 }),
+      expect.objectContaining({ pitch: 64 }),
+      expect.objectContaining({ pitch: 67 }),
+    ])
+    engine.pause()
+    expect(lights.setGuidance).toHaveBeenLastCalledWith(null)
+    engine.detach()
+    expect(lights.load).toHaveBeenLastCalledWith(null)
+  })
+
   it('applies speed preset to clock and synth', () => {
     const { services, clock, synth, learnState } = makeServices()
     const engine = new PlayAlongEngine({ services, learnState })

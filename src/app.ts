@@ -37,8 +37,10 @@ import {
 import type { ExportStage, VideoExporter } from './export/VideoExporter'
 import { audioBufferToWav } from './export/wav'
 import { setLocale, t } from './i18n'
+import { bindPlayKeyLights } from './midi/bindPlayKeyLights'
 import { CaptureFanout } from './midi/CaptureFanout'
 import { ComputerKeyboardInput } from './midi/ComputerKeyboardInput'
+import { KeyLights } from './midi/KeyLights'
 import { LiveLooper, type LiveLooperState } from './midi/LiveLooper'
 import { LiveNoteStore } from './midi/LiveNoteStore'
 import type { CapturedEvent } from './midi/MidiEncoding'
@@ -100,6 +102,7 @@ export class App {
   private synth = new SynthEngine()
   private inputBus = new InputBus()
   midiInput!: MidiInputManager
+  private keyLights!: KeyLights
   keyboardInput!: ComputerKeyboardInput
   private liveNotes = new LiveNoteStore()
   private loopNotes = new LiveNoteStore()
@@ -266,6 +269,15 @@ export class App {
     this.renderer.setLoopNoteStore(this.loopNotes)
 
     this.midiInput = new MidiInputManager(this.clock)
+    this.keyLights = new KeyLights(this.clock)
+    this.midiInput.setLightOutput(this.keyLights.settings.value.outputId)
+    this.unsubs.push(
+      this.keyLights.settings.subscribe((settings) =>
+        this.midiInput.setLightOutput(settings.outputId),
+      ),
+      this.midiInput.midiAccess.subscribe((access) => this.keyLights.setAccess(access)),
+      bindPlayKeyLights(this.keyLights, this.store, () => this.synth.getDisabledTrackIds()),
+    )
     // Space is the sustain pedal only in Live; Play and Learn own it as the
     // transport / exercise key.
     this.keyboardInput = new ComputerKeyboardInput(
@@ -326,6 +338,7 @@ export class App {
       metronome: this.metronome,
       renderer: this.renderer,
       input: this.inputBus,
+      keyLights: this.keyLights,
     }
 
     // Wire the LivePerformanceBus fan-out sinks. Audio and visual-key
@@ -489,6 +502,7 @@ export class App {
       this.renderer,
       (id, enabled) => {
         this.synth.setTrackEnabled(id, enabled)
+        this.keyLights.setTrackEnabled(id, enabled)
         trackEvent('track_toggled', { enabled })
       },
       () => this.openFilePicker(),
@@ -554,6 +568,7 @@ export class App {
           void setLocale(code).then(() => window.location.reload())
         },
       },
+      { lights: this.keyLights, midiInput: this.midiInput },
     )
     this.customizeMenu.setChord(this.chordOverlayOn)
 
@@ -2019,6 +2034,7 @@ export class App {
     this.dropzone.dispose()
     this.controls.dispose()
     this.kbdResizer.dispose()
+    this.keyLights.dispose()
     this.midiInput.dispose()
     this.keyboardInput.dispose()
     this.liveLooper.dispose()

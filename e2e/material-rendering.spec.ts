@@ -27,8 +27,14 @@ function watchRenderingErrors(page: Page): string[] {
 async function openAppearance(page: Page): Promise<void> {
   const menu = page.locator('.ts-customize-menu')
   if ((await menu.getAttribute('class'))?.includes('ts-popover--open')) return
-  await page.locator('#ts-customize').hover()
-  await page.locator('#ts-customize').click()
+  const trigger = page.locator('#ts-customize')
+  // Live/play idle adds `.strip--dim`, and `pointer-events: none` on
+  // `#top-strip` is inherited by this trigger. A normal hover never lands —
+  // `#pianoroll` is the hit target — so it never fires the document
+  // mousemove that wakes the strip. Force the hover; the movement still
+  // undims the strip, then the real click opens Appearance.
+  await trigger.hover({ force: true })
+  await trigger.click()
   await expect(menu).toHaveClass(/ts-popover--open/)
 }
 

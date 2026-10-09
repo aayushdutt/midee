@@ -13,6 +13,30 @@
 //    key with interpolation instead so word order is translator-controlled.
 
 export const en = {
+  // MIDI key lights
+  'keyLights.setupHelp': 'Setup help',
+  'keyLights.synthesia': 'Synthesia hands (estimated)',
+  'keyLights.synthesiaHint':
+    'Uses channels 12/13 for left/right hands. Hands are estimated by track pitch; single-track files split at middle C. No finger hints.',
+  'keyLights.keeziHint':
+    'KEEZI: connect through KEENEKT. Use Visualizer → Synthesia for hand colors, or → DAW for file/track channels.',
+  'keyLights.title': 'Key Lights',
+  'keyLights.description': 'Light up your piano during playback and practice.',
+  'keyLights.connect': 'Enable MIDI',
+  'keyLights.device': 'Light device',
+  'keyLights.off': 'Off',
+  'keyLights.disconnected': 'Device disconnected',
+  'keyLights.colors': 'Colors',
+  'keyLights.original': 'File channels',
+  'keyLights.track': 'One channel per track',
+  'keyLights.single': 'Single channel',
+  'keyLights.channel': 'Channel',
+  'keyLights.colorHint': 'Your device controls the colors.',
+  'keyLights.noDevices': 'No MIDI outputs found. Connect your light device.',
+  'keyLights.unavailable': 'Web MIDI output is unavailable. Try Chrome or Edge on desktop.',
+  'keyLights.blocked': 'Allow MIDI devices in your browser’s site settings, then try again.',
+  'keyLights.error': 'Could not send MIDI. Reconnect or reselect your light device.',
+
   // ── Home / dropzone ─────────────────────────────────────────
   // The title contains inline <em> markup — one of the rare keys allowed
   // to carry HTML (rendered via innerHTML). We do this so word order stays
