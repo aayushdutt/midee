@@ -7783,6 +7783,27 @@ body.appearance-open #top-strip.strip--dim {
   color-scheme: dark;
 }
 
+.key-lights-field select:disabled {
+  opacity: 0.5;
+}
+
+.key-lights-help summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.key-lights-help summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.key-lights-help-body {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .customize-section {
   display: flex;
   flex-direction: column;

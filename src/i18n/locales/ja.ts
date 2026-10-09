@@ -2,13 +2,14 @@ import type { Messages } from './en'
 
 const ja: Messages = {
   // MIDI key lights
+  'keyLights.setupHelp': '設定のヘルプ',
   'keyLights.synthesia': 'Synthesiaの左右の手（推定）',
   'keyLights.synthesiaHint':
     '左手・右手にチャンネル12・13を使用します。手はトラックの音の高さから推定し、単一トラックは中央のドで分けます。指番号は送信しません。',
   'keyLights.keeziHint':
     'KEEZIはKEENEKT経由で接続します。手の色にはVisualizer → Synthesia、ファイルやトラックのチャンネルには → DAWを使用してください。',
   'keyLights.title': 'キーライト',
-  'keyLights.description': 'KEEZIなどのMIDIライトで、再生中や練習中にピアノの鍵盤を照らします。',
+  'keyLights.description': '再生中や練習中にピアノの鍵盤を照らします。',
   'keyLights.connect': 'MIDIを有効にする',
   'keyLights.device': 'ライトデバイス',
   'keyLights.off': 'オフ',
@@ -18,8 +19,7 @@ const ja: Messages = {
   'keyLights.track': 'トラックごとにチャンネルを割り当て',
   'keyLights.single': '単一チャンネル',
   'keyLights.channel': 'チャンネル',
-  'keyLights.colorHint':
-    '色はデバイスのチャンネル設定に従います。チャンネル1〜16を使用でき、画面の色とは異なる場合があります。',
+  'keyLights.colorHint': '色はデバイスで設定します。',
   'keyLights.noDevices': 'MIDI出力が見つかりません。ライトデバイスを接続してください。',
   'keyLights.unavailable':
     'Web MIDI出力は利用できません。パソコンのChromeまたはEdgeをお試しください。',

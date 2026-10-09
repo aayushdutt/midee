@@ -2,13 +2,14 @@ import type { Messages } from './en'
 
 const zhCN: Messages = {
   // MIDI key lights
+  'keyLights.setupHelp': '设置帮助',
   'keyLights.synthesia': 'Synthesia 左右手（估计）',
   'keyLights.synthesiaHint':
     '左手和右手使用通道 12/13。根据音轨音高估计左右手；单音轨文件在中央 C 处分开。不提供指法提示。',
   'keyLights.keeziHint':
     'KEEZI：通过 KEENEKT 连接。手部颜色使用 Visualizer → Synthesia，文件或音轨通道使用 → DAW。',
   'keyLights.title': '琴键灯光',
-  'keyLights.description': '使用 KEEZI 或其他 MIDI 灯带，在播放和练习时点亮琴键。',
+  'keyLights.description': '在播放和练习时点亮琴键。',
   'keyLights.connect': '启用 MIDI',
   'keyLights.device': '灯光设备',
   'keyLights.off': '关闭',
@@ -18,7 +19,7 @@ const zhCN: Messages = {
   'keyLights.track': '每个音轨一个通道',
   'keyLights.single': '单一通道',
   'keyLights.channel': '通道',
-  'keyLights.colorHint': '颜色由设备的通道配色决定。可用通道为 1–16，可能与屏幕颜色不同。',
+  'keyLights.colorHint': '颜色由设备决定。',
   'keyLights.noDevices': '未找到 MIDI 输出。请连接灯光设备。',
   'keyLights.unavailable': '无法使用 Web MIDI 输出。请尝试桌面版 Chrome 或 Edge。',
   'keyLights.blocked': '请在浏览器的网站设置中允许 MIDI 设备，然后重试。',

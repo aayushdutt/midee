@@ -5,14 +5,14 @@ import type { Messages } from './en'
 
 const fr: Messages = {
   // MIDI key lights
+  'keyLights.setupHelp': 'Aide à la configuration',
   'keyLights.synthesia': 'Mains Synthesia (estimées)',
   'keyLights.synthesiaHint':
     'Canaux 12/13 pour les mains gauche/droite. Les mains sont estimées selon la hauteur des pistes ; les fichiers à une piste sont séparés au do central. Sans doigtés.',
   'keyLights.keeziHint':
     'KEEZI : connectez via KEENEKT. Utilisez Visualizer → Synthesia pour les mains, ou → DAW pour les canaux du fichier/des pistes.',
   'keyLights.title': 'Lumières du clavier',
-  'keyLights.description':
-    'Éclairez les touches pendant la lecture et la pratique avec KEEZI ou un ruban lumineux MIDI.',
+  'keyLights.description': 'Éclairez votre piano pendant la lecture et la pratique.',
   'keyLights.connect': 'Activer MIDI',
   'keyLights.device': 'Appareil lumineux',
   'keyLights.off': 'Désactivé',
@@ -22,8 +22,7 @@ const fr: Messages = {
   'keyLights.track': 'Un canal par piste',
   'keyLights.single': 'Canal unique',
   'keyLights.channel': 'Canal',
-  'keyLights.colorHint':
-    'Les couleurs suivent la palette de votre appareil. Canaux 1–16 disponibles ; les couleurs à l’écran peuvent différer.',
+  'keyLights.colorHint': 'Votre appareil détermine les couleurs.',
   'keyLights.noDevices': 'Aucune sortie MIDI. Connectez votre appareil lumineux.',
   'keyLights.unavailable':
     'La sortie Web MIDI est indisponible. Essayez Chrome ou Edge sur ordinateur.',

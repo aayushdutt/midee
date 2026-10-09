@@ -20,7 +20,6 @@ describe('Key Lights settings', () => {
       id: 'keezi',
       name: 'KEEZI',
       state: 'connected',
-      clear: vi.fn(),
       send: vi.fn(),
     }
     const access = { outputs: new Map([[output.id, output]]) } as unknown as MIDIAccess
@@ -28,6 +27,7 @@ describe('Key Lights settings', () => {
     lights.setAccess(access)
     midiInput.midiAccess.set(access)
     const device = screen.getByLabelText('Light device') as HTMLSelectElement
+    expect(screen.queryByLabelText('Colors')).toBeNull()
     fireEvent.change(device, { target: { value: 'keezi' } })
     expect(lights.settings.value.outputId).toBe('keezi')
     expect(device.value).toBe('keezi')
@@ -45,6 +45,7 @@ describe('Key Lights settings', () => {
     expect(device.selectedOptions[0]!.textContent).toBe('KEEZI')
     fireEvent.change(device, { target: { value: '' } })
     expect(lights.status.value).toBe('off')
+    expect(screen.queryByLabelText('Colors')).toBeNull()
     lights.dispose()
     view.unmount()
   })
