@@ -64,8 +64,10 @@ async function openCustomize(page: Page): Promise<void> {
   if (await menu.evaluate((el) => el.classList.contains('ts-popover--open')).catch(() => false))
     return
   const trigger = page.locator('#ts-customize')
-  // Hover first — the top strip dims on idle.
-  await trigger.hover()
+  // Hover first — the top strip dims on idle. The dimmed strip inherits
+  // `pointer-events: none`, so an unforced hover is swallowed by `#pianoroll`
+  // and never wakes the strip. Force it; mousemove still undims the trigger.
+  await trigger.hover({ force: true })
   await trigger.click()
   await expect(menu).toHaveClass(/ts-popover--open/, { timeout: 15_000 })
 }
